@@ -22,6 +22,15 @@ dependencies {
     implementation("com.formdev:flatlaf:2.6")
 }
 
+tasks.register<JavaExec>("dumpMapAreaLabels") {
+    group = "documentation"
+    description = "Dumps location label metadata from the bundled atlas. Pass --args=\"--json\" to write JSON."
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.xeon.tools.MapAreaLabelsDump")
+    workingDir = projectDir
+}
+
 tasks.withType<Jar>().configureEach {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     manifest {
