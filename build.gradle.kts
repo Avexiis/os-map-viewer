@@ -3,6 +3,8 @@ plugins {
     id("com.github.johnrengelman.shadow") version "8.1.1"
 }
 
+version = "1.0.0"
+
 repositories {
     mavenCentral()
 }
@@ -17,9 +19,31 @@ application {
     mainClass.set("com.xeon.App")
 }
 
+val generatedResourcesDir = layout.buildDirectory.dir("generated/resources/main")
+val generateAppVersionProperties by tasks.registering {
+    val outputFile = generatedResourcesDir.map { it.file("com/xeon/app.properties") }
+    inputs.property("version", project.version.toString())
+    outputs.file(outputFile)
+    doLast {
+        val file = outputFile.get().asFile
+        file.parentFile.mkdirs()
+        file.writeText("version=${project.version}\n")
+    }
+}
+
+sourceSets {
+    main {
+        resources.srcDir(generatedResourcesDir)
+    }
+}
+
 dependencies {
     implementation(project(":api"))
     implementation("com.formdev:flatlaf:2.6")
+    implementation(fileTree("lib/runelite-cache/runtime") {
+        include("*.jar")
+        exclude("gson-*.jar")
+    })
 }
 
 tasks.register<JavaExec>("dumpMapAreaLabels") {
@@ -35,7 +59,12 @@ tasks.withType<Jar>().configureEach {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     manifest {
         attributes["Main-Class"] = "com.xeon.App"
+        attributes["Implementation-Version"] = project.version
     }
+}
+
+tasks.processResources {
+    dependsOn(generateAppVersionProperties)
 }
 
 tasks.shadowJar {

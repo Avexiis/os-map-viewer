@@ -34,7 +34,6 @@ import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.EOFException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
@@ -42,7 +41,6 @@ import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -128,8 +126,6 @@ public class MapPanel extends JComponent implements MapView {
     }
 
     private static final long MIN_CACHE_BUDGET_BYTES = 512L * 1024L * 1024L;
-    private static final long DEFAULT_CACHE_BUDGET_BYTES = MIN_CACHE_BUDGET_BYTES;
-
     private final AtlasStoreReader store;
     private final TileCache cache;
     private final Set<String> emptyTiles = ConcurrentHashMap.newKeySet();
@@ -181,17 +177,16 @@ public class MapPanel extends JComponent implements MapView {
     private final Timer visibleAreaNotifyTimer = new Timer(VISIBLE_AREA_NOTIFY_DELAY_MS, e -> notifyVisibleAreaChanged());
     private JViewport observedViewport;
 
-    public MapPanel() {
-        this(DEFAULT_CACHE_BUDGET_BYTES);
-    }
-
-    public MapPanel(long cacheBudgetBytes) {
+    public MapPanel(Path atlasPath, long cacheBudgetBytes) {
+        if (atlasPath == null) {
+            throw new IllegalArgumentException("atlasPath must not be null");
+        }
         cache = new TileCache(cacheBudgetBytes);
         AtlasStoreReader tmp;
         try {
-            tmp = AtlasStoreReader.openResource(MapPanel.class, Paths.MAP_ATLAS_RESOURCE);
+            tmp = AtlasStoreReader.openFile(atlasPath);
         } catch (Exception ex) {
-            throw new IllegalStateException("Failed to open bundled atlas: " + Paths.MAP_ATLAS_RESOURCE
+            throw new IllegalStateException("Failed to open atlas: " + atlasPath
                     + " - " + ex.getMessage(), ex);
         }
         store = tmp;
@@ -212,6 +207,15 @@ public class MapPanel extends JComponent implements MapView {
         installMouseHandlers();
         installArrowKeyBindings();
         visibleAreaNotifyTimer.setRepeats(false);
+    }
+
+    public static void validateAtlas(Path atlasPath) throws Exception {
+        if (atlasPath == null) {
+            throw new IllegalArgumentException("atlasPath must not be null");
+        }
+        try (AtlasStoreReader ignored = AtlasStoreReader.openFile(atlasPath)) {
+            // Opening the atlas validates the header, metadata, layer index, and tile index.
+        }
     }
 
     @Override
@@ -1690,16 +1694,11 @@ public class MapPanel extends JComponent implements MapView {
             }
         }
 
-        static AtlasStoreReader openResource(Class<?> anchor, String resourcePath) throws Exception {
-            try (InputStream in = anchor.getResourceAsStream(resourcePath)) {
-                if (in == null) {
-                    throw new IllegalStateException("Resource not found");
-                }
-                Path temp = Files.createTempFile("os-map-viewer-atlas-", ".atlas");
-                temp.toFile().deleteOnExit();
-                Files.copy(in, temp, StandardCopyOption.REPLACE_EXISTING);
-                return new AtlasStoreReader(new RandomAccessFile(temp.toFile(), "r"));
+        static AtlasStoreReader openFile(Path path) throws Exception {
+            if (path == null || !Files.isRegularFile(path)) {
+                throw new IllegalStateException("Atlas file not found");
             }
+            return new AtlasStoreReader(new RandomAccessFile(path.toFile(), "r"));
         }
 
         private AtlasStoreReader(RandomAccessFile raf) throws Exception {
