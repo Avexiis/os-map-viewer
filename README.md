@@ -237,7 +237,7 @@ Plugins are loaded from JAR files with Java `ServiceLoader`. See `docs/PLUGIN_AP
 
 ## Third-Party Attributions
 
-This project includes and uses the RuneLite cache module, and the experimental map printer contains code derived from RuneLite cache tooling.
+This branch includes and uses the RuneLite cache module, and the experimental map printer contains code derived from RuneLite cache tooling.
 
 RuneLite is licensed under the BSD 2-Clause License:
 
