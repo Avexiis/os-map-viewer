@@ -69,7 +69,8 @@ Jumping to an area zooms in and centers it in the viewer.
 
 The hamburger button in the left rail opens the main options menu.
 
-From this menu you can:
+From this menu you can:<img width="1918" height="1045" alt="image" src="https://github.com/user-attachments/assets/fbfa3b39-40a9-4b0f-b0a8-75f22bedb417" />
+
 
 - Open `Plugins...`
 - Load a plugin JAR file.
@@ -236,3 +237,5 @@ The API lets plugins do things like:
 - Save plugin settings in the shared config manager.
 
 Plugins are loaded from JAR files with Java `ServiceLoader`. See `docs/PLUGIN_API.md` for the exact setup.
+## 
+#### This project was developed on Linux!
