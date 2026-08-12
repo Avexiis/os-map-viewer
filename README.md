@@ -1,4 +1,5 @@
 # OS Map Viewer
+<img width="1917" height="1048" alt="image" src="https://github.com/user-attachments/assets/4e4a7a7b-323f-4873-a61d-4c8fccbb6e7a" />
 
 OS Map Viewer is a desktop map viewer for the Old School RuneScape world map.
 
@@ -105,6 +106,7 @@ To load an external plugin:
 Enabled plugins add buttons to the left rail. Click a plugin button to open its plugin menu.
 
 ## Built-In Ground Markers Plugin
+<img width="1918" height="1045" alt="image" src="https://github.com/user-attachments/assets/d688b50c-f635-4f70-844a-e828aadcd75b" />
 
 The built-in `Ground Markers` plugin can view, create, import, and export ground marker JSON for RuneLite-style marker packs.
 
