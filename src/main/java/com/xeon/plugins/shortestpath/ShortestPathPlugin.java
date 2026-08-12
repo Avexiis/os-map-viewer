@@ -430,42 +430,160 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
     }
 
     private void setStart(Tile tile) {
+        if (!isRoutePointAccessible(tile)) {
+            cancelCurrentJob();
+            startTile = null;
+            clearRouteCalculationState(false);
+            refreshPanel();
+            repaint();
+            warnClearedInaccessible("Start", tile);
+            return;
+        }
         startTile = copy(tile);
-        routeResults = List.of();
-        routeFailure = null;
-        lastWarningSignature = "";
+        clearRouteCalculationState(true);
         refreshPanel();
         recalculate();
         repaint();
     }
 
     private void addStep(Tile tile) {
+        if (!isRoutePointAccessible(tile)) {
+            warnClearedInaccessible("Step " + (stepTiles.size() + 1), tile);
+            return;
+        }
         stepTiles.add(copy(tile));
-        routeResults = List.of();
-        routeFailure = null;
-        lastWarningSignature = "";
+        clearRouteCalculationState(true);
         refreshPanel();
         recalculate();
         repaint();
     }
 
     private void setTarget(Tile tile) {
+        if (!isRoutePointAccessible(tile)) {
+            targetTile = null;
+            clearRouteCalculationState(false);
+            refreshPanel();
+            repaint();
+            warnClearedInaccessible("End", tile);
+            recalculate();
+            return;
+        }
         targetTile = copy(tile);
-        routeResults = List.of();
-        routeFailure = null;
-        lastWarningSignature = "";
+        clearRouteCalculationState(true);
         refreshPanel();
         recalculate();
         repaint();
     }
 
+    private void clearRouteCalculationState(boolean resetWarningSignature) {
+        routeResults = List.of();
+        routeFailure = null;
+        routeOverlayLines = List.of();
+        if (resetWarningSignature) {
+            lastWarningSignature = "";
+        }
+    }
+
+    private boolean clearBlockedRoutePoints() {
+        boolean changed = false;
+        if (startTile != null && !isRoutePointAccessible(startTile)) {
+            Tile cleared = startTile;
+            startTile = null;
+            warnClearedInaccessible("Start", cleared);
+            changed = true;
+        }
+        for (int i = stepTiles.size() - 1; i >= 0; i--) {
+            Tile step = stepTiles.get(i);
+            if (!isRoutePointAccessible(step)) {
+                stepTiles.remove(i);
+                warnClearedInaccessible("Step " + (i + 1), step);
+                changed = true;
+            }
+        }
+        if (targetTile != null && !isRoutePointAccessible(targetTile)) {
+            Tile cleared = targetTile;
+            targetTile = null;
+            warnClearedInaccessible("End", cleared);
+            changed = true;
+        }
+        if (changed) {
+            clearRouteCalculationState(false);
+            refreshPanel();
+            repaint();
+        }
+        return changed;
+    }
+
+    private boolean isRoutePointAccessible(Tile tile) {
+        if (tile == null || tile.z < 0) {
+            return false;
+        }
+        if (pathfinderConfig == null) {
+            return true;
+        }
+        return !pathfinderConfig.getMap().isBlocked(tile.x, tile.y, tile.z);
+    }
+
+    private boolean removeRoutePoint(int pointIndex) {
+        if (pointIndex == 0) {
+            if (startTile == null) {
+                return false;
+            }
+            startTile = null;
+            return true;
+        }
+        if (pointIndex >= 1 && pointIndex <= stepTiles.size()) {
+            stepTiles.remove(pointIndex - 1);
+            return true;
+        }
+        if (targetTile != null && pointIndex == stepTiles.size() + 1) {
+            targetTile = null;
+            return true;
+        }
+        return false;
+    }
+
+    private void warnClearedInaccessible(String label, Tile tile) {
+        String message = label + " is not accessible and was cleared: " + tileText(tile);
+        panel.setStatus(message);
+        context.setStatus(message);
+        String signature = "cleared:" + label + ":" + tileText(tile);
+        if (!signature.equals(lastWarningSignature)) {
+            lastWarningSignature = signature;
+            JOptionPane.showMessageDialog(context.owner(), message, "Shortest Path Blocked", JOptionPane.WARNING_MESSAGE);
+        }
+    }
+
+    private void warnInaccessible(RouteFailure failure, String label, boolean removed) {
+        String message = label + " is not accessible"
+                + (removed ? " and was cleared: " : ": ")
+                + tileText(failure.point());
+        panel.setStatus(message);
+        context.setStatus(message);
+        String signature = "blocked:" + label + ":" + tileText(failure.point()) + ":" + removed;
+        if (!signature.equals(lastWarningSignature)) {
+            lastWarningSignature = signature;
+            JOptionPane.showMessageDialog(context.owner(), message, "Shortest Path Blocked", JOptionPane.WARNING_MESSAGE);
+        }
+    }
+
+    private void continueAfterRoutePointRemoval(boolean removed) {
+        clearRouteCalculationState(false);
+        refreshPanel();
+        repaint();
+        if (removed && routePoints().size() >= 2) {
+            recalculate();
+        }
+    }
+
     private void recalculate() {
+        cancelCurrentJob();
+        clearBlockedRoutePoints();
         List<Tile> points = routePoints();
         if (context == null || pathfinderConfig == null || points.size() < 2) {
             refreshPanel();
             return;
         }
-        cancelCurrentJob();
         long jobId = calculationSerial;
         routeResults = List.of();
         routeFailure = null;
@@ -508,15 +626,25 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
             return;
         }
         currentPathfinder = null;
-        routeResults = List.copyOf(calculation.results());
-        routeFailure = calculation.failure();
-        refreshPanel();
-        repaint();
         if (calculation.failure() != null) {
-            warnInaccessible(calculation.failure());
-        } else if (routeResults.isEmpty()) {
+            RouteFailure failure = calculation.failure();
+            String label = routePointLabel(failure.pointIndex());
+            boolean removed = removeRoutePoint(failure.pointIndex());
+            routeResults = List.copyOf(calculation.results());
+            routeFailure = removed ? null : failure;
+            continueAfterRoutePointRemoval(removed);
+            warnInaccessible(failure, label, removed);
+        } else if (calculation.results().isEmpty()) {
+            routeResults = List.copyOf(calculation.results());
+            routeFailure = null;
+            refreshPanel();
+            repaint();
             panel.setStatus("cancelled");
         } else {
+            routeResults = List.copyOf(calculation.results());
+            routeFailure = null;
+            refreshPanel();
+            repaint();
             context.setStatus("Shortest path ready");
         }
     }
@@ -758,19 +886,27 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 
         Stroke oldStroke = g.getStroke();
         Font oldFont = g.getFont();
-        float screenPx = Math.max(1f, (float) (1.0 / Math.max(context.effectiveZoom(), 0.0001)));
+        Object oldTextAntialias = g.getRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING);
+        double zoom = Math.max(context.effectiveZoom(), 0.0001);
+        float screenPx = Math.max(1f, (float) (1.0 / zoom));
         g.setStroke(new BasicStroke(screenPx));
         g.setColor(new Color(color.getRed(), color.getGreen(), color.getBlue(), 90));
         g.fillOval(x - size, y - size, size * 3, size * 3);
         g.setColor(color);
         g.drawOval(x - size, y - size, size * 3, size * 3);
         if (context.effectiveZoom() > 0.18) {
-            float fontSize = Math.max(8f, (float) (11.0 / Math.max(context.effectiveZoom(), 0.0001)));
+            g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+            float fontSize = Math.max(8f, (float) (11.0 / zoom));
             g.setFont(g.getFont().deriveFont(Font.BOLD, fontSize));
-            drawOutlinedString(g, label, x + size, y, color);
+            drawOutlinedString(g, label, x + size, y, color, zoom);
         }
         g.setFont(oldFont);
         g.setStroke(oldStroke);
+        if (oldTextAntialias == null) {
+            g.getRenderingHints().remove(RenderingHints.KEY_TEXT_ANTIALIASING);
+        } else {
+            g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, oldTextAntialias);
+        }
     }
 
     private List<PathStep> currentPath() {
@@ -1078,19 +1214,10 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
         return points;
     }
 
-    private void warnInaccessible(RouteFailure failure) {
-        String label = routePointLabel(failure.pointIndex());
-        String message = label + " is not accessible: " + tileText(failure.point());
-        panel.setStatus(message);
-        context.setStatus(message);
-        String signature = failure.pointIndex() + ":" + tileText(failure.point());
-        if (!signature.equals(lastWarningSignature)) {
-            lastWarningSignature = signature;
-            JOptionPane.showMessageDialog(context.owner(), message, "Shortest Path Blocked", JOptionPane.WARNING_MESSAGE);
-        }
-    }
-
     private String routePointLabel(int pointIndex) {
+        if (pointIndex == 0) {
+            return "Start";
+        }
         if (targetTile != null && pointIndex == stepTiles.size() + 1) {
             return "End";
         }
@@ -1212,13 +1339,14 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
                 && point.getY() <= visibleMap.y + visibleMap.height + margin;
     }
 
-    private static void drawOutlinedString(Graphics2D g, String text, int x, int y, Color fill) {
+    private static void drawOutlinedString(Graphics2D g, String text, int x, int y, Color fill, double zoom) {
         Color oldColor = g.getColor();
+        float offset = (float) (0.9 / Math.max(zoom, 0.0001));
         g.setColor(Color.BLACK);
-        g.drawString(text, x - 1, y);
-        g.drawString(text, x + 1, y);
-        g.drawString(text, x, y - 1);
-        g.drawString(text, x, y + 1);
+        g.drawString(text, x - offset, y);
+        g.drawString(text, x + offset, y);
+        g.drawString(text, x, y - offset);
+        g.drawString(text, x, y + offset);
         g.setColor(fill);
         g.drawString(text, x, y);
         g.setColor(oldColor);

@@ -130,7 +130,7 @@ With the Shortest Path plugin enabled:
 
 Solid lines are walked path segments. Dashed lines are transport or teleport jumps.
 
-The route summary is drawn as a top-left map overlay. If a step or end tile cannot be reached, the plugin stops at the last completed leg and warns that the selected area is not accessible instead of drawing to the nearest pathable tile.
+The route summary is drawn as a top-left map overlay. If a start, step, or end tile is not accessible, the plugin clears that point and leaves the other route points in place instead of drawing to the nearest pathable tile.
 
 The right panel includes a `Teleport Items` list with `Filter` and `Sort` controls. Enabled items are highlighted green. Click `+` to enable a disabled item, or `-` to disable an enabled item. `Default` keeps the built-in order; the other sort modes group enabled or disabled items first. Item choices are saved in the plugin config as disabled items, so new supported items remain enabled by default. Use `Avoid item teleports` to exclude all item teleports without changing the saved item list.
 
