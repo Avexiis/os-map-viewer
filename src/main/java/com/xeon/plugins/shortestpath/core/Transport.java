@@ -130,6 +130,17 @@ public final class Transport {
         return origin == UNDEFINED_ORIGIN;
     }
 
+    public boolean isLeagueSpecific() {
+        return (type != null && type.isLeagueOnly()) || isLeagueSpecificDisplayInfo(displayInfo);
+    }
+
+    static boolean isLeagueSpecificDisplayInfo(String displayInfo) {
+        if (displayInfo == null || displayInfo.isBlank()) {
+            return false;
+        }
+        return displayInfo.regionMatches(true, 0, "Banker's Briefcase", 0, "Banker's Briefcase".length());
+    }
+
     private static int parseWorldPoint(String value) {
         if (value == null || value.isEmpty()) {
             return LOCATION_PERMUTATION;

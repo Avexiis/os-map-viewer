@@ -22,6 +22,7 @@ public record PathOptions(
 
     public static Set<TransportType> defaultEnabledTransportTypes() {
         EnumSet<TransportType> types = EnumSet.allOf(TransportType.class);
+        types.removeIf(TransportType::isLeagueOnly);
         types.remove(TransportType.HOT_AIR_BALLOON);
         types.remove(TransportType.TELEPORTATION_MINIGAME);
         types.remove(TransportType.WILDERNESS_OBELISK);

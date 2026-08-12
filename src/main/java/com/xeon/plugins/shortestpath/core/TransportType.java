@@ -31,7 +31,7 @@ public enum TransportType {
             return 15;
         }
     },
-    SEASONAL_TRANSPORTS("/com/xeon/plugins/shortestpath/transports/seasonal_transports.tsv", false, 0, 0),
+    SEASONAL_TRANSPORTS("/com/xeon/plugins/shortestpath/transports/seasonal_transports.tsv", false, 0, 0, true),
     SPIRIT_TREE("/com/xeon/plugins/shortestpath/transports/spirit_trees.tsv", false, 5, 0),
     TELEPORTATION_BOX("/com/xeon/plugins/shortestpath/transports/teleportation_boxes.tsv", false, 0, 0),
     TELEPORTATION_ITEM("/com/xeon/plugins/shortestpath/transports/teleportation_items.tsv", true, 0, 0),
@@ -47,12 +47,18 @@ public enum TransportType {
     private final boolean teleport;
     private final int radiusThreshold;
     private final int additionalCost;
+    private final boolean leagueOnly;
 
     TransportType(String resourcePath, boolean teleport, int radiusThreshold, int additionalCost) {
+        this(resourcePath, teleport, radiusThreshold, additionalCost, false);
+    }
+
+    TransportType(String resourcePath, boolean teleport, int radiusThreshold, int additionalCost, boolean leagueOnly) {
         this.resourcePath = resourcePath;
         this.teleport = teleport;
         this.radiusThreshold = radiusThreshold;
         this.additionalCost = additionalCost;
+        this.leagueOnly = leagueOnly;
     }
 
     public String getResourcePath() {
@@ -73,6 +79,10 @@ public enum TransportType {
 
     public int getAdditionalCost() {
         return additionalCost;
+    }
+
+    public boolean isLeagueOnly() {
+        return leagueOnly;
     }
 
     public TransportType sharesDestinationsWith() {

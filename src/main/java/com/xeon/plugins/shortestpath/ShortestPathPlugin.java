@@ -975,6 +975,9 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
         Set<TransportType> enabled = PathOptions.copyTransportTypes(enabledTypes);
         StringJoiner disabled = new StringJoiner(",");
         for (TransportType type : TransportType.values()) {
+            if (type.isLeagueOnly()) {
+                continue;
+            }
             if (!enabled.contains(type)) {
                 disabled.add(type.name());
             }

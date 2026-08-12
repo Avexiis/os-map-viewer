@@ -53,7 +53,7 @@ final class ShortestPathPanel extends JPanel {
     private final JLabel stepsLabel = new JLabel("Steps: none");
     private final JLabel targetLabel = new JLabel("Target: none");
     private final JLabel statusLabel = new JLabel("Status: idle");
-    private final JCheckBox includeTransports = new JCheckBox("Transport links", true);
+    private final JCheckBox includeTransports = new JCheckBox("Transports", true);
     private final JCheckBox includeTeleports = new JCheckBox("Teleports", true);
     private final JCheckBox avoidWilderness = new JCheckBox("Avoid wilderness", false);
     private final JCheckBox includePoh = new JCheckBox("POH links", true);
@@ -140,8 +140,8 @@ final class ShortestPathPanel extends JPanel {
 
         JPanel optionGrid = new JPanel(new GridLayout(0, 1, 0, 2));
         optionGrid.setOpaque(false);
-        optionGrid.add(includeTransports);
         optionGrid.add(includeTeleports);
+        optionGrid.add(includeTransports);
         optionGrid.add(avoidItemTeleports);
         optionGrid.add(avoidWilderness);
         optionGrid.add(includePoh);
@@ -305,7 +305,7 @@ final class ShortestPathPanel extends JPanel {
             }
         }
         for (TransportType type : TransportType.values()) {
-            if (!transportToggles.containsKey(type)) {
+            if (!type.isLeagueOnly() && !transportToggles.containsKey(type)) {
                 types.add(type);
             }
         }

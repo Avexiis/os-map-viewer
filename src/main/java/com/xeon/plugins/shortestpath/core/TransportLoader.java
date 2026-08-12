@@ -17,7 +17,7 @@ public final class TransportLoader {
     public static HashMap<Integer, Set<Transport>> loadAllFromResources() {
         HashMap<Integer, Set<Transport>> transports = new HashMap<>();
         for (TransportType type : TransportType.values()) {
-            if (type.hasResourcePath()) {
+            if (type.hasResourcePath() && !type.isLeagueOnly()) {
                 addTransports(transports, type.getResourcePath(), type, type.getRadiusThreshold());
             }
         }
@@ -41,6 +41,10 @@ public final class TransportLoader {
                                           TransportType transportType, int radiusThreshold) {
         Set<Transport> newTransports = new HashSet<>();
         for (TransportRecord record : TSV_PARSER.parse(contents)) {
+            if (transportType.isLeagueOnly()
+                    || Transport.isLeagueSpecificDisplayInfo(record.get(TransportRecord.DISPLAY_INFO))) {
+                continue;
+            }
             newTransports.add(Transport.fromRecord(record, transportType));
         }
 

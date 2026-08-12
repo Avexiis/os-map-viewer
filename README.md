@@ -152,7 +152,7 @@ After a successful lookup, the app asks if you want to store the profile. If you
 
 OS Map Viewer is not connected to the RuneLite client, so it cannot know live account state such as inventory, equipment, bank contents, planted spirit trees, spellbook, or current cooldowns.
 
-With a WikiSync profile loaded, the route filters transports by satisfied skill and quest requirements. Without a WikiSync profile, the plugin uses broad offline toggles for transport links, teleports, wilderness avoidance, and POH links.
+With a WikiSync profile loaded, the route filters transports by satisfied skill and quest requirements. Without a WikiSync profile, the plugin uses broad offline toggles for transports, teleports, wilderness avoidance, and POH links.
 
 ## Built-In Ground Markers Plugin
 <img width="1918" height="1045" alt="image" src="https://github.com/user-attachments/assets/47b5ba6d-db59-449e-be0b-1d578bd1a868" />
