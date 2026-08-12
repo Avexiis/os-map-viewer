@@ -446,6 +446,12 @@ public class MapPanel extends JComponent implements MapView {
         return regionIdFor(getCenterTile());
     }
 
+    @Override
+    public Rectangle visibleViewRect() {
+        JViewport viewport = getViewport();
+        return viewport == null ? new Rectangle(0, 0, getWidth(), getHeight()) : viewport.getViewRect();
+    }
+
     public Tile pointToTile(Point point) {
         if (point == null) {
             return null;

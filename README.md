@@ -2,7 +2,7 @@
 
 OS Map Viewer is a desktop map viewer for the Old School RuneScape world map.
 
-The core app is only a map viewer. Extra tools are added through plugins. The app includes one built-in plugin for RuneLite and HDOS ground markers.
+The core app is only a map viewer. Extra tools are added through plugins. The app includes built-in plugins for RuneLite/HDOS ground markers and experimental shortest-path routing.
 
 ## Experimental branch
 This branch is the experimental branch of OS Map Viewer. It contains features that may be removed, changed, or never make it to the stable main branch. To run the experimental branch, you must build it from source.
@@ -23,6 +23,7 @@ You can do this by:
 - Map printer that uses the official RuneLite cache library to read your installed game cache for the purpose of printing a new map after game updates
 - Map binary stored in the user home directory to support printer. This branch will also automatically replace the map binary when a new version is run for the first time.
 - Map binary backup. This branch will validate that a new printed map is non-corrupt before using it. It will roll the binary back to the last version if found to be corrupt. 
+- Experimental shortest-path plugin adapted from the RuneLite `shortest-path` plugin data and pathfinder core.
 
 ## Requirements
 
@@ -43,6 +44,7 @@ You can do this by:
 - Change the map background color.
 - Save your last viewed region and zoom level.
 - Enable, disable, and load plugins.
+- Draw shortest paths across the full logical map, including transport and teleport links, when the Shortest Path plugin is enabled.
 
 ## Basic Map Use
 
@@ -103,6 +105,63 @@ To load an external plugin:
 3. Choose a compatible plugin JAR file.
 
 Enabled plugins add buttons to the left rail. Click a plugin button to open its plugin menu.
+
+## Built-In Shortest Path Plugin
+
+The built-in `Shortest Path` plugin can draw a route from one tile to another over the viewer map.
+
+It is adapted from the RuneLite plugin hub `shortest-path` plugin for use on a 2D only map.
+It can also use public OSRS WikiSync profile data for account-aware skill and quest filtering.
+
+### Enable The Plugin
+
+1. Open the hamburger menu.
+2. Click `Plugins...`.
+3. Check `Shortest Path`.
+
+When enabled, the plugin adds:
+
+- A shortest-path panel on the right.
+- A WikiSync username field and `Look up` button.
+- A searchable teleport item list for enabling or disabling item teleports.
+- Route import/export, color, collision-map, and transport-type controls.
+- A Shortest Path button in the left rail.
+- A map overlay for the calculated path and route summary.
+
+### Create A Route
+
+With the Shortest Path plugin enabled:
+
+- The first map click sets the start tile.
+- `Shift`-click after setting a start tile appends a route step.
+- A later non-shift map click sets the final end tile.
+- Use the plugin menu to target to the map center.
+
+Solid lines are walked path segments. Dashed lines are transport or teleport jumps.
+
+The route summary is drawn as a top-left map overlay. If a step or end tile cannot be reached, the plugin stops at the last completed leg and warns that the selected area is not accessible instead of drawing to the nearest pathable tile.
+
+The right panel includes a `Teleport Items` list with `Filter` and `Sort` controls. Enabled items are highlighted green. Click `+` to enable a disabled item, or `-` to disable an enabled item. `Default` keeps the built-in order; the other sort modes group enabled or disabled items first. Item choices are saved in the plugin config as disabled items, so new supported items remain enabled by default. Use `Avoid item teleports` to exclude all item teleports without changing the saved item list.
+
+The `Use...` checkboxes mirror RuneLite shortest-path transport category toggles, including agility shortcuts, boats, canoes, ships, fairy rings, gnome gliders, hot air balloons, magic carpets, magic mushtrees, minecarts, quetzals, spirit trees, teleport levers, teleport portals, teleport spells, Home Teleport spells, teleport minigames, and wilderness obelisks. Toggling these options recalculates the route.
+
+Use `Draw collision map` to show movement-blocking collision edges at readable zoom levels. The color controls change walk lines, transport lines, start markers, step markers, end markers, and collision-map lines. `Recalculate` forces a fresh route calculation.
+
+Use `Export` to save the current route as JSON with `start`, ordered `steps`, and optional `target` tile objects. Use `Import` to load that JSON back into the viewer.
+
+The route can draw across the full logical atlas range, including northern regions that the in-game vanilla world map does not show, such as quest areas and undergrounds.
+
+### WikiSync Profile Lookup
+
+To apply account-specific data, type a RuneScape username in the Shortest Path panel and click `Look up`, which is labeled with the RuneLite icon.
+
+After a successful lookup, the app asks if you want to store the profile. If you choose to store it, OS Map Viewer saves the username plus the subset of WikiSync data used by the shortest-path viewer: fetched timestamp, profile type, skill levels, and completed quest names. It does not store unrelated public sections such as diaries, music, combat achievements, or collection log data. The next time the Shortest Path plugin loads, it refreshes that username from WikiSync and replaces the stored profile.
+
+### Routing Limits
+
+OS Map Viewer is not connected to the RuneLite client, so it cannot know live account state such as inventory, equipment, bank contents, planted spirit trees, spellbook, or current cooldowns.
+
+With a WikiSync profile loaded, the route filters transports by satisfied skill and quest requirements. Without a WikiSync profile, the plugin uses broad offline toggles for transport links, teleports, wilderness avoidance, and POH links.
 
 ## Built-In Ground Markers Plugin
 
@@ -238,6 +297,8 @@ Plugins are loaded from JAR files with Java `ServiceLoader`. See `docs/PLUGIN_AP
 ## Third-Party Attributions
 
 This branch includes and uses the RuneLite cache module, and the experimental map printer contains code derived from RuneLite cache tooling.
+
+The Shortest Path plugin includes data and adapted pathfinding/collision-loading code from the RuneLite plugin hub `shortest-path` plugin. The viewer adaptation omits RuneLite 3D overlay rendering and live client-state integrations.
 
 RuneLite is licensed under the BSD 2-Clause License:
 

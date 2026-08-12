@@ -55,6 +55,15 @@ tasks.register<JavaExec>("dumpMapAreaLabels") {
     workingDir = projectDir
 }
 
+tasks.register<JavaExec>("checkShortestPathData") {
+    group = "verification"
+    description = "Validates bundled shortest-path collision and transport resources."
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.xeon.tools.ShortestPathDataCheck")
+    workingDir = projectDir
+}
+
 tasks.withType<Jar>().configureEach {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     manifest {

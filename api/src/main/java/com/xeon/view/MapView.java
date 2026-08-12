@@ -72,6 +72,10 @@ public interface MapView {
 
     int getCenterRegionId();
 
+    default Rectangle visibleViewRect() {
+        return new Rectangle();
+    }
+
     Tile pointToTile(Point point);
 
     int regionIdFor(Tile tile);

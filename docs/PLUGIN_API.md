@@ -177,6 +177,7 @@ Common methods:
 - `getZoom()` reads the current map zoom.
 - `getHoverTile()` and `getHoverRegionId()` read the current hover target.
 - `tileToRect(tile)` and `regionToRect(regionId)` convert map locations into drawing rectangles.
+- `visibleViewRect()` returns the current viewport rectangle in component coordinates, useful for fixed-position overlays.
 - `currentVisibleRegionIds()` returns the visible regions.
 - `repaintTile(tile)`, `repaintRegion(regionId)`, and `repaintVisible()` request redraws.
 
@@ -331,7 +332,7 @@ public final class OverlayPlugin implements MapViewerPlugin, MapLayer {
 }
 ```
 
-`MapRenderContext` exposes the active plane, zoom, hovered tile, hovered region, visible region ids, and conversion helpers.
+`MapRenderContext` exposes the active plane, zoom, hovered tile, hovered region, visible region ids, viewport rectangle, and conversion helpers.
 
 Core map overlays, such as region id text, can draw after plugin overlays.
 

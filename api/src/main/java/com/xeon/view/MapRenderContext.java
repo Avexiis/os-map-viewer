@@ -44,6 +44,10 @@ public final class MapRenderContext {
         return mapPanel.getHoverRegionId();
     }
 
+    public Rectangle visibleViewRect() {
+        return mapPanel.visibleViewRect();
+    }
+
     public boolean regionSelectionActive() {
         return mapPanel.isRegionSelectionActive();
     }

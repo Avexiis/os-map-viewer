@@ -12,6 +12,7 @@ import com.xeon.plugin.MapViewerPlugin;
 import com.xeon.plugin.PluginContext;
 import com.xeon.plugin.PluginRegistry;
 import com.xeon.plugins.groundmarkers.GroundMarkerPlugin;
+import com.xeon.plugins.shortestpath.ShortestPathPlugin;
 import com.xeon.util.Images;
 import com.xeon.util.Ui;
 import com.xeon.view.MapAreaSearchPanel;
@@ -92,7 +93,7 @@ public class MapViewerController {
     private boolean mapPrintInProgress = false;
 
     public MapViewerController() {
-        for (MapViewerPlugin plugin : PluginRegistry.load(new GroundMarkerPlugin())) {
+        for (MapViewerPlugin plugin : PluginRegistry.load(new GroundMarkerPlugin(), new ShortestPathPlugin())) {
             plugins.add(new PluginHandle(plugin, settings.pluginsEnabledOnStartup()));
         }
     }
