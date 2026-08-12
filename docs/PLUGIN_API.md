@@ -385,6 +385,8 @@ public final class ClickPlugin implements MapViewerPlugin, MapTool {
 
 Only one `MapTool` is active at a time. A plugin can still draw with `MapLayer` without being the active tool.
 
+Popup-trigger and right-click mouse events are delivered through `mouseClicked(MapMouseEvent)`, so tools can open context menus from `event.source()`.
+
 `MapMouseEvent` includes:
 
 - `tile()` for the clicked or hovered world tile.

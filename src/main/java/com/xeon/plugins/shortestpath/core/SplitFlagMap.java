@@ -72,7 +72,7 @@ public final class SplitFlagMap {
     }
 
     public static SplitFlagMap fromResources() {
-        try (InputStream resource = SplitFlagMap.class.getResourceAsStream("/com/xeon/plugins/shortestpath/collision-map.zip")) {
+        try (InputStream resource = SplitFlagMap.class.getResourceAsStream("/com/xeon/application/data/collision-map.zip")) {
             return fromZipStream(resource);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
@@ -81,7 +81,7 @@ public final class SplitFlagMap {
 
     public static SplitFlagMap fromZipStream(InputStream resource) throws IOException {
         Map<Integer, byte[]> compressedRegions = new HashMap<>();
-        try (ZipInputStream in = new ZipInputStream(Objects.requireNonNull(resource, "com/xeon/plugins/shortestpath/collision-map.zip"))) {
+        try (ZipInputStream in = new ZipInputStream(Objects.requireNonNull(resource, "com/xeon/application/data/collision-map.zip"))) {
             int minX = Integer.MAX_VALUE;
             int minY = Integer.MAX_VALUE;
             int maxX = 0;

@@ -169,6 +169,7 @@ public class MapPanel extends JComponent implements MapView {
     private int hoverRegionId = -1;
     private Point dragStartView;
     private Point dragStartMouse;
+    private boolean popupHandledDuringPressRelease;
     private int heldDX = 0;
     private int heldDY = 0;
     private final RepeatMover repeatMover = new RepeatMover();
@@ -637,6 +638,15 @@ public class MapPanel extends JComponent implements MapView {
         addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
+                if (SwingUtilities.isRightMouseButton(e)) {
+                    if (popupHandledDuringPressRelease) {
+                        popupHandledDuringPressRelease = false;
+                        return;
+                    }
+                    dispatchToolPopupEvent(e);
+                    return;
+                }
+                popupHandledDuringPressRelease = false;
                 if (!SwingUtilities.isLeftMouseButton(e)) {
                     return;
                 }
@@ -647,6 +657,18 @@ public class MapPanel extends JComponent implements MapView {
             @Override
             public void mousePressed(MouseEvent e) {
                 requestFocusInWindow();
+                if (SwingUtilities.isRightMouseButton(e)) {
+                    popupHandledDuringPressRelease = false;
+                }
+                if (handleToolPopupTrigger(e)) {
+                    popupHandledDuringPressRelease = true;
+                    return;
+                }
+                if (SwingUtilities.isRightMouseButton(e)) {
+                    dragStartView = null;
+                    dragStartMouse = null;
+                    return;
+                }
                 updateRegionSelectionActive(e.isShiftDown());
                 if (regionSelectionActive) {
                     setCursor(Cursor.getPredefinedCursor(Cursor.CROSSHAIR_CURSOR));
@@ -669,6 +691,14 @@ public class MapPanel extends JComponent implements MapView {
 
             @Override
             public void mouseReleased(MouseEvent e) {
+                if (e.isPopupTrigger() && popupHandledDuringPressRelease) {
+                    resetAfterPopupEvent(e);
+                    return;
+                }
+                if (handleToolPopupTrigger(e)) {
+                    popupHandledDuringPressRelease = true;
+                    return;
+                }
                 updateRegionSelectionActive(e.isShiftDown());
                 setCursor(regionSelectionActive
                         ? Cursor.getPredefinedCursor(Cursor.CROSSHAIR_CURSOR)
@@ -727,6 +757,31 @@ public class MapPanel extends JComponent implements MapView {
         });
 
         addMouseWheelListener(this::handleMouseWheel);
+    }
+
+    private boolean handleToolPopupTrigger(MouseEvent event) {
+        if (!event.isPopupTrigger()) {
+            return false;
+        }
+        return dispatchToolPopupEvent(event);
+    }
+
+    private boolean dispatchToolPopupEvent(MouseEvent event) {
+        resetAfterPopupEvent(event);
+        boolean handled = activeTool.mouseClicked(toMapMouseEvent(event));
+        if (handled) {
+            event.consume();
+        }
+        return handled;
+    }
+
+    private void resetAfterPopupEvent(MouseEvent event) {
+        updateRegionSelectionActive(event.isShiftDown());
+        dragStartView = null;
+        dragStartMouse = null;
+        setCursor(regionSelectionActive
+                ? Cursor.getPredefinedCursor(Cursor.CROSSHAIR_CURSOR)
+                : Cursor.getDefaultCursor());
     }
 
     private void syncViewportListener() {

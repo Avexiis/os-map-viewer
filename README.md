@@ -117,7 +117,7 @@ When enabled, the plugin adds:
 - A searchable teleport item list for enabling or disabling item teleports.
 - Route import/export, color, collision-map, and transport-type controls.
 - A Shortest Path button in the left rail.
-- A map overlay for the calculated path and route summary.
+- A map overlay for the calculated path and a left route-step table.
 
 ### Create A Route
 
@@ -130,7 +130,11 @@ With the Shortest Path plugin enabled:
 
 Solid lines are walked path segments. Dashed lines are transport or teleport jumps.
 
-The route summary is drawn as a top-left map overlay. If a start, step, or end tile is not accessible, the plugin clears that point and leaves the other route points in place instead of drawing to the nearest pathable tile.
+The left `Route Steps` table lists the current start, steps, and end. Click a row to center the map on that route point. Hovering a table row or route marker shows the route point coordinates in a tooltip.
+
+Right-click a route marker to remove it. Removing the end point promotes the previous step to the new end; if the previous point is only the start, the route is cleared.
+
+If a start, step, or end tile is not accessible, the plugin clears that point and leaves the other route points in place instead of drawing to the nearest pathable tile.
 
 The right panel includes a `Teleport Items` list with `Filter` and `Sort` controls. Enabled items are highlighted green. Click `+` to enable a disabled item, or `-` to disable an enabled item. `Default` keeps the built-in order; the other sort modes group enabled or disabled items first. Item choices are saved in the plugin config as disabled items, so new supported items remain enabled by default. Use `Avoid item teleports` to exclude all item teleports without changing the saved item list.
 

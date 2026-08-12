@@ -31,11 +31,8 @@ import com.xeon.view.MapTool;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.geom.AffineTransform;
+import java.awt.event.MouseEvent;
 import java.awt.geom.Line2D;
-import java.awt.geom.NoninvertibleTransformException;
-import java.awt.geom.Point2D;
-import java.awt.geom.RoundRectangle2D;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;
@@ -75,6 +72,7 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
     private static final Color DEFAULT_STEP_MARKER_COLOR = new Color(0xFF65A8FF, true);
     private static final Color DEFAULT_TARGET_MARKER_COLOR = new Color(0xFFFFC857, true);
     private static final Color DEFAULT_COLLISION_COLOR = new Color(0x99FFDD40, true);
+    private static final int ROUTE_POINT_HIT_RADIUS_TILES = 2;
     private static final Gson ROUTE_GSON = new GsonBuilder()
             .disableHtmlEscaping()
             .setPrettyPrinting()
@@ -88,6 +86,7 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 
     private PluginContext context;
     private ShortestPathPanel panel;
+    private ShortestPathRoutePanel routePanel;
     private ShortestPathMenu menu;
     private PathfinderConfig pathfinderConfig;
     private PathOptions options = PathOptions.defaults();
@@ -105,7 +104,7 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
     private volatile Pathfinder currentPathfinder;
     private volatile List<PathfinderResult> routeResults = List.of();
     private volatile RouteFailure routeFailure;
-    private volatile List<String> routeOverlayLines = List.of();
+    private volatile List<ShortestPathRoutePanel.Entry> routePointEntries = List.of();
     private Future<?> currentJob;
     private Future<?> profileJob;
     private long profileLookupSerial;
@@ -126,6 +125,7 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
     public void install(PluginContext context) {
         this.context = context;
         panel = new ShortestPathPanel();
+        routePanel = new ShortestPathRoutePanel();
         menu = new ShortestPathMenu();
         options = loadOptions(context.config());
         enabledTeleportItems = loadEnabledTeleportItems(context.config());
@@ -150,6 +150,11 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
         panel.setOnExportRoute(this::exportRoute);
         panel.setOnClear(this::clearPath);
         panel.setOnProfileLookup(this::lookUpProfile);
+        routePanel.setOnFocusTile(tile -> {
+            if (tile != null && this.context != null) {
+                this.context.mapPanel().focusTile(tile, null);
+            }
+        });
         menu.setOnCenterStart(this::setStartToCenter);
         menu.setOnCenterTarget(this::setTargetToCenter);
         menu.setOnRecalculate(this::recalculate);
@@ -184,6 +189,11 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
     }
 
     @Override
+    public JComponent leftComponent() {
+        return routePanel;
+    }
+
+    @Override
     public JComponent rightComponent() {
         return panel;
     }
@@ -191,6 +201,12 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
     @Override
     public boolean mouseClicked(MapMouseEvent event) {
         if (event == null || event.tile() == null) {
+            return false;
+        }
+        if (isPopupTrigger(event)) {
+            return showRoutePointMenu(event);
+        }
+        if (!SwingUtilities.isLeftMouseButton(event.source())) {
             return false;
         }
         Tile tile = event.tile();
@@ -215,7 +231,6 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
             paintEndpoint(context, g, visibleMap, stepTiles.get(i), stepMarkerColor, Integer.toString(i + 1));
         }
         paintEndpoint(context, g, visibleMap, targetTile, targetMarkerColor, "E");
-        paintRouteOverlay(context, g, visibleMap);
     }
 
     @Override
@@ -223,18 +238,60 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
         if (tile == null) {
             return null;
         }
-        if (sameTile(tile, startTile)) {
-            return "Shortest path start";
+        return routePointTooltip(tile);
+    }
+
+    private boolean isPopupTrigger(MapMouseEvent event) {
+        return event.source().isPopupTrigger() || SwingUtilities.isRightMouseButton(event.source());
+    }
+
+    private boolean showRoutePointMenu(MapMouseEvent event) {
+        ShortestPathRoutePanel.Entry entry = routePointAt(event.tile());
+        if (entry == null) {
+            return false;
         }
-        if (sameTile(tile, targetTile)) {
-            return "Shortest path end";
+        JPopupMenu popup = new JPopupMenu();
+        JMenuItem remove = new JMenuItem("Remove " + routePointLabel(entry.pointIndex()));
+        remove.addActionListener(e -> removeRoutePointFromMenu(entry.pointIndex()));
+        popup.add(remove);
+        MouseEvent source = event.source();
+        popup.show(source.getComponent(), source.getX(), source.getY());
+        return true;
+    }
+
+    private String routePointTooltip(Tile tile) {
+        ShortestPathRoutePanel.Entry entry = routePointAt(tile);
+        return entry == null ? null : entry.tooltip();
+    }
+
+    private ShortestPathRoutePanel.Entry routePointAt(Tile tile) {
+        if (tile == null) {
+            return null;
         }
-        for (int i = 0; i < stepTiles.size(); i++) {
-            if (sameTile(tile, stepTiles.get(i))) {
-                return "Shortest path step " + (i + 1);
+        ShortestPathRoutePanel.Entry nearest = null;
+        int nearestChebyshev = Integer.MAX_VALUE;
+        int nearestManhattan = Integer.MAX_VALUE;
+        for (ShortestPathRoutePanel.Entry entry : routePointEntries) {
+            Tile entryTile = entry.tile();
+            if (sameTile(tile, entryTile)) {
+                return entry;
+            }
+            if (entryTile == null || tile.z != entryTile.z) {
+                continue;
+            }
+            int dx = Math.abs(tile.x - entryTile.x);
+            int dy = Math.abs(tile.y - entryTile.y);
+            int chebyshev = Math.max(dx, dy);
+            int manhattan = dx + dy;
+            if (chebyshev <= ROUTE_POINT_HIT_RADIUS_TILES
+                    && (chebyshev < nearestChebyshev
+                    || chebyshev == nearestChebyshev && manhattan < nearestManhattan)) {
+                nearest = entry;
+                nearestChebyshev = chebyshev;
+                nearestManhattan = manhattan;
             }
         }
-        return null;
+        return nearest;
     }
 
     @Override
@@ -321,7 +378,6 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
         targetTile = null;
         routeResults = List.of();
         routeFailure = null;
-        routeOverlayLines = List.of();
         currentPathfinder = null;
         panel.setStatus("idle");
         refreshPanel();
@@ -478,7 +534,6 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
     private void clearRouteCalculationState(boolean resetWarningSignature) {
         routeResults = List.of();
         routeFailure = null;
-        routeOverlayLines = List.of();
         if (resetWarningSignature) {
             lastWarningSignature = "";
         }
@@ -543,6 +598,42 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
         return false;
     }
 
+    private void removeRoutePointFromMenu(int pointIndex) {
+        cancelCurrentJob();
+        if (pointIndex == 0) {
+            clearPath();
+            return;
+        }
+        if (targetTile != null && pointIndex == stepTiles.size() + 1) {
+            removeEndRoutePoint();
+            return;
+        }
+        if (pointIndex >= 1 && pointIndex <= stepTiles.size()) {
+            stepTiles.remove(pointIndex - 1);
+            finishManualRoutePointRemoval();
+        }
+    }
+
+    private void removeEndRoutePoint() {
+        if (stepTiles.isEmpty()) {
+            clearPath();
+            return;
+        }
+        targetTile = stepTiles.remove(stepTiles.size() - 1);
+        finishManualRoutePointRemoval();
+    }
+
+    private void finishManualRoutePointRemoval() {
+        clearRouteCalculationState(true);
+        refreshPanel();
+        repaint();
+        if (routePoints().size() >= 2) {
+            recalculate();
+        } else {
+            panel.setStatus("idle");
+        }
+    }
+
     private void warnClearedInaccessible(String label, Tile tile) {
         String message = label + " is not accessible and was cleared: " + tileText(tile);
         panel.setStatus(message);
@@ -587,7 +678,6 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
         long jobId = calculationSerial;
         routeResults = List.of();
         routeFailure = null;
-        routeOverlayLines = List.of();
         panel.setStatus("calculating");
         context.setStatus("Calculating shortest path");
         currentJob = executor.submit(() -> {
@@ -677,16 +767,17 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
         panel.setTiles(startTile, List.copyOf(stepTiles), targetTile);
         List<PathfinderResult> currentResults = routeResults;
         RouteFailure failure = routeFailure;
+        List<Tile> points = routePoints();
+        routePointEntries = routePointEntries(points, currentResults, failure);
+        if (routePanel != null) {
+            routePanel.setEntries(routePointEntries);
+        }
         if (currentResults.isEmpty() && failure == null) {
-            routeOverlayLines = List.of();
-            if (routePoints().size() < 2) {
+            if (points.size() < 2) {
                 panel.setStatus("idle");
             }
             return;
         }
-        List<PathStep> steps = combinedPathSteps(currentResults);
-        List<RouteSegment> segments = routeSegments(steps);
-        routeOverlayLines = routeLines(routePoints(), segments, failure);
         long millis = Math.max(0L, totalElapsedNanos(currentResults, failure) / 1_000_000L);
         String status = (failure == null ? "reached" : "blocked")
                 + " in " + millis + " ms, "
@@ -711,6 +802,55 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
             }
         }
         return segments;
+    }
+
+    private List<ShortestPathRoutePanel.Entry> routePointEntries(List<Tile> points, List<PathfinderResult> results,
+                                                                 RouteFailure failure) {
+        if (points == null || points.isEmpty()) {
+            return List.of();
+        }
+        List<ShortestPathRoutePanel.Entry> entries = new ArrayList<>(points.size());
+        for (int i = 0; i < points.size(); i++) {
+            Tile tile = points.get(i);
+            String pointLabel = routePointLabel(i, points.size(), targetTile != null);
+            String detail = routePointDetail(i, results, failure, false);
+            String tooltipDetail = routePointDetail(i, results, failure, true);
+            entries.add(new ShortestPathRoutePanel.Entry(
+                    pointLabel,
+                    detail,
+                    routePointTooltip(pointLabel, tooltipDetail, tile),
+                    copy(tile),
+                    i
+            ));
+        }
+        return List.copyOf(entries);
+    }
+
+    private String routePointDetail(int pointIndex, List<PathfinderResult> results, RouteFailure failure,
+                                    boolean includeCoordinates) {
+        if (failure != null && failure.pointIndex() == pointIndex) {
+            return "Blocked";
+        }
+        if (pointIndex == 0 || results == null || pointIndex - 1 >= results.size()) {
+            return pointIndex == 0 ? "Route start" : "Pending";
+        }
+        List<RouteSegment> legSegments = summarize(routeSegments(results.get(pointIndex - 1).getPathSteps()));
+        if (legSegments.isEmpty()) {
+            return "Reached";
+        }
+        StringJoiner joiner = new StringJoiner("; ");
+        for (RouteSegment segment : legSegments) {
+            joiner.add(includeCoordinates ? segment.tooltipLabel() : segment.label());
+        }
+        return joiner.toString();
+    }
+
+    private static String routePointTooltip(String pointLabel, String detail, Tile tile) {
+        String text = pointLabel + " " + tileText(tile);
+        if (detail == null || detail.isBlank()) {
+            return text;
+        }
+        return text + " - " + detail;
     }
 
     private void paintPath(MapRenderContext context, Graphics2D g, Rectangle visibleMap) {
@@ -799,79 +939,6 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
         g.setStroke(oldStroke);
     }
 
-    private void paintRouteOverlay(MapRenderContext context, Graphics2D g, Rectangle visibleMap) {
-        List<String> lines = routeOverlayLines;
-        if (lines.isEmpty()) {
-            return;
-        }
-
-        Rectangle view = context.visibleViewRect();
-        if (view.isEmpty()) {
-            return;
-        }
-
-        double zoom = Math.max(context.effectiveZoom(), 0.0001);
-        int screenPad = 10;
-        int screenGap = 4;
-        int maxWidthScreen = Math.max(40, Math.min(380, view.width - screenPad * 2));
-        double pad = screenPad / zoom;
-        double gap = screenGap / zoom;
-        double maxWidth = maxWidthScreen / zoom;
-
-        Point2D anchor;
-        try {
-            AffineTransform inverse = g.getTransform().createInverse();
-            Point2D viewAnchor = inverse.transform(new Point2D.Double(view.x + screenPad, view.y + screenPad), null);
-            Point2D localAnchor = inverse.transform(new Point2D.Double(screenPad, screenPad), null);
-            if (nearVisible(viewAnchor, visibleMap)) {
-                anchor = viewAnchor;
-            } else if (nearVisible(localAnchor, visibleMap)) {
-                anchor = localAnchor;
-            } else {
-                anchor = new Point2D.Double(visibleMap.x + pad, visibleMap.y + pad);
-            }
-        } catch (NoninvertibleTransformException ex) {
-            return;
-        }
-        double x = anchor.getX();
-        double y = anchor.getY();
-
-        Graphics2D overlay = (Graphics2D) g.create();
-        try {
-            overlay.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-            overlay.setFont(g.getFont().deriveFont(Font.PLAIN, Math.max(1f, (float) (12.0 / zoom))));
-            FontMetrics metrics = overlay.getFontMetrics();
-            int lineHeight = metrics.getHeight();
-            int visibleLines = Math.min(lines.size(), 12);
-            List<String> displayLines = new ArrayList<>(visibleLines);
-            for (int i = 0; i < visibleLines; i++) {
-                String line = i == visibleLines - 1 && lines.size() > visibleLines
-                        ? "... " + (lines.size() - visibleLines + 1) + " more"
-                        : lines.get(i);
-                displayLines.add(fitText(metrics, line, (int) Math.round(maxWidth)));
-            }
-
-            int textWidth = 0;
-            for (String line : displayLines) {
-                textWidth = Math.max(textWidth, metrics.stringWidth(line));
-            }
-            double boxWidth = textWidth + pad * 2.0;
-            double boxHeight = lineHeight * displayLines.size() + gap * Math.max(0, displayLines.size() - 1) + pad * 2.0;
-            double arc = Math.max(2.0, pad);
-
-            overlay.setColor(new Color(24, 28, 33, 220));
-            overlay.fill(new RoundRectangle2D.Double(x, y, boxWidth, boxHeight, arc, arc));
-            overlay.setColor(new Color(230, 236, 241, 235));
-            double textY = y + pad + metrics.getAscent();
-            for (String line : displayLines) {
-                overlay.drawString(line, (float) (x + pad), (float) textY);
-                textY += lineHeight + gap;
-            }
-        } finally {
-            overlay.dispose();
-        }
-    }
-
     private void paintEndpoint(MapRenderContext context, Graphics2D g, Rectangle visibleMap, Tile tile, Color color, String label) {
         if (tile == null || tile.z != context.plane()) {
             return;
@@ -936,7 +1003,6 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
             targetTile = copy(route.target());
             routeResults = List.of();
             routeFailure = null;
-            routeOverlayLines = List.of();
             lastWarningSignature = "";
             refreshPanel();
             recalculate();
@@ -1215,10 +1281,14 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
     }
 
     private String routePointLabel(int pointIndex) {
+        return routePointLabel(pointIndex, routePoints().size(), targetTile != null);
+    }
+
+    private static String routePointLabel(int pointIndex, int pointCount, boolean hasTarget) {
         if (pointIndex == 0) {
             return "Start";
         }
-        if (targetTile != null && pointIndex == stepTiles.size() + 1) {
+        if (hasTarget && pointIndex == pointCount - 1) {
             return "End";
         }
         return "Step " + pointIndex;
@@ -1288,25 +1358,6 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
         return summarized;
     }
 
-    private static List<String> routeLines(List<Tile> routePoints, List<RouteSegment> segments, RouteFailure failure) {
-        if (routePoints == null || routePoints.isEmpty()) {
-            return List.of();
-        }
-        List<String> lines = new ArrayList<>();
-        lines.add("Start " + tileText(routePoints.get(0)));
-        for (RouteSegment segment : summarize(segments)) {
-            lines.add(segment.label());
-        }
-        for (int i = 1; i < routePoints.size(); i++) {
-            String label = i == routePoints.size() - 1 ? "End" : "Step " + i;
-            lines.add(label + " " + tileText(routePoints.get(i)));
-        }
-        if (failure != null) {
-            lines.add("Blocked: " + tileText(failure.point()));
-        }
-        return lines;
-    }
-
     private static Set<TeleportItem> copyTeleportItems(Set<TeleportItem> items) {
         if (items == null) {
             return EnumSet.allOf(TeleportItem.class);
@@ -1315,28 +1366,6 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
             return EnumSet.noneOf(TeleportItem.class);
         }
         return EnumSet.copyOf(items);
-    }
-
-    private static String fitText(FontMetrics metrics, String text, int maxWidth) {
-        if (metrics.stringWidth(text) <= maxWidth) {
-            return text;
-        }
-        String suffix = "...";
-        int suffixWidth = metrics.stringWidth(suffix);
-        int limit = Math.max(0, maxWidth - suffixWidth);
-        int end = text.length();
-        while (end > 0 && metrics.stringWidth(text.substring(0, end)) > limit) {
-            end--;
-        }
-        return text.substring(0, end) + suffix;
-    }
-
-    private static boolean nearVisible(Point2D point, Rectangle visibleMap) {
-        double margin = 32.0;
-        return point.getX() >= visibleMap.x - margin
-                && point.getY() >= visibleMap.y - margin
-                && point.getX() <= visibleMap.x + visibleMap.width + margin
-                && point.getY() <= visibleMap.y + visibleMap.height + margin;
     }
 
     private static void drawOutlinedString(Graphics2D g, String text, int x, int y, Color fill, double zoom) {
@@ -1402,7 +1431,14 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
             if (transport == null) {
                 return "Walk " + distance + " tile" + (distance == 1 ? "" : "s");
             }
-            return "Transport: " + transport.label() + " -> " + packedText(destination);
+            return "Transport: " + transport.label();
+        }
+
+        String tooltipLabel() {
+            if (transport == null) {
+                return label();
+            }
+            return label() + " -> " + packedText(destination);
         }
     }
 

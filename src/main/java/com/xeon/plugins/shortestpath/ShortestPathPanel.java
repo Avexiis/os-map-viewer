@@ -655,7 +655,7 @@ final class ShortestPathPanel extends JPanel {
     }
 
     private static Icon loadRuneLiteIcon() {
-        URL resource = ShortestPathPanel.class.getResource("/com/xeon/plugins/shortestpath/runelite_icon.png");
+        URL resource = ShortestPathPanel.class.getResource("/com/xeon/application/data/runelite_icon.png");
         if (resource == null) {
             return null;
         }
