@@ -1,4 +1,5 @@
 # OS Map Viewer
+<img width="1917" height="1048" alt="image" src="https://github.com/user-attachments/assets/5558f01c-c0bd-4244-af9a-2ea187ec7c10" />
 
 OS Map Viewer is a desktop map viewer for the Old School RuneScape world map.
 
@@ -106,7 +107,8 @@ To load an external plugin:
 
 Enabled plugins add buttons to the left rail. Click a plugin button to open its plugin menu.
 
-## Built-In Shortest Path Plugin
+## Built-In Shortest Path Plugin (Experimental Only)
+<img width="1916" height="1045" alt="image" src="https://github.com/user-attachments/assets/f4f21665-1eeb-48e7-b2c0-e74f99751551" />
 
 The built-in `Shortest Path` plugin can draw a route from one tile to another over the viewer map.
 
@@ -164,6 +166,7 @@ OS Map Viewer is not connected to the RuneLite client, so it cannot know live ac
 With a WikiSync profile loaded, the route filters transports by satisfied skill and quest requirements. Without a WikiSync profile, the plugin uses broad offline toggles for transport links, teleports, wilderness avoidance, and POH links.
 
 ## Built-In Ground Markers Plugin
+<img width="1918" height="1045" alt="image" src="https://github.com/user-attachments/assets/47b5ba6d-db59-449e-be0b-1d578bd1a868" />
 
 The built-in `Ground Markers` plugin can view, create, import, and export ground marker JSON for RuneLite-style marker packs.
 
