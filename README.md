@@ -29,13 +29,12 @@ This branch is the experimental branch of OS Map Viewer. It contains features th
 - Jump to a region ID, region coordinates, or world tile.
 - Show or hide grid lines.
 - Show region IDs or region coordinates over the map.
-- Show or hide atlas text, map icons, and RuneLite-derived supplemental location markers.
-- Show RuneLite-style tooltips for supported map icon locations.
+- Show or hide atlas text and map icons.
+- Show tooltips for supported map icon locations.
 - Lock the map so it cannot be moved or zoomed by mistake.
 - Change the map background color.
 - Save your last viewed region and zoom level.
 - Enable, disable, and load plugins.
-- Draw shortest paths across the full logical map, including transport and teleport links, when the Shortest Path plugin is enabled.
 
 ## Basic Map Use
 
