@@ -98,7 +98,7 @@ To load an external plugin:
 Enabled plugins add buttons to the left rail. Click a plugin button to open its plugin menu.
 
 ## Built-In Shortest Path Plugin (Experimental Only)
-<img width="1916" height="1045" alt="image" src="https://github.com/user-attachments/assets/f4f21665-1eeb-48e7-b2c0-e74f99751551" />
+<img width="1917" height="1045" alt="image" src="https://github.com/user-attachments/assets/0e9a7b01-2123-4e77-941d-b408baeb330e" />
 
 The built-in `Shortest Path` plugin can draw a route from one tile to another over the viewer map.
 
