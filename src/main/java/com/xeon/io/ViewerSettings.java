@@ -10,6 +10,7 @@ public final class ViewerSettings {
     private static final String CORE = ConfigManager.CORE_NAMESPACE;
     private static final String KEY_PLUGINS_ENABLED = "plugins.enabledOnStartup";
     private static final String KEY_BACKGROUND = "map.background";
+    private static final String KEY_MAP_FEATURE_TOOLTIPS = "map.featureTooltips";
     private static final String KEY_JUMP_TO_LAST_REGION = "map.jumpToLastRegionOnStart";
     private static final String KEY_LAST_REGION_ID = "map.last.regionId";
     private static final String KEY_LAST_PLANE = "map.last.plane";
@@ -48,6 +49,14 @@ public final class ViewerSettings {
             return;
         }
         configManager.setString(CORE, KEY_BACKGROUND, colorToHex(color));
+    }
+
+    public boolean mapFeatureTooltips() {
+        return configManager.getBoolean(CORE, KEY_MAP_FEATURE_TOOLTIPS, true);
+    }
+
+    public void setMapFeatureTooltips(boolean value) {
+        configManager.setBoolean(CORE, KEY_MAP_FEATURE_TOOLTIPS, value);
     }
 
     public boolean jumpToLastRegionOnStart() {

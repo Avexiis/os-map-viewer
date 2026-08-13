@@ -22,6 +22,7 @@ public final class MapControlsPanel extends JPanel {
     private final JCheckBox chkRegionIds = new JCheckBox("Region IDs", false);
     private final JCheckBox chkMapText = new JCheckBox("Area/Region Text", true);
     private final JCheckBox chkMapIcons = new JCheckBox("Map Icons", true);
+    private final JCheckBox chkMapFeatureTooltips = new JCheckBox("Icon Tooltips", true);
     private final JToggleButton btnLock = new JToggleButton("Lock Map");
     private final JComboBox<Integer> cbPlane = new JComboBox<>();
     private final NumberField tfRegionId = new NumberField(6);
@@ -55,6 +56,7 @@ public final class MapControlsPanel extends JPanel {
     public final Event<Boolean> onToggleRegionIds = new Event<>();
     public final Event<Boolean> onToggleMapText = new Event<>();
     public final Event<Boolean> onToggleMapIcons = new Event<>();
+    public final Event<Boolean> onToggleMapFeatureTooltips = new Event<>();
     public final Event<Boolean> onToggleLocked = new Event<>();
     public final Event<Integer> onPlaneChanged = new Event<>();
     public final Event<Tile> onJumpToTile = new Event<>();
@@ -101,6 +103,12 @@ public final class MapControlsPanel extends JPanel {
         atlasToggleRow.add(chkMapIcons);
         modeRows.add(Box.createVerticalStrut(6));
         modeRows.add(atlasToggleRow);
+
+        JPanel tooltipToggleRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        tooltipToggleRow.setOpaque(false);
+        tooltipToggleRow.add(chkMapFeatureTooltips);
+        modeRows.add(Box.createVerticalStrut(4));
+        modeRows.add(tooltipToggleRow);
 
         JPanel planeRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         planeRow.setOpaque(false);
@@ -153,6 +161,7 @@ public final class MapControlsPanel extends JPanel {
         });
         chkMapText.addActionListener(e -> onToggleMapText.emit(chkMapText.isSelected()));
         chkMapIcons.addActionListener(e -> onToggleMapIcons.emit(chkMapIcons.isSelected()));
+        chkMapFeatureTooltips.addActionListener(e -> onToggleMapFeatureTooltips.emit(chkMapFeatureTooltips.isSelected()));
         btnLock.addActionListener(e -> {
             boolean locked = btnLock.isSelected();
             setLocked(locked);
@@ -321,6 +330,12 @@ public final class MapControlsPanel extends JPanel {
             btnLock.setSelected(locked);
         }
         btnLock.setText("Lock Map");
+    }
+
+    public void setMapFeatureTooltips(boolean enabled) {
+        if (chkMapFeatureTooltips.isSelected() != enabled) {
+            chkMapFeatureTooltips.setSelected(enabled);
+        }
     }
 
     private void setCollapsed(boolean value) {

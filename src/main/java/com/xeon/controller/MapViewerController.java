@@ -89,6 +89,7 @@ public class MapViewerController {
     private boolean showRegionIds = false;
     private boolean showMapIcons = true;
     private boolean showMapLabels = true;
+    private boolean showMapFeatureTooltips = settings.mapFeatureTooltips();
     private boolean mapLocked = false;
     private boolean mapPrintInProgress = false;
 
@@ -160,9 +161,11 @@ public class MapViewerController {
         mapControls = new MapControlsPanel();
         mapControls.setPlaneCount(mapPanel.getPlaneCount());
         mapControls.setSelectedPlane(mapPanel.getPlane());
+        mapControls.setMapFeatureTooltips(showMapFeatureTooltips);
         areaSearchPanel = new MapAreaSearchPanel();
         areaSearchPanel.setSearchProvider(mapPanel::searchMapAreas);
         mapPanel.setMapBackgroundColor(settings.mapBackgroundColor());
+        mapPanel.setShowMapFeatureTooltips(showMapFeatureTooltips);
 
         toolRail = buildToolRail();
         westPanel = new JPanel(new BorderLayout());
@@ -299,6 +302,11 @@ public class MapViewerController {
             showMapIcons = value;
             mapPanel.setShowMapIcons(value);
         });
+        mapControls.onToggleMapFeatureTooltips.addListener(value -> {
+            showMapFeatureTooltips = value;
+            settings.setMapFeatureTooltips(value);
+            mapPanel.setShowMapFeatureTooltips(value);
+        });
         mapControls.onToggleLocked.addListener(value -> {
             mapLocked = value;
             mapPanel.setMapLocked(value);
@@ -337,6 +345,7 @@ public class MapViewerController {
         panel.setShowRegionIds(showRegionIds);
         panel.setShowMapLabels(showMapLabels);
         panel.setShowMapIcons(showMapIcons);
+        panel.setShowMapFeatureTooltips(showMapFeatureTooltips);
         panel.setMapBackgroundColor(settings.mapBackgroundColor());
         panel.setMemoryBudgetBytes(memoryBudgetBytes(selectedMemoryBudgetMb()));
     }

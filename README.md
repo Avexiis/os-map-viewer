@@ -29,7 +29,8 @@ This branch is the experimental branch of OS Map Viewer. It contains features th
 - Jump to a region ID, region coordinates, or world tile.
 - Show or hide grid lines.
 - Show region IDs or region coordinates over the map.
-- Show or hide atlas text and map icons.
+- Show or hide atlas text, map icons, and RuneLite-derived supplemental location markers.
+- Show RuneLite-style tooltips for supported map icon locations.
 - Lock the map so it cannot be moved or zoomed by mistake.
 - Change the map background color.
 - Save your last viewed region and zoom level.
@@ -41,6 +42,7 @@ This branch is the experimental branch of OS Map Viewer. It contains features th
 - Drag the map to pan.
 - Use the mouse wheel to zoom.
 - Hover a tile to see the tile selector.
+- Hover supported map icons to see their location tooltip when `Map Icons` and `Icon Tooltips` are enabled.
 - Use the floating `Map Controls` panel in the top right for grid, plane, jump, and lock options.
 - Click the arrow button on the `Map Controls` panel to hide or show it.
 
@@ -292,11 +294,17 @@ Plugins are loaded from JAR files with Java `ServiceLoader`. See `docs/PLUGIN_AP
 
 ## Third-Party Attributions
 
-This branch includes and uses the RuneLite cache module, and the experimental map printer contains code derived from RuneLite cache tooling.
+- This branch includes and uses the RuneLite cache module.
 
-The Shortest Path plugin includes data and adapted pathfinding/collision-loading code from the RuneLite plugin hub `shortest-path` plugin. The viewer adaptation omits RuneLite 3D overlay rendering and live client-state integrations.
+- The experimental map printer contains code derived from RuneLite cache tooling.
 
-RuneLite is licensed under the BSD 2-Clause License:
+- The Shortest Path plugin for this application includes data and adapted pathfinding/collision map code from the RuneLite hub plugin `shortest-path` of the same name.
+
+- Shortest Path for RuneLite can be found at https://runelite.net/plugin-hub/show/shortest-path
+
+- Map icon tooltips include location data adapted from RuneLite's core world map plugin.
+
+RuneLite and its Shortest Path hub plugin are licensed under the BSD 2-Clause License:
 
 ```text
 BSD 2-Clause License
@@ -325,5 +333,6 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
-## 
+Shortest Path does not list a year or author in their license, it was created by GitHub user **Skretzo**: https://github.com/Skretzo/shortest-path
+##
 #### This project was developed on Linux!

@@ -79,6 +79,12 @@ public class MapPanel extends JComponent implements MapView {
     private static final int CANVAS_PAD = 100;
     private static final int MAX_INFLIGHT = 512;
     private static final int VISIBLE_AREA_NOTIFY_DELAY_MS = 80;
+    private static final int MAP_ICON_TOOLTIP_RADIUS_TILES = 3;
+    private static final int MAP_ICON_COVER_RADIUS_TILES = 2;
+    private static final double CUSTOM_MAP_ICON_DIAMETER_LOGICAL = 15.0 / HI_PX_PER_TILE;
+    private static final Color CUSTOM_MAP_ICON_FILL = new Color(0xDF28A6B8, true);
+    private static final Color CUSTOM_MAP_ICON_HIGHLIGHT = new Color(0xCCFFFFFF, true);
+    private static final Color CUSTOM_MAP_ICON_OUTLINE = new Color(0xC8000000, true);
     private static final int DECODE_THREADS =
             Math.max(2, Math.min(4, Runtime.getRuntime().availableProcessors() / 2));
 
@@ -134,6 +140,7 @@ public class MapPanel extends JComponent implements MapView {
     private final List<IntConsumer> planeChangeListeners = new CopyOnWriteArrayList<>();
     private final List<Runnable> visibleAreaChangeListeners = new CopyOnWriteArrayList<>();
     private final MapRenderContext renderContext = new MapRenderContext(this);
+    private final WorldMapTooltipIndex worldMapTooltipIndex = WorldMapTooltipIndex.loadDefault();
 
     private final int totalW;
     private final int totalH;
@@ -161,6 +168,7 @@ public class MapPanel extends JComponent implements MapView {
     private boolean showRegionIds = false;
     private boolean showMapIcons = true;
     private boolean showMapLabels = true;
+    private boolean showMapFeatureTooltips = true;
     private boolean mapLocked = false;
     private boolean regionSelectionActive = false;
     private Color mapBackgroundColor = Color.BLACK;
@@ -299,6 +307,10 @@ public class MapPanel extends JComponent implements MapView {
     public void setShowMapIcons(boolean value) {
         showMapIcons = value;
         repaintVisible();
+    }
+
+    public void setShowMapFeatureTooltips(boolean value) {
+        showMapFeatureTooltips = value;
     }
 
     public void setShowMapLabels(boolean value) {
@@ -588,6 +600,33 @@ public class MapPanel extends JComponent implements MapView {
                 return text;
             }
         }
+        if (!showMapIcons || !showMapFeatureTooltips) {
+            return null;
+        }
+
+        String text = worldMapTooltipIndex.tooltipAt(tile);
+        return text == null ? atlasIconTooltipAt(tile) : text;
+    }
+
+    private String atlasIconTooltipAt(Tile tile) {
+        List<MapIconArea> icons = store.nearestMapIcons(tile, MAP_ICON_TOOLTIP_RADIUS_TILES);
+        if (icons.isEmpty()) {
+            return null;
+        }
+        List<String> lines = new ArrayList<>(icons.size());
+        for (MapIconArea icon : icons) {
+            String label = firstNonBlank(icon.displayName, worldMapTooltipIndex.iconLabel(icon.spriteId), "Map icon");
+            lines.add(label);
+        }
+        return WorldMapTooltipIndex.formatLines(lines);
+    }
+
+    private static String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
         return null;
     }
 
@@ -609,6 +648,14 @@ public class MapPanel extends JComponent implements MapView {
             drawTilesLODProgressive(g, lodNow, visibleMap, AtlasLayerKind.BASE);
             if (showMapIcons) {
                 drawTilesLODProgressive(g, lodNow, visibleMap, AtlasLayerKind.ICONS);
+                Graphics2D markerGraphics = (Graphics2D) g.create();
+                try {
+                    markerGraphics.translate(contentOriginX(), contentOriginY());
+                    markerGraphics.scale(effZoom(), effZoom());
+                    drawRuneLiteCustomMapIcons(markerGraphics, visibleMap);
+                } finally {
+                    markerGraphics.dispose();
+                }
             }
             if (showMapLabels) {
                 drawTilesLODProgressive(g, lodNow, visibleMap, AtlasLayerKind.LABELS);
@@ -1129,6 +1176,47 @@ public class MapPanel extends JComponent implements MapView {
         int dx2 = ((sx1 + tilePx) * lod.subsample) / HI_PX_PER_TILE;
         int dy2 = ((sy1 + tilePx) * lod.subsample) / HI_PX_PER_TILE;
         repaintLogicalRect(new Rectangle(dx1, dy1, dx2 - dx1, dy2 - dy1), 0);
+    }
+
+    private void drawRuneLiteCustomMapIcons(Graphics2D g, Rectangle visibleMap) {
+        Stroke oldStroke = g.getStroke();
+        Object oldAntialias = g.getRenderingHint(RenderingHints.KEY_ANTIALIASING);
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g.setStroke(new BasicStroke((float) Math.max(0.25, 1.0 / Math.max(effZoom(), 0.0001))));
+
+        int logicalPad = (int) Math.ceil(CUSTOM_MAP_ICON_DIAMETER_LOGICAL);
+        for (WorldMapTooltipIndex.Marker marker : worldMapTooltipIndex.markers()) {
+            if (marker.z() != currentPlane) {
+                continue;
+            }
+            Tile tile = new Tile(marker.x(), marker.y(), marker.z());
+            Rectangle tileRect = tileToRect(tile);
+            Rectangle markerRect = new Rectangle(tileRect);
+            markerRect.grow(logicalPad, logicalPad);
+            if (!markerRect.intersects(visibleMap) || store.hasMapIconNear(tile, MAP_ICON_COVER_RADIUS_TILES)) {
+                continue;
+            }
+
+            double diameter = CUSTOM_MAP_ICON_DIAMETER_LOGICAL;
+            double x = tileRect.getCenterX() - diameter / 2.0;
+            double y = tileRect.getCenterY() - diameter / 2.0;
+            int ix = (int) Math.round(x);
+            int iy = (int) Math.round(y);
+            int size = Math.max(1, (int) Math.round(diameter));
+
+            g.setColor(CUSTOM_MAP_ICON_OUTLINE);
+            g.drawOval(ix, iy, size, size);
+            g.setColor(CUSTOM_MAP_ICON_FILL);
+            g.fillOval(ix + 1, iy + 1, Math.max(1, size - 1), Math.max(1, size - 1));
+            int highlight = Math.max(1, size / 3);
+            g.setColor(CUSTOM_MAP_ICON_HIGHLIGHT);
+            g.fillOval(ix + 1, iy + 1, highlight, highlight);
+        }
+
+        g.setStroke(oldStroke);
+        if (oldAntialias != null) {
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, oldAntialias);
+        }
     }
 
     private void drawGridLines(Graphics2D g, Rectangle visibleMap) {
@@ -1660,6 +1748,24 @@ public class MapPanel extends JComponent implements MapView {
         }
     }
 
+    private static final class MapIconArea {
+        final String displayName;
+        final int areaId;
+        final int spriteId;
+        final int worldX;
+        final int worldY;
+        final int plane;
+
+        MapIconArea(String displayName, int areaId, int spriteId, int worldX, int worldY, int plane) {
+            this.displayName = displayName;
+            this.areaId = areaId;
+            this.spriteId = spriteId;
+            this.worldX = worldX;
+            this.worldY = worldY;
+            this.plane = plane;
+        }
+    }
+
     private static final class AtlasStoreReader implements AutoCloseable {
         static final class Header {
             final int srcWidth;
@@ -1712,6 +1818,7 @@ public class MapPanel extends JComponent implements MapView {
         private final Map<String, Integer> layerIndices = new ConcurrentHashMap<>();
         private byte[] metadataBytes = new byte[0];
         private volatile AreaIndex areaIndex;
+        private volatile IconIndex iconIndex;
         private int maxPlanes = 1;
 
         Header header() {
@@ -1740,6 +1847,17 @@ public class MapPanel extends JComponent implements MapView {
             return areaIndex().nearest(tile, maxDistanceTiles);
         }
 
+        List<MapIconArea> nearestMapIcons(Tile tile, int maxDistanceTiles) {
+            if (tile == null || metadataBytes.length == 0 || maxDistanceTiles < 0) {
+                return List.of();
+            }
+            return iconIndex().nearest(tile, maxDistanceTiles);
+        }
+
+        boolean hasMapIconNear(Tile tile, int maxDistanceTiles) {
+            return !nearestMapIcons(tile, maxDistanceTiles).isEmpty();
+        }
+
         private AreaIndex areaIndex() {
             AreaIndex current = areaIndex;
             if (current != null) {
@@ -1750,6 +1868,21 @@ public class MapPanel extends JComponent implements MapView {
                 if (current == null) {
                     current = new AreaIndex(parseMapAreas(metadataBytes));
                     areaIndex = current;
+                }
+                return current;
+            }
+        }
+
+        private IconIndex iconIndex() {
+            IconIndex current = iconIndex;
+            if (current != null) {
+                return current;
+            }
+            synchronized (this) {
+                current = iconIndex;
+                if (current == null) {
+                    current = new IconIndex(parseMapIconAreas(metadataBytes));
+                    iconIndex = current;
                 }
                 return current;
             }
@@ -1815,6 +1948,7 @@ public class MapPanel extends JComponent implements MapView {
             layerIndices.clear();
             metadataBytes = new byte[0];
             areaIndex = null;
+            iconIndex = null;
             if (header.metadataOffset <= 0 || header.metadataLength <= 0) {
                 throw new IllegalStateException("Atlas: missing v3 metadata");
             }
@@ -1942,12 +2076,45 @@ public class MapPanel extends JComponent implements MapView {
             return List.copyOf(out.values());
         }
 
+        private static List<MapIconArea> parseMapIconAreas(byte[] bytes) {
+            List<MapIconArea> out = new ArrayList<>();
+            try (JsonReader reader = new JsonReader(new InputStreamReader(
+                    new ByteArrayInputStream(bytes),
+                    StandardCharsets.UTF_8
+            ))) {
+                reader.beginObject();
+                while (reader.hasNext()) {
+                    String name = reader.nextName();
+                    if ("mapIcons".equals(name) && reader.peek() == JsonToken.BEGIN_ARRAY) {
+                        collectMapIconAreas(reader, out);
+                    } else {
+                        reader.skipValue();
+                    }
+                }
+                reader.endObject();
+            } catch (Exception ex) {
+                return List.of();
+            }
+            return List.copyOf(out);
+        }
+
         private static void collectMapAreas(JsonReader reader, Map<String, MapArea> out) throws Exception {
             reader.beginArray();
             while (reader.hasNext()) {
                 MapArea area = readMapArea(reader);
                 if (area != null) {
                     out.putIfAbsent(areaKey(area), area);
+                }
+            }
+            reader.endArray();
+        }
+
+        private static void collectMapIconAreas(JsonReader reader, List<MapIconArea> out) throws Exception {
+            reader.beginArray();
+            while (reader.hasNext()) {
+                MapIconArea area = readMapIconArea(reader);
+                if (area != null) {
+                    out.add(area);
                 }
             }
             reader.endArray();
@@ -2006,6 +2173,39 @@ public class MapPanel extends JComponent implements MapView {
                 return null;
             }
             return new MapArea(displayName, rawName, objectName, source, areaId, worldX, worldY, plane);
+        }
+
+        private static MapIconArea readMapIconArea(JsonReader reader) throws Exception {
+            String name = null;
+            String rawName = null;
+            String objectName = null;
+            int areaId = -1;
+            int spriteId = -1;
+            Integer worldX = null;
+            Integer worldY = null;
+            Integer plane = null;
+
+            reader.beginObject();
+            while (reader.hasNext()) {
+                String key = reader.nextName();
+                switch (key) {
+                    case "name" -> name = cleanString(readStringValue(reader));
+                    case "rawName" -> rawName = cleanString(readStringValue(reader));
+                    case "objectName" -> objectName = cleanString(readStringValue(reader));
+                    case "areaId" -> areaId = readIntValue(reader, -1);
+                    case "spriteId" -> spriteId = readIntValue(reader, -1);
+                    case "worldX" -> worldX = readNullableIntValue(reader);
+                    case "worldY" -> worldY = readNullableIntValue(reader);
+                    case "plane" -> plane = readNullableIntValue(reader);
+                    default -> reader.skipValue();
+                }
+            }
+            reader.endObject();
+
+            if (worldX == null || worldY == null || plane == null) {
+                return null;
+            }
+            return new MapIconArea(firstNonBlank(name, rawName, objectName), areaId, spriteId, worldX, worldY, plane);
         }
 
         private static String areaKey(MapArea area) {
@@ -2098,6 +2298,9 @@ public class MapPanel extends JComponent implements MapView {
                     .replace("<br/>", " ")
                     .replace("<br />", " ")
                     .trim();
+            if ("null".equalsIgnoreCase(cleaned)) {
+                return null;
+            }
             return cleaned.isEmpty() ? null : cleaned;
         }
 
@@ -2173,6 +2376,56 @@ public class MapPanel extends JComponent implements MapView {
                     bestDistanceSq = distanceSq;
                 }
                 return best;
+            }
+
+            private static String tileKey(int x, int y, int z) {
+                return x + ":" + y + ":" + z;
+            }
+        }
+
+        private static final class IconIndex {
+            private final Map<String, List<MapIconArea>> byTile;
+
+            IconIndex(List<MapIconArea> areas) {
+                Map<String, List<MapIconArea>> grouped = new HashMap<>();
+                if (areas != null) {
+                    for (MapIconArea area : areas) {
+                        grouped.computeIfAbsent(tileKey(area.worldX, area.worldY, area.plane),
+                                ignored -> new ArrayList<>()).add(area);
+                    }
+                }
+                Map<String, List<MapIconArea>> immutable = new HashMap<>();
+                for (Map.Entry<String, List<MapIconArea>> entry : grouped.entrySet()) {
+                    immutable.put(entry.getKey(), List.copyOf(entry.getValue()));
+                }
+                byTile = Map.copyOf(immutable);
+            }
+
+            List<MapIconArea> nearest(Tile tile, int maxDistanceTiles) {
+                if (tile == null || maxDistanceTiles < 0 || byTile.isEmpty()) {
+                    return List.of();
+                }
+
+                long bestDistanceSq = Long.MAX_VALUE;
+                List<MapIconArea> best = new ArrayList<>();
+                for (int dy = -maxDistanceTiles; dy <= maxDistanceTiles; dy++) {
+                    for (int dx = -maxDistanceTiles; dx <= maxDistanceTiles; dx++) {
+                        long distanceSq = (long) dx * dx + (long) dy * dy;
+                        if (distanceSq > (long) maxDistanceTiles * maxDistanceTiles || distanceSq > bestDistanceSq) {
+                            continue;
+                        }
+                        List<MapIconArea> areas = byTile.get(tileKey(tile.x + dx, tile.y + dy, tile.z));
+                        if (areas == null || areas.isEmpty()) {
+                            continue;
+                        }
+                        if (distanceSq < bestDistanceSq) {
+                            bestDistanceSq = distanceSq;
+                            best.clear();
+                        }
+                        best.addAll(areas);
+                    }
+                }
+                return best.isEmpty() ? List.of() : List.copyOf(best);
             }
 
             private static String tileKey(int x, int y, int z) {
