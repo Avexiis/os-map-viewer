@@ -333,6 +333,6 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
-Shortest Path does not list a year or author in their license, it was created by GitHub user **Skretzo**: https://github.com/Skretzo/shortest-path
+Shortest Path does not list a year or author in their license, it is maintained by GitHub user **Skretzo**: https://github.com/Skretzo/shortest-path
 ##
 #### This project was developed on Linux!
