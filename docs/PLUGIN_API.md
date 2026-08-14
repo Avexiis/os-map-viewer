@@ -88,7 +88,8 @@ The class must have a public no-argument constructor. If you do not define a con
 
 ## Loading Plugins
 
-Plugins are loaded from the top-left menu with `Load plugin JAR...`. Installed plugins can be enabled or disabled from `Plugins...`.
+Plugins are loaded from the top-left menu with `Load plugin JAR...`. Installed plugins can be selected or disabled from `Plugins...`.
+Only one plugin can be active at a time; enabling a plugin disables the previously active plugin.
 
 OS Map Viewer uses Java `ServiceLoader`, so the plugin JAR must include this file:
 
@@ -227,6 +228,7 @@ Example file:
 {
   "core": {
     "plugins.enabledOnStartup": false,
+    "plugins.activePluginId": "my-map-plugin",
     "map.background": "#000000",
     "map.jumpToLastRegionOnStart": false,
     "map.last.regionId": 5536,
@@ -235,7 +237,7 @@ Example file:
     "map.memoryBudgetMb": 512
   },
   "my-map-plugin": {
-    "enabled": true,
+    "showOverlay": true,
     "maxResults": 50,
     "lastRegionId": 5536
   }

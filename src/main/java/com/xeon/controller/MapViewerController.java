@@ -97,7 +97,18 @@ public class MapViewerController {
 
     public MapViewerController() {
         for (MapViewerPlugin plugin : PluginRegistry.load(new GroundMarkerPlugin(), new ShortestPathPlugin())) {
-            plugins.add(new PluginHandle(plugin, settings.pluginsEnabledOnStartup()));
+            plugins.add(new PluginHandle(plugin, false));
+        }
+        if (settings.pluginsEnabledOnStartup()) {
+            String activePluginId = settings.activePluginId();
+            PluginHandle startupPlugin = findPlugin(activePluginId);
+            if (startupPlugin == null && activePluginId == null && !plugins.isEmpty()) {
+                startupPlugin = plugins.get(0);
+            }
+            if (startupPlugin != null) {
+                startupPlugin.enabled = true;
+                settings.setActivePluginId(startupPlugin.plugin.id());
+            }
         }
     }
 
@@ -593,33 +604,34 @@ public class MapViewerController {
             empty.setAlignmentX(Component.LEFT_ALIGNMENT);
             list.add(empty);
         } else {
-            for (PluginHandle handle : plugins) {
-                JCheckBox enabled = new JCheckBox(handle.plugin.displayName(), handle.enabled);
-                JLabel id = new JLabel(handle.plugin.id());
-                id.setForeground(new Color(155, 155, 155));
-                enabled.addActionListener(e -> setPluginEnabled(handle, enabled.isSelected(), true));
+            ButtonGroup pluginGroup = new ButtonGroup();
+            JRadioButton none = new JRadioButton("None", activePluginHandle() == null);
+            none.addActionListener(e -> disableActivePlugin());
+            pluginGroup.add(none);
+            list.add(pluginRow(none, "No active plugin"));
+            list.add(Box.createVerticalStrut(6));
 
-                JPanel row = new JPanel(new BorderLayout(8, 0));
-                row.setBorder(BorderFactory.createCompoundBorder(
-                        BorderFactory.createLineBorder(new Color(65, 65, 65)),
-                        BorderFactory.createEmptyBorder(8, 8, 8, 8)
-                ));
-                row.add(enabled, BorderLayout.WEST);
-                row.add(id, BorderLayout.EAST);
-                row.setAlignmentX(Component.LEFT_ALIGNMENT);
-                row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 44));
-                list.add(row);
+            for (PluginHandle handle : plugins) {
+                JRadioButton enabled = new JRadioButton(handle.plugin.displayName(), handle.enabled);
+                enabled.addActionListener(e -> {
+                    if (enabled.isSelected()) {
+                        setPluginEnabled(handle, true, true);
+                    }
+                });
+                pluginGroup.add(enabled);
+
+                list.add(pluginRow(enabled, handle.plugin.id()));
                 list.add(Box.createVerticalStrut(6));
             }
         }
 
-        JCheckBox startWithPlugins = new JCheckBox("Start with plugins enabled", settings.pluginsEnabledOnStartup());
-        startWithPlugins.setToolTipText("Saved to user.home/os-map-viewer/config.json and applied on next launch.");
+        JCheckBox startWithPlugins = new JCheckBox("Start selected plugin on launch", settings.pluginsEnabledOnStartup());
+        startWithPlugins.setToolTipText("Starts the last selected plugin on next launch. Saved to user.home/os-map-viewer/config.json.");
         startWithPlugins.addActionListener(e -> {
             settings.setPluginsEnabledOnStartup(startWithPlugins.isSelected());
             setStatus(startWithPlugins.isSelected()
-                    ? "Plugins will start enabled next launch"
-                    : "Plugins will start disabled next launch");
+                    ? "Selected plugin will start next launch"
+                    : "No plugin will start next launch");
         });
         JPanel startup = new JPanel(new BorderLayout());
         startup.setBorder(BorderFactory.createEmptyBorder(10, 10, 0, 10));
@@ -651,27 +663,92 @@ public class MapViewerController {
         dialog.setVisible(true);
     }
 
+    private JPanel pluginRow(AbstractButton selector, String detail) {
+        JLabel id = new JLabel(detail);
+        id.setForeground(new Color(155, 155, 155));
+
+        JPanel row = new JPanel(new BorderLayout(8, 0));
+        row.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(65, 65, 65)),
+                BorderFactory.createEmptyBorder(8, 8, 8, 8)
+        ));
+        row.add(selector, BorderLayout.WEST);
+        row.add(id, BorderLayout.EAST);
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 44));
+        return row;
+    }
+
     private void setPluginEnabled(PluginHandle handle, boolean enabled, boolean runAfterShow) {
-        if (handle == null || handle.enabled == enabled) {
+        if (handle == null) {
             return;
         }
         if (enabled) {
+            boolean disabledOthers = false;
+            for (PluginHandle other : plugins) {
+                if (other != handle && (other.enabled || other.installed)) {
+                    disablePlugin(other);
+                    disabledOthers = true;
+                }
+            }
+            boolean alreadyActive = handle.enabled && handle.installed;
             handle.enabled = true;
+            settings.setActivePluginId(handle.plugin.id());
             if (installPlugin(handle) && runAfterShow && frame != null && frame.isShowing()) {
                 handle.plugin.afterShow();
             }
             refreshPluginHosts();
-            setStatus("Enabled plugin: " + handle.plugin.displayName());
+            if (!alreadyActive || disabledOthers) {
+                setStatus("Enabled plugin: " + handle.plugin.displayName());
+            }
             return;
         }
 
+        if (!handle.enabled && !handle.installed) {
+            return;
+        }
+        disablePlugin(handle);
+        if (handle.plugin.id().equals(settings.activePluginId())) {
+            settings.setActivePluginId(null);
+        }
+        refreshPluginHosts();
+        setStatus("Disabled plugin: " + handle.plugin.displayName());
+    }
+
+    private void disableActivePlugin() {
+        PluginHandle active = activePluginHandle();
+        if (active != null) {
+            setPluginEnabled(active, false, true);
+        }
+    }
+
+    private void disablePlugin(PluginHandle handle) {
         if (handle.installed) {
             handle.plugin.uninstall();
             handle.installed = false;
         }
         handle.enabled = false;
-        refreshPluginHosts();
-        setStatus("Disabled plugin: " + handle.plugin.displayName());
+    }
+
+    private PluginHandle activePluginHandle() {
+        for (PluginHandle handle : plugins) {
+            if (handle.enabled) {
+                return handle;
+            }
+        }
+        return null;
+    }
+
+    private PluginHandle findPlugin(String pluginId) {
+        if (pluginId == null || pluginId.isBlank()) {
+            return null;
+        }
+        for (PluginHandle handle : plugins) {
+            if (handle.plugin.id().equals(pluginId.trim())) {
+                return handle;
+            }
+        }
+        return null;
     }
 
     private void promptLoadPluginJar() {
@@ -683,20 +760,27 @@ public class MapViewerController {
         File file = chooser.getSelectedFile();
         try {
             List<MapViewerPlugin> loaded = PluginRegistry.loadFromJar(file);
-            int installed = 0;
+            int added = 0;
+            PluginHandle firstAdded = null;
             for (MapViewerPlugin plugin : loaded) {
                 if (plugin == null || plugins.stream().anyMatch(handle -> handle.plugin.id().equals(plugin.id()))) {
                     continue;
                 }
                 PluginHandle handle = new PluginHandle(plugin, false);
                 plugins.add(handle);
-                setPluginEnabled(handle, true, true);
-                if (handle.enabled) {
-                    installed++;
+                if (firstAdded == null) {
+                    firstAdded = handle;
                 }
+                added++;
             }
-            refreshPluginHosts();
-            setStatus("Loaded " + installed + " plugin(s) from " + file.getName());
+            if (firstAdded != null) {
+                setPluginEnabled(firstAdded, true, true);
+                setStatus("Loaded " + added + " plugin(s) from " + file.getName()
+                        + "; enabled " + firstAdded.plugin.displayName());
+            } else {
+                refreshPluginHosts();
+                setStatus("No new plugins loaded from " + file.getName());
+            }
         } catch (Exception ex) {
             Ui.error("Failed to load plugin JAR: " + ex.getMessage());
         }
@@ -1017,7 +1101,7 @@ public class MapViewerController {
                 BorderFactory.createEmptyBorder(8, 10, 8, 8)
         ));
 
-        JLabel message = new JLabel("Plugins are disabled. Use the top-left menu -> Plugins... to enable them.");
+        JLabel message = new JLabel("No plugin is active. Use the top-left menu -> Plugins... to select one.");
         message.setForeground(new Color(0xE6EAF0));
         toast.add(message, BorderLayout.CENTER);
 

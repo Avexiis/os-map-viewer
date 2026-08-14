@@ -1,5 +1,5 @@
 # OS Map Viewer core map icon labels.
-# Generated from RuneLite SpriteID.Mapfunction aliases; no RuneLite runtime dependency is required.
+# Generated from RuneLite SpriteID.Mapfunction aliases.
 # Columns: spriteId	label
 1448	General Store
 1449	Sword Shop
@@ -71,7 +71,7 @@
 1515	Estate Agent
 1516	Sawmill
 1517	Stonemason
-1518	Agility Short Cut
+1518	Agility Shortcut
 1519	Woodcutting Stump
 1520	Holiday Event
 1521	Sandpit

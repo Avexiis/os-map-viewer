@@ -1,8 +1,8 @@
 package com.xeon.plugins.shortestpath.core;
 
+import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 
 import java.io.IOException;
 import java.net.URI;
@@ -22,6 +22,7 @@ public final class WikiSyncClient {
     private static final String PROFILE_TYPE = "STANDARD";
     private static final String PLAYER_ENDPOINT = "https://sync.runescape.wiki/runelite/player/";
     private static final String USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+    private static final Gson GSON = new Gson();
 
     private final HttpClient httpClient;
 
@@ -60,7 +61,7 @@ public final class WikiSyncClient {
             throws IOException {
         JsonElement parsed;
         try {
-            parsed = JsonParser.parseString(json);
+            parsed = GSON.fromJson(json, JsonElement.class);
         } catch (RuntimeException ex) {
             throw new IOException("WikiSync returned invalid JSON.", ex);
         }
@@ -221,7 +222,7 @@ public final class WikiSyncClient {
 
     private static String errorMessage(int statusCode, String body) {
         try {
-            JsonElement parsed = JsonParser.parseString(body);
+            JsonElement parsed = GSON.fromJson(body, JsonElement.class);
             if (parsed != null && parsed.isJsonObject()) {
                 JsonObject object = parsed.getAsJsonObject();
                 String error = stringValue(object.get("error"), null);

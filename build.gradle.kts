@@ -4,6 +4,11 @@ plugins {
 }
 
 version = "1.0.0"
+// Update this when replacing lib/runelite-cache/cache-<version>-SNAPSHOT-shaded.jar.
+val runeliteCacheVersion = "1.12.36"
+val runeliteCacheShadedJar = layout.projectDirectory
+    .file("lib/runelite-cache/cache-$runeliteCacheVersion-SNAPSHOT-shaded.jar")
+    .asFile
 
 repositories {
     mavenCentral()
@@ -40,10 +45,8 @@ sourceSets {
 dependencies {
     implementation(project(":api"))
     implementation("com.formdev:flatlaf:2.6")
-    implementation(fileTree("lib/runelite-cache/runtime") {
-        include("*.jar")
-        exclude("gson-*.jar")
-    })
+    compileOnly(files(runeliteCacheShadedJar))
+    runtimeOnly(files(runeliteCacheShadedJar))
 }
 
 tasks.register<JavaExec>("dumpMapAreaLabels") {

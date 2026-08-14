@@ -5,7 +5,6 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 
 import com.xeon.config.PluginConfig;
 import com.xeon.model.Tile;
@@ -1130,7 +1129,7 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 
     private static RouteData readRoute(Path path) throws IOException {
         try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
-            JsonElement parsed = JsonParser.parseReader(reader);
+            JsonElement parsed = ROUTE_GSON.fromJson(reader, JsonElement.class);
             if (parsed == null || !parsed.isJsonObject()) {
                 throw new IOException("Route JSON must contain an object.");
             }

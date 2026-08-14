@@ -73,21 +73,23 @@ The memory budget controls how much RAM the map cache can use. The app offers pr
 
 ## Plugins
 
-Plugins are disabled by default.
+Plugins are disabled by default. Only one plugin can be active at a time.
 
-When no plugins are enabled, OS Map Viewer only shows the map viewer and core map controls. A small message tells you how to enable plugins.
+When no plugin is active, OS Map Viewer only shows the map viewer and core map controls. A small message tells you how to select a plugin.
 
-To enable plugins:
+To enable a plugin:
 
 1. Click the hamburger button in the left rail.
 2. Click `Plugins...`.
-3. Check the plugin you want to enable.
+3. Select the plugin you want to enable.
 4. Close the plugin window.
 
-To start with plugins enabled next time:
+Selecting a plugin disables any currently active plugin.
+
+To start with the selected plugin enabled next time:
 
 1. Open `Plugins...`.
-2. Check `Start with plugins enabled`.
+2. Check `Start selected plugin on launch`.
 
 To load an external plugin:
 
@@ -95,7 +97,7 @@ To load an external plugin:
 2. Click `Load plugin JAR...`.
 3. Choose a compatible plugin JAR file.
 
-Enabled plugins add buttons to the left rail. Click a plugin button to open its plugin menu.
+The active plugin adds a button to the left rail. Click the plugin button to open its plugin menu.
 
 ## Built-In Shortest Path Plugin (Experimental Only)
 <img width="1917" height="1045" alt="image" src="https://github.com/user-attachments/assets/0e9a7b01-2123-4e77-941d-b408baeb330e" />
@@ -290,6 +292,16 @@ The API lets plugins do things like:
 - Save plugin settings in the shared config manager.
 
 Plugins are loaded from JAR files with Java `ServiceLoader`. See `docs/PLUGIN_API.md` for the exact setup.
+
+## RuneLite Cache Dependency
+
+The experimental map printer uses a shaded RuneLite cache JAR that is bundled with this repository:
+
+```text
+lib/runelite-cache/cache-<version>-SNAPSHOT-shaded.jar
+```
+
+This file is not published by RuneLite and was created in a local fork of the RuneLite repository. It is simply the RuneLite Cache .JAR file, but with its dependencies included. You can accomplish this by adding a shadowJar task to the cache module in a local fork of RuneLite.
 
 ## Third-Party Attributions
 

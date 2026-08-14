@@ -9,6 +9,7 @@ public final class ViewerSettings {
 
     private static final String CORE = ConfigManager.CORE_NAMESPACE;
     private static final String KEY_PLUGINS_ENABLED = "plugins.enabledOnStartup";
+    private static final String KEY_ACTIVE_PLUGIN_ID = "plugins.activePluginId";
     private static final String KEY_BACKGROUND = "map.background";
     private static final String KEY_MAP_FEATURE_TOOLTIPS = "map.featureTooltips";
     private static final String KEY_JUMP_TO_LAST_REGION = "map.jumpToLastRegionOnStart";
@@ -38,6 +39,19 @@ public final class ViewerSettings {
 
     public void setPluginsEnabledOnStartup(boolean value) {
         configManager.setBoolean(CORE, KEY_PLUGINS_ENABLED, value);
+    }
+
+    public String activePluginId() {
+        String value = configManager.getString(CORE, KEY_ACTIVE_PLUGIN_ID, null);
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    public void setActivePluginId(String pluginId) {
+        if (pluginId == null || pluginId.isBlank()) {
+            configManager.remove(CORE, KEY_ACTIVE_PLUGIN_ID);
+            return;
+        }
+        configManager.setString(CORE, KEY_ACTIVE_PLUGIN_ID, pluginId.trim());
     }
 
     public Color mapBackgroundColor() {

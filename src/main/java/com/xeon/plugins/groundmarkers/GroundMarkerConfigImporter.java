@@ -1,7 +1,5 @@
 package com.xeon.plugins.groundmarkers;
 
-import com.google.gson.JsonParser;
-
 import java.io.IOException;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
@@ -83,7 +81,7 @@ public final class GroundMarkerConfigImporter {
             if (value == null || value.isBlank()) {
                 continue;
             }
-            List<GroundMarker> fromValue = GroundMarkerJson.parse(JsonParser.parseString(value));
+            List<GroundMarker> fromValue = GroundMarkerJson.parse(value);
             for (GroundMarker marker : fromValue) {
                 if (marker.regionId == 0) {
                     marker.regionId = keyRegion;

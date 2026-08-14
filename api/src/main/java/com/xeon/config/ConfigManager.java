@@ -5,7 +5,6 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
-import com.google.gson.JsonParser;
 
 import java.io.IOException;
 import java.io.Reader;
@@ -62,7 +61,7 @@ public final class ConfigManager {
             return;
         }
         try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
-            JsonElement parsed = JsonParser.parseReader(reader);
+            JsonElement parsed = gson.fromJson(reader, JsonElement.class);
             if (parsed != null && parsed.isJsonObject()) {
                 root = parsed.getAsJsonObject();
             }

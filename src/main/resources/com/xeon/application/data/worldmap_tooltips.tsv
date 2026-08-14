@@ -1,5 +1,5 @@
 # OS Map Viewer core map tooltip locations.
-# Generated from RuneLite core worldmap plugin location enums; no RuneLite runtime dependency is required.
+# Generated from RuneLite core worldmap plugin location enums.
 # Columns: source	tooltip	x	y	z
 AgilityCourseLocation	Agility Pyramid	3347	2827	0
 AgilityCourseLocation	Al Kharid Rooftop Course	3272	3195	0

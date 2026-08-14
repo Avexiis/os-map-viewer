@@ -5,7 +5,6 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 
 import java.io.IOException;
 import java.io.Reader;
@@ -30,7 +29,7 @@ public final class GroundMarkerJson {
 
     public static List<GroundMarker> readFile(Path path) throws IOException {
         try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
-            return parse(JsonParser.parseReader(reader));
+            return parse(GSON.fromJson(reader, JsonElement.class));
         }
     }
 
@@ -45,7 +44,7 @@ public final class GroundMarkerJson {
     }
 
     public static List<GroundMarker> parse(String json) {
-        return parse(JsonParser.parseString(json));
+        return parse(GSON.fromJson(json, JsonElement.class));
     }
 
     public static List<GroundMarker> parse(JsonElement root) {
