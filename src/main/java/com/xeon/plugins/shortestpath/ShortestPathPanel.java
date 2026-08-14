@@ -27,9 +27,21 @@ import java.util.Set;
 import java.util.function.Consumer;
 
 final class ShortestPathPanel extends JPanel {
-    enum SelectionMode {
-        START,
-        TARGET
+    enum CollisionMapMode {
+        OFF("Collision Map Off"),
+        HOVERED_REGION("Hovered Region Collision Map"),
+        SELECTED_REGION("Selected Region Collision Map");
+
+        private final String label;
+
+        CollisionMapMode(String label) {
+            this.label = label;
+        }
+
+        @Override
+        public String toString() {
+            return label;
+        }
     }
 
     private enum TeleportItemSortMode {
@@ -58,10 +70,10 @@ final class ShortestPathPanel extends JPanel {
     private final JCheckBox avoidWilderness = new JCheckBox("Avoid wilderness", false);
     private final JCheckBox includePoh = new JCheckBox("POH links", true);
     private final JCheckBox avoidItemTeleports = new JCheckBox("Avoid item teleports", false);
-    private final JCheckBox showCollisionMap = new JCheckBox("Draw collision map", false);
+    private final JComboBox<CollisionMapMode> collisionMapMode = new JComboBox<>(CollisionMapMode.values());
     private final JTextField profileName = new JTextField(12);
     private final JButton lookUpProfile = new JButton("Look up");
-    private final JLabel profileStatus = new JLabel("Profile: none");
+    private final JLabel profileStatus = new JLabel("Profile: None");
     private final JButton walkLineColorButton = new JButton("Walk line");
     private final JButton transportLineColorButton = new JButton("Transport line");
     private final JButton startMarkerColorButton = new JButton("Start marker");
@@ -72,8 +84,6 @@ final class ShortestPathPanel extends JPanel {
     private final JComboBox<TeleportItemSortMode> teleportItemSort = new JComboBox<>(TeleportItemSortMode.values());
     private final TeleportItemTableModel teleportItemModel = new TeleportItemTableModel();
     private final JTable teleportItemTable = new JTable(teleportItemModel);
-    private final JRadioButton selectStart = new JRadioButton("Start");
-    private final JRadioButton selectTarget = new JRadioButton("Target", true);
     private final JButton centerStart = new JButton("Center Start");
     private final JButton swap = new JButton("Swap");
     private final JButton recalculate = new JButton("Recalculate");
@@ -88,6 +98,8 @@ final class ShortestPathPanel extends JPanel {
     private Color stepMarkerColor = new Color(0xFF65A8FF, true);
     private Color targetMarkerColor = new Color(0xFFFFC857, true);
     private Color collisionColor = new Color(0x99FFDD40, true);
+    private final Color profileStatusLoadedForeground = new Color(0x35D07F);
+    private final Color profileStatusMissingForeground = new Color(0xFF5C7A);
 
     private Runnable onOptionsChanged;
     private Runnable onCenterStart;
@@ -97,7 +109,6 @@ final class ShortestPathPanel extends JPanel {
     private Runnable onExportRoute;
     private Runnable onClear;
     private Consumer<String> onProfileLookup;
-    private Consumer<SelectionMode> onSelectionModeChanged;
 
     ShortestPathPanel() {
         setLayout(new BorderLayout(0, 8));
@@ -129,14 +140,7 @@ final class ShortestPathPanel extends JPanel {
         addFullRow(controls, c, profileRow);
         addFullRow(controls, c, profileStatus);
 
-        ButtonGroup modeGroup = new ButtonGroup();
-        modeGroup.add(selectStart);
-        modeGroup.add(selectTarget);
-        JPanel modeRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
-        modeRow.setOpaque(false);
-        modeRow.add(selectStart);
-        modeRow.add(selectTarget);
-        addFullRow(controls, c, modeRow);
+        addFullRow(controls, c, collisionMapViewRow());
 
         JPanel optionGrid = new JPanel(new GridLayout(0, 1, 0, 2));
         optionGrid.setOpaque(false);
@@ -145,7 +149,6 @@ final class ShortestPathPanel extends JPanel {
         optionGrid.add(avoidItemTeleports);
         optionGrid.add(avoidWilderness);
         optionGrid.add(includePoh);
-        optionGrid.add(showCollisionMap);
         addFullRow(controls, c, optionGrid);
 
         addFullRow(controls, c, title("Use"));
@@ -212,7 +215,7 @@ final class ShortestPathPanel extends JPanel {
         });
         avoidWilderness.addActionListener(e -> emitOptionsChanged());
         includePoh.addActionListener(e -> emitOptionsChanged());
-        showCollisionMap.addActionListener(e -> emitOptionsChanged());
+        collisionMapMode.addActionListener(e -> emitOptionsChanged());
         teleportItemSort.addActionListener(e -> refreshTeleportItemList());
         teleportItemFilter.getDocument().addDocumentListener(new DocumentListener() {
             @Override
@@ -238,8 +241,6 @@ final class ShortestPathPanel extends JPanel {
         collisionColorButton.addActionListener(e -> chooseColor("Collision Map Color", collisionColor, color -> collisionColor = color));
         profileName.addActionListener(e -> emitProfileLookup());
         lookUpProfile.addActionListener(e -> emitProfileLookup());
-        selectStart.addActionListener(e -> emitSelectionModeChanged());
-        selectTarget.addActionListener(e -> emitSelectionModeChanged());
         centerStart.addActionListener(e -> {
             if (onCenterStart != null) {
                 onCenterStart.run();
@@ -271,6 +272,7 @@ final class ShortestPathPanel extends JPanel {
             }
         });
         refreshColorButtons();
+        setProfileLoaded(false);
     }
 
     boolean includeTransports() {
@@ -293,8 +295,9 @@ final class ShortestPathPanel extends JPanel {
         return avoidItemTeleports.isSelected();
     }
 
-    boolean showCollisionMap() {
-        return showCollisionMap.isSelected();
+    CollisionMapMode collisionMapMode() {
+        Object selected = collisionMapMode.getSelectedItem();
+        return selected instanceof CollisionMapMode mode ? mode : CollisionMapMode.OFF;
     }
 
     Set<TransportType> enabledTransportTypes() {
@@ -344,13 +347,13 @@ final class ShortestPathPanel extends JPanel {
     }
 
     void setOptions(boolean transports, boolean teleports, boolean wilderness, boolean poh, boolean avoidItems,
-                    Set<TransportType> enabledTypes, boolean collision) {
+                    Set<TransportType> enabledTypes, CollisionMapMode collisionMode) {
         includeTransports.setSelected(transports);
         includeTeleports.setSelected(teleports);
         avoidWilderness.setSelected(wilderness);
         includePoh.setSelected(poh);
         avoidItemTeleports.setSelected(avoidItems);
-        showCollisionMap.setSelected(collision);
+        collisionMapMode.setSelectedItem(collisionMode == null ? CollisionMapMode.OFF : collisionMode);
         Set<TransportType> types = enabledTypes == null ? PathOptions.defaultEnabledTransportTypes() : enabledTypes;
         for (Map.Entry<TransportType, JCheckBox> entry : transportToggles.entrySet()) {
             entry.getValue().setSelected(types.contains(entry.getKey()));
@@ -374,18 +377,6 @@ final class ShortestPathPanel extends JPanel {
         refreshTeleportItemList();
     }
 
-    SelectionMode selectionMode() {
-        return selectStart.isSelected() ? SelectionMode.START : SelectionMode.TARGET;
-    }
-
-    void setSelectionMode(SelectionMode mode) {
-        if (mode == SelectionMode.START) {
-            selectStart.setSelected(true);
-        } else {
-            selectTarget.setSelected(true);
-        }
-    }
-
     void setTiles(Tile start, List<Tile> steps, Tile target) {
         startLabel.setText("Start: " + tileText(start));
         stepsLabel.setText("Steps: " + stepsText(steps));
@@ -406,8 +397,9 @@ final class ShortestPathPanel extends JPanel {
         profileName.setText(username == null ? "" : username);
     }
 
-    void setProfileStatus(String status) {
-        profileStatus.setText("Profile: " + (status == null || status.isBlank() ? "none" : status));
+    void setProfileLoaded(boolean loaded) {
+        profileStatus.setText(loaded ? "Profile Loaded" : "Profile: None");
+        profileStatus.setForeground(loaded ? profileStatusLoadedForeground : profileStatusMissingForeground);
     }
 
     void setProfileLookupRunning(boolean running) {
@@ -447,19 +439,9 @@ final class ShortestPathPanel extends JPanel {
         this.onProfileLookup = onProfileLookup;
     }
 
-    void setOnSelectionModeChanged(Consumer<SelectionMode> onSelectionModeChanged) {
-        this.onSelectionModeChanged = onSelectionModeChanged;
-    }
-
     private void emitOptionsChanged() {
         if (onOptionsChanged != null) {
             onOptionsChanged.run();
-        }
-    }
-
-    private void emitSelectionModeChanged() {
-        if (onSelectionModeChanged != null) {
-            onSelectionModeChanged.accept(selectionMode());
         }
     }
 
@@ -468,6 +450,26 @@ final class ShortestPathPanel extends JPanel {
         box.addActionListener(e -> emitOptionsChanged());
         transportToggles.put(type, box);
         panel.add(box);
+    }
+
+    private JPanel collisionMapViewRow() {
+        JPanel row = new JPanel();
+        row.setOpaque(false);
+        row.setLayout(new BoxLayout(row, BoxLayout.Y_AXIS));
+
+        JLabel label = new JLabel("Collision Map View");
+        label.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.add(label);
+        row.add(Box.createVerticalStrut(3));
+
+        Dimension preferred = collisionMapMode.getPreferredSize();
+        Dimension size = new Dimension(210, Math.max(26, preferred.height));
+        collisionMapMode.setPreferredSize(size);
+        collisionMapMode.setMinimumSize(size);
+        collisionMapMode.setMaximumSize(new Dimension(Integer.MAX_VALUE, size.height));
+        collisionMapMode.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.add(collisionMapMode);
+        return row;
     }
 
     private JPanel stackedButtons(int width, AbstractButton... buttons) {

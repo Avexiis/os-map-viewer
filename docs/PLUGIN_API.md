@@ -175,8 +175,13 @@ Common methods:
 - `focusRegion(regionId, plane, zoom)` moves the viewport to a region.
 - `getPlane()` and `setPlane(plane)` read or change the active plane.
 - `getZoom()` reads the current map zoom.
-- `getHoverTile()` and `getHoverRegionId()` read the current hover target.
+- `getHoverTile()`, `getHoverRegionId()`, and `getHoveredRegionId()` read the current hover target.
+- `addHoveredRegionChangeListener(listener)` and `removeHoveredRegionChangeListener(listener)` subscribe to hovered-region changes.
+- `getSelectedRegionId()`, `setSelectedRegionId(regionId)`, and `clearSelectedRegionId()` read or update the core selected region.
+- `addSelectedRegionChangeListener(listener)` and `removeSelectedRegionChangeListener(listener)` subscribe to selected-region changes.
 - `tileToRect(tile)` and `regionToRect(regionId)` convert map locations into drawing rectangles.
+- `regionTileBounds(regionId)` returns the 64x64 world-tile bounds for a map region.
+- `tileBounds(mapRect)` returns the world-tile bounds covered by a map-coordinate rectangle.
 - `visibleViewRect()` returns the current viewport rectangle in component coordinates, useful for fixed-position overlays.
 - `currentVisibleRegionIds()` returns the visible regions.
 - `repaintTile(tile)`, `repaintRegion(regionId)`, and `repaintVisible()` request redraws.
@@ -332,7 +337,15 @@ public final class OverlayPlugin implements MapViewerPlugin, MapLayer {
 }
 ```
 
-`MapRenderContext` exposes the active plane, zoom, hovered tile, hovered region, visible region ids, viewport rectangle, and conversion helpers.
+`MapRenderContext` exposes the active plane, zoom, hovered tile, hovered region, selected region, visible region ids, viewport rectangle, and conversion helpers.
+For dense tile-grid overlays, use `context.tileArea(tileBounds, plane, predicate)` or `context.tileArea(tiles)` to build one merged `Shape` from many tiles, then fill or draw that shape once:
+
+```java
+int regionId = context.hoveredRegionId();
+Rectangle bounds = context.regionTileBounds(regionId);
+Shape blocked = context.tileArea(bounds, context.plane(), (x, y, z) -> isBlocked(x, y, z));
+g.fill(blocked);
+```
 
 Core map overlays, such as region id text, can draw after plugin overlays.
 
@@ -395,7 +408,7 @@ Popup-trigger and right-click mouse events are delivered through `mouseClicked(M
 - `isAdditiveSelection()` for Ctrl or Command multi-selection.
 - `source()` for the original Swing mouse event.
 
-Return `true` from `supportsRegionSelection()` only if your plugin wants Shift to enter region-selection mode. Plugins that do not opt in will not trigger the dark region-selection overlay.
+Return `true` from `supportsRegionSelection()` only if your plugin wants Shift to enter region-selection mode. Plugins that do not opt in will not trigger the dark region-selection overlay. A region-selection tool can persist the clicked region through `event.mapPanel().setSelectedRegionId(event.regionId())`.
 
 ## Map Coordinates
 

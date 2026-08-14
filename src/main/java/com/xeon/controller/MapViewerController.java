@@ -17,6 +17,7 @@ import com.xeon.util.Images;
 import com.xeon.util.Ui;
 import com.xeon.view.MapAreaSearchPanel;
 import com.xeon.view.MapControlsPanel;
+import com.xeon.view.MapLegendDialog;
 import com.xeon.view.MapPanel;
 import com.xeon.view.MapView;
 
@@ -79,6 +80,7 @@ public class MapViewerController {
     private JPanel rightSidebar;
     private JLayeredPane viewerPane;
     private final JButton btnOptions = new JButton(new HamburgerIcon());
+    private final JButton btnMapLegend = new JButton("Map Legend");
     private final JPopupMenu optionsMenu = new JPopupMenu();
     private long optionsMenuHiddenAtMillis = 0L;
     private final ConfigManager configManager = ConfigManager.loadDefault();
@@ -180,8 +182,19 @@ public class MapViewerController {
         frame.add(westPanel, BorderLayout.WEST);
         frame.add(viewerPane, BorderLayout.CENTER);
         JPanel bottom = new JPanel(new BorderLayout());
+        styleToolbarButton(btnMapLegend);
+        btnMapLegend.addActionListener(e -> showMapLegendDialog());
+        JPanel searchColumn = new JPanel();
+        searchColumn.setOpaque(false);
+        searchColumn.setLayout(new BoxLayout(searchColumn, BoxLayout.Y_AXIS));
+        areaSearchPanel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        searchColumn.add(areaSearchPanel);
+        JPanel legendRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
+        legendRow.setOpaque(false);
+        legendRow.add(btnMapLegend);
+        searchColumn.add(legendRow);
         JPanel searchHost = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
-        searchHost.add(areaSearchPanel);
+        searchHost.add(searchColumn);
         bottom.add(searchHost, BorderLayout.CENTER);
         bottom.add(statusLabel, BorderLayout.SOUTH);
         frame.add(bottom, BorderLayout.SOUTH);
@@ -418,6 +431,17 @@ public class MapViewerController {
             mapPanel.focusTile(tile, FULL_JUMP_ZOOM);
             setStatus("Focused " + area.displayName() + " at " + tile.x + ", " + tile.y + ", " + tile.z);
         });
+    }
+
+    private void showMapLegendDialog() {
+        MapLegendDialog dialog = new MapLegendDialog(frame, tile -> {
+            if (tile == null) {
+                return;
+            }
+            mapPanel.focusTile(tile, FULL_JUMP_ZOOM);
+            setStatus("Focused legend location at " + tile.x + ", " + tile.y + ", " + tile.z);
+        });
+        dialog.setVisible(true);
     }
 
     private boolean installPlugin(PluginHandle handle) {

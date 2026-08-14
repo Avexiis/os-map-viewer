@@ -52,6 +52,33 @@ public interface MapView {
 
     int getHoverRegionId();
 
+    default int getHoveredRegionId() {
+        return getHoverRegionId();
+    }
+
+    default void addHoveredRegionChangeListener(RegionChangeListener listener) {
+    }
+
+    default void removeHoveredRegionChangeListener(RegionChangeListener listener) {
+    }
+
+    default int getSelectedRegionId() {
+        return -1;
+    }
+
+    default void setSelectedRegionId(int regionId) {
+    }
+
+    default void clearSelectedRegionId() {
+        setSelectedRegionId(-1);
+    }
+
+    default void addSelectedRegionChangeListener(RegionChangeListener listener) {
+    }
+
+    default void removeSelectedRegionChangeListener(RegionChangeListener listener) {
+    }
+
     boolean isRegionSelectionActive();
 
     int getTotalWidthTiles();
@@ -83,6 +110,14 @@ public interface MapView {
     Rectangle tileToRect(Tile tile);
 
     Rectangle regionToRect(int regionId);
+
+    default Rectangle regionTileBounds(int regionId) {
+        return new Rectangle();
+    }
+
+    default Rectangle tileBounds(Rectangle mapRect) {
+        return new Rectangle();
+    }
 
     List<Integer> visibleRegionIds(Rectangle visibleMap);
 

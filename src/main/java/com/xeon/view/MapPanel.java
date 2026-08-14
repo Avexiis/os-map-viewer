@@ -139,6 +139,8 @@ public class MapPanel extends JComponent implements MapView {
     private final List<MapLayer> layers = new CopyOnWriteArrayList<>();
     private final List<IntConsumer> planeChangeListeners = new CopyOnWriteArrayList<>();
     private final List<Runnable> visibleAreaChangeListeners = new CopyOnWriteArrayList<>();
+    private final List<RegionChangeListener> hoveredRegionChangeListeners = new CopyOnWriteArrayList<>();
+    private final List<RegionChangeListener> selectedRegionChangeListeners = new CopyOnWriteArrayList<>();
     private final MapRenderContext renderContext = new MapRenderContext(this);
     private final WorldMapTooltipIndex worldMapTooltipIndex = WorldMapTooltipIndex.loadDefault();
 
@@ -175,6 +177,7 @@ public class MapPanel extends JComponent implements MapView {
     private int currentPlane = 0;
     private Tile hoverTile;
     private int hoverRegionId = -1;
+    private int selectedRegionId = -1;
     private Point dragStartView;
     private Point dragStartMouse;
     private boolean popupHandledDuringPressRelease;
@@ -406,6 +409,58 @@ public class MapPanel extends JComponent implements MapView {
         return hoverRegionId;
     }
 
+    @Override
+    public int getHoveredRegionId() {
+        return hoverRegionId;
+    }
+
+    @Override
+    public void addHoveredRegionChangeListener(RegionChangeListener listener) {
+        if (listener != null) {
+            hoveredRegionChangeListeners.add(listener);
+        }
+    }
+
+    @Override
+    public void removeHoveredRegionChangeListener(RegionChangeListener listener) {
+        hoveredRegionChangeListeners.remove(listener);
+    }
+
+    @Override
+    public int getSelectedRegionId() {
+        return selectedRegionId;
+    }
+
+    @Override
+    public void setSelectedRegionId(int regionId) {
+        int next = normalizeRegionId(regionId);
+        if (selectedRegionId == next) {
+            return;
+        }
+        int previous = selectedRegionId;
+        selectedRegionId = next;
+        repaintRegion(previous);
+        repaintRegion(next);
+        notifyRegionChanged(selectedRegionChangeListeners, previous, next);
+    }
+
+    @Override
+    public void clearSelectedRegionId() {
+        setSelectedRegionId(-1);
+    }
+
+    @Override
+    public void addSelectedRegionChangeListener(RegionChangeListener listener) {
+        if (listener != null) {
+            selectedRegionChangeListeners.add(listener);
+        }
+    }
+
+    @Override
+    public void removeSelectedRegionChangeListener(RegionChangeListener listener) {
+        selectedRegionChangeListeners.remove(listener);
+    }
+
     public boolean isRegionSelectionActive() {
         return regionSelectionActive;
     }
@@ -508,6 +563,48 @@ public class MapPanel extends JComponent implements MapView {
                 Math.max(1, (int) Math.ceil(regionW())),
                 Math.max(1, (int) Math.ceil(regionH()))
         );
+    }
+
+    @Override
+    public Rectangle regionTileBounds(int regionId) {
+        if (!isRegionInMap(regionId)) {
+            return new Rectangle();
+        }
+        int rx = regionId >> 8;
+        int ry = regionId & 0xFF;
+        return new Rectangle(
+                rx * REGION_TILES,
+                ry * REGION_TILES,
+                REGION_TILES,
+                REGION_TILES
+        );
+    }
+
+    @Override
+    public Rectangle tileBounds(Rectangle mapRect) {
+        if (mapRect == null || mapRect.isEmpty()) {
+            return new Rectangle();
+        }
+
+        double x1 = Math.max(0.0, mapRect.getMinX());
+        double y1 = Math.max(0.0, mapRect.getMinY());
+        double x2 = Math.min(totalW, mapRect.getMaxX());
+        double y2 = Math.min(totalH, mapRect.getMaxY());
+        if (x2 <= x1 || y2 <= y1) {
+            return new Rectangle();
+        }
+
+        Tile topLeft = logicalToTile(x1, y1, currentPlane);
+        Tile bottomRight = logicalToTile(Math.nextDown(x2), Math.nextDown(y2), currentPlane);
+        if (topLeft == null || bottomRight == null) {
+            return new Rectangle();
+        }
+
+        int minX = Math.min(topLeft.x, bottomRight.x);
+        int minY = Math.min(topLeft.y, bottomRight.y);
+        int maxX = Math.max(topLeft.x, bottomRight.x);
+        int maxY = Math.max(topLeft.y, bottomRight.y);
+        return new Rectangle(minX, minY, maxX - minX + 1, maxY - minY + 1);
     }
 
     public List<Integer> visibleRegionIds(Rectangle visibleMap) {
@@ -615,8 +712,10 @@ public class MapPanel extends JComponent implements MapView {
         }
         List<String> lines = new ArrayList<>(icons.size());
         for (MapIconArea icon : icons) {
-            String label = firstNonBlank(icon.displayName, worldMapTooltipIndex.iconLabel(icon.spriteId), "Map icon");
-            lines.add(label);
+            String label = firstNonBlank(icon.displayName, worldMapTooltipIndex.iconLabel(icon.spriteId));
+            if (label != null) {
+                lines.add(label);
+            }
         }
         return WorldMapTooltipIndex.formatLines(lines);
     }
@@ -1303,6 +1402,7 @@ public class MapPanel extends JComponent implements MapView {
         if (previousRegionId != nextRegionId) {
             repaintRegion(previousRegionId);
             repaintRegion(nextRegionId);
+            notifyRegionChanged(hoveredRegionChangeListeners, previousRegionId, nextRegionId);
         }
 
         Rectangle previousRect = previousTile == null ? null : tileToRect(previousTile);
@@ -1313,6 +1413,10 @@ public class MapPanel extends JComponent implements MapView {
     private Tile toTile(int px, int py) {
         double x = (px - contentOriginX()) / effZoom();
         double y = (py - contentOriginY()) / effZoom();
+        return logicalToTile(x, y, currentPlane);
+    }
+
+    private Tile logicalToTile(double x, double y, int plane) {
         if (x < 0 || y < 0 || x >= totalW || y >= totalH) {
             return null;
         }
@@ -1330,7 +1434,27 @@ public class MapPanel extends JComponent implements MapView {
         int tyFromBottom = REGION_TILES - 1 - tyTop;
         int worldX = (Paths.MIN_RX + col) * REGION_TILES + tx;
         int worldY = (Paths.MIN_RY + rowFromBottom) * REGION_TILES + tyFromBottom;
-        return new Tile(worldX, worldY, currentPlane);
+        return new Tile(worldX, worldY, plane);
+    }
+
+    private int normalizeRegionId(int regionId) {
+        return isRegionInMap(regionId) ? regionId : -1;
+    }
+
+    private boolean isRegionInMap(int regionId) {
+        if (regionId < 0) {
+            return false;
+        }
+        int rx = regionId >> 8;
+        int ry = regionId & 0xFF;
+        return rx >= Paths.MIN_RX && rx <= Paths.MAX_RX
+                && ry >= Paths.MIN_RY && ry <= Paths.MAX_RY;
+    }
+
+    private static void notifyRegionChanged(List<RegionChangeListener> listeners, int previousRegionId, int currentRegionId) {
+        for (RegionChangeListener listener : listeners) {
+            listener.regionChanged(previousRegionId, currentRegionId);
+        }
     }
 
     private Rectangle visibleMapPixelRect() {

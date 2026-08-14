@@ -8,7 +8,6 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import com.xeon.config.PluginConfig;
-import com.xeon.io.Paths;
 import com.xeon.model.Tile;
 import com.xeon.plugin.MapViewerPlugin;
 import com.xeon.plugin.PluginContext;
@@ -28,6 +27,7 @@ import com.xeon.view.MapLayer;
 import com.xeon.view.MapMouseEvent;
 import com.xeon.view.MapRenderContext;
 import com.xeon.view.MapTool;
+import com.xeon.view.RegionChangeListener;
 
 import javax.swing.*;
 import java.awt.*;
@@ -41,6 +41,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -58,6 +59,7 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
     private static final String KEY_DISABLED_TELEPORT_ITEMS = "teleportItems.disabled";
     private static final String KEY_DISABLED_TRANSPORT_TYPES = "transportTypes.disabled";
     private static final String KEY_SHOW_COLLISION_MAP = "showCollisionMap";
+    private static final String KEY_COLLISION_MAP_MODE = "collisionMap.mode";
     private static final String KEY_WALK_LINE_COLOR = "color.walkLine";
     private static final String KEY_TRANSPORT_LINE_COLOR = "color.transportLine";
     private static final String KEY_START_MARKER_COLOR = "color.startMarker";
@@ -91,7 +93,8 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
     private PathfinderConfig pathfinderConfig;
     private PathOptions options = PathOptions.defaults();
     private Set<TeleportItem> enabledTeleportItems = EnumSet.allOf(TeleportItem.class);
-    private boolean showCollisionMap;
+    private final LinkedHashSet<Integer> selectedCollisionRegionIds = new LinkedHashSet<>();
+    private ShortestPathPanel.CollisionMapMode collisionMapMode = ShortestPathPanel.CollisionMapMode.OFF;
     private Color walkLineColor = DEFAULT_WALK_LINE_COLOR;
     private Color transportLineColor = DEFAULT_TRANSPORT_LINE_COLOR;
     private Color startMarkerColor = DEFAULT_START_MARKER_COLOR;
@@ -110,6 +113,7 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
     private long profileLookupSerial;
     private long calculationSerial;
     private String lastWarningSignature = "";
+    private final RegionChangeListener hoveredRegionListener = this::handleHoveredRegionChanged;
 
     @Override
     public String id() {
@@ -129,7 +133,7 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
         menu = new ShortestPathMenu();
         options = loadOptions(context.config());
         enabledTeleportItems = loadEnabledTeleportItems(context.config());
-        showCollisionMap = context.config().getBoolean(KEY_SHOW_COLLISION_MAP, false);
+        collisionMapMode = loadCollisionMapMode(context.config());
         walkLineColor = loadColor(context.config(), KEY_WALK_LINE_COLOR, DEFAULT_WALK_LINE_COLOR);
         transportLineColor = loadColor(context.config(), KEY_TRANSPORT_LINE_COLOR, DEFAULT_TRANSPORT_LINE_COLOR);
         startMarkerColor = loadColor(context.config(), KEY_START_MARKER_COLOR, DEFAULT_START_MARKER_COLOR);
@@ -137,12 +141,11 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
         targetMarkerColor = loadColor(context.config(), KEY_TARGET_MARKER_COLOR, DEFAULT_TARGET_MARKER_COLOR);
         collisionColor = loadColor(context.config(), KEY_COLLISION_COLOR, DEFAULT_COLLISION_COLOR);
         panel.setOptions(options.includeTransports(), options.includeTeleports(), options.avoidWilderness(),
-                options.includePoh(), options.avoidItemTeleports(), options.enabledTransportTypes(), showCollisionMap);
+                options.includePoh(), options.avoidItemTeleports(), options.enabledTransportTypes(), collisionMapMode);
         panel.setColors(walkLineColor, transportLineColor, startMarkerColor, stepMarkerColor,
                 targetMarkerColor, collisionColor);
         panel.setTeleportItems(enabledTeleportItems);
         panel.setOnOptionsChanged(this::handleOptionsChanged);
-        panel.setOnSelectionModeChanged(mode -> context.setStatus("Selection: " + mode.name().toLowerCase()));
         panel.setOnCenterStart(this::setStartToCenter);
         panel.setOnSwap(this::swapEndpoints);
         panel.setOnRecalculate(this::recalculate);
@@ -170,6 +173,7 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
         refreshPanel();
 
         context.mapPanel().addLayer(this);
+        context.mapPanel().addHoveredRegionChangeListener(hoveredRegionListener);
         context.mapPanel().setActiveTool(this);
     }
 
@@ -178,6 +182,7 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
         cancelCurrentJob();
         cancelProfileJob();
         if (context != null) {
+            context.mapPanel().removeHoveredRegionChangeListener(hoveredRegionListener);
             context.mapPanel().removeLayer(this);
             context.mapPanel().clearActiveTool(this);
         }
@@ -209,17 +214,28 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
         if (!SwingUtilities.isLeftMouseButton(event.source())) {
             return false;
         }
+        if (isCollisionRegionSelectionClick(event)) {
+            toggleCollisionRegion(event.regionId());
+            return true;
+        }
+        if (shouldClearCollisionRegions(event)) {
+            clearSelectedCollisionRegions();
+            return true;
+        }
         Tile tile = event.tile();
-        if (startTile == null || event.isAdditiveSelection()
-                || !event.isShiftDown() && panel.selectionMode() == ShortestPathPanel.SelectionMode.START) {
+        if (startTile == null) {
             setStart(tile);
-            panel.setSelectionMode(ShortestPathPanel.SelectionMode.TARGET);
-        } else if (event.isShiftDown()) {
+        } else if (event.isAdditiveSelection()) {
             addStep(tile);
         } else {
             setTarget(tile);
         }
         return true;
+    }
+
+    @Override
+    public boolean supportsRegionSelection() {
+        return collisionMapMode == ShortestPathPanel.CollisionMapMode.SELECTED_REGION;
     }
 
     @Override
@@ -237,6 +253,11 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
     public String tooltipText(MapRenderContext context, Tile tile, int regionId) {
         if (tile == null) {
             return null;
+        }
+        if (collisionMapMode == ShortestPathPanel.CollisionMapMode.SELECTED_REGION
+                && context.regionSelectionActive()
+                && regionId >= 0) {
+            return "Collision region " + regionText(regionId);
         }
         return routePointTooltip(tile);
     }
@@ -317,7 +338,8 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
                 options.calculationCutoffMillis()
         );
         enabledTeleportItems = panel.enabledTeleportItems();
-        showCollisionMap = panel.showCollisionMap();
+        ShortestPathPanel.CollisionMapMode previousCollisionMapMode = collisionMapMode;
+        collisionMapMode = panel.collisionMapMode();
         walkLineColor = panel.walkLineColor();
         transportLineColor = panel.transportLineColor();
         startMarkerColor = panel.startMarkerColor();
@@ -327,11 +349,87 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
         saveOptions(context.config(), options);
         saveEnabledTeleportItems(context.config(), enabledTeleportItems);
         saveColors(context.config());
-        context.config().setBoolean(KEY_SHOW_COLLISION_MAP, showCollisionMap);
+        saveCollisionMapMode(context.config(), collisionMapMode);
+        if (previousCollisionMapMode != collisionMapMode) {
+            context.mapPanel().setActiveTool(this);
+            repaintCollisionRegions(previousCollisionMapMode);
+            repaintCollisionRegions(collisionMapMode);
+        }
         cancelCurrentJob();
         pathfinderConfig.refresh(options);
         pathfinderConfig.setEnabledTeleportItems(enabledTeleportItems);
         recalculate();
+    }
+
+    private boolean isCollisionRegionSelectionClick(MapMouseEvent event) {
+        return collisionMapMode == ShortestPathPanel.CollisionMapMode.SELECTED_REGION
+                && event.isShiftDown()
+                && event.regionId() >= 0;
+    }
+
+    private void toggleCollisionRegion(int regionId) {
+        if (regionId < 0) {
+            return;
+        }
+        if (!selectedCollisionRegionIds.add(regionId)) {
+            selectedCollisionRegionIds.remove(regionId);
+        }
+        context.mapPanel().repaintRegion(regionId);
+        int count = selectedCollisionRegionIds.size();
+        context.setStatus(count == 0
+                ? "Cleared selected collision regions"
+                : "Selected " + count + " collision region" + (count == 1 ? "" : "s"));
+    }
+
+    private boolean shouldClearCollisionRegions(MapMouseEvent event) {
+        return collisionMapMode == ShortestPathPanel.CollisionMapMode.SELECTED_REGION
+                && !event.isShiftDown()
+                && !selectedCollisionRegionIds.isEmpty();
+    }
+
+    private void clearSelectedCollisionRegions() {
+        List<Integer> previous = new ArrayList<>(selectedCollisionRegionIds);
+        selectedCollisionRegionIds.clear();
+        repaintRegions(previous);
+        context.setStatus("Cleared selected collision regions");
+    }
+
+    private void handleHoveredRegionChanged(int previousRegionId, int currentRegionId) {
+        if (collisionMapMode == ShortestPathPanel.CollisionMapMode.HOVERED_REGION) {
+            repaintRegions(previousRegionId, currentRegionId);
+        }
+    }
+
+    private void repaintCollisionRegions(ShortestPathPanel.CollisionMapMode mode) {
+        if (context == null || mode == null) {
+            return;
+        }
+        switch (mode) {
+            case HOVERED_REGION -> repaintRegions(context.mapPanel().getHoveredRegionId());
+            case SELECTED_REGION -> repaintRegions(selectedCollisionRegionIds);
+            case OFF -> {
+            }
+        }
+    }
+
+    private void repaintRegions(int... regionIds) {
+        if (context == null || regionIds == null) {
+            return;
+        }
+        for (int regionId : regionIds) {
+            context.mapPanel().repaintRegion(regionId);
+        }
+    }
+
+    private void repaintRegions(Iterable<Integer> regionIds) {
+        if (context == null || regionIds == null) {
+            return;
+        }
+        for (Integer regionId : regionIds) {
+            if (regionId != null) {
+                context.mapPanel().repaintRegion(regionId);
+            }
+        }
     }
 
     private void setStartToCenter() {
@@ -388,14 +486,16 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
         String storedUsername = cleanUsername(config.getString(KEY_WIKISYNC_USERNAME, ""));
         WikiSyncProfile storedProfile = config.getObject(KEY_WIKISYNC_PROFILE, WikiSyncProfile.class, null);
         if (storedUsername.isBlank()) {
-            panel.setProfileStatus("none");
+            panel.setProfileLoaded(false);
             return;
         }
 
         panel.setProfileName(storedUsername);
         if (storedProfile != null && storedProfile.hasData()) {
             pathfinderConfig.setProfile(storedProfile);
-            panel.setProfileStatus("cached " + storedProfile.summary());
+            panel.setProfileLoaded(true);
+        } else {
+            panel.setProfileLoaded(false);
         }
         refreshProfile(storedUsername);
     }
@@ -403,7 +503,8 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
     private void lookUpProfile(String username) {
         String cleanUsername = cleanUsername(username);
         if (cleanUsername.isBlank()) {
-            panel.setProfileStatus("enter a username");
+            panel.setProfileLoaded(hasProfile());
+            context.setStatus("Enter a RuneScape username.");
             return;
         }
         submitProfileLookup(cleanUsername, true, false);
@@ -423,7 +524,7 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
         cancelProfileJob();
         long lookupId = ++profileLookupSerial;
         panel.setProfileLookupRunning(true);
-        panel.setProfileStatus("looking up " + username);
+        panel.setProfileLoaded(hasProfile());
         context.setStatus("Looking up WikiSync profile");
         profileJob = executor.submit(() -> {
             try {
@@ -443,6 +544,7 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
         }
         panel.setProfileLookupRunning(false);
         pathfinderConfig.setProfile(profile);
+        panel.setProfileLoaded(profile != null && profile.hasData());
         recalculate();
 
         boolean store = saveOnSuccess;
@@ -460,7 +562,6 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
             saveProfile(context.config(), profile);
         }
 
-        panel.setProfileStatus(profile.summary() + (store ? " saved" : " session only"));
         context.setStatus("WikiSync profile loaded");
         repaint();
     }
@@ -474,15 +575,16 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
                 ? "WikiSync lookup failed."
                 : ex.getMessage();
         WikiSyncProfile currentProfile = pathfinderConfig.getProfile();
-        if (automaticRefresh && currentProfile != null && currentProfile.hasData()) {
-            panel.setProfileStatus("cached; update failed");
-        } else {
-            panel.setProfileStatus("lookup failed");
-        }
+        panel.setProfileLoaded(currentProfile != null && currentProfile.hasData());
         context.setStatus(message);
         if (showDialog) {
             JOptionPane.showMessageDialog(context.owner(), message, "WikiSync Lookup Failed", JOptionPane.WARNING_MESSAGE);
         }
+    }
+
+    private boolean hasProfile() {
+        WikiSyncProfile profile = pathfinderConfig == null ? null : pathfinderConfig.getProfile();
+        return profile != null && profile.hasData();
     }
 
     private void setStart(Tile tile) {
@@ -893,50 +995,40 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
     }
 
     private void paintCollisionMap(MapRenderContext context, Graphics2D g, Rectangle visibleMap) {
-        if (!showCollisionMap || pathfinderConfig == null || context.effectiveZoom() < 0.75) {
+        if (collisionMapMode == ShortestPathPanel.CollisionMapMode.OFF || pathfinderConfig == null) {
             return;
         }
 
         CollisionMap map = pathfinderConfig.getMap();
-        Stroke oldStroke = g.getStroke();
         Color oldColor = g.getColor();
-        float screenPx = Math.max(0.75f, (float) (1.0 / Math.max(context.effectiveZoom(), 0.0001)));
-        g.setStroke(new BasicStroke(screenPx));
         g.setColor(collisionColor);
-        int plane = context.plane();
-        for (int regionId : context.visibleRegionIds(visibleMap)) {
-            int regionX = regionId >> 8;
-            int regionY = regionId & 0xFF;
-            int startX = regionX * Paths.REGION_TILE_SIZE;
-            int startY = regionY * Paths.REGION_TILE_SIZE;
-            for (int x = startX; x < startX + Paths.REGION_TILE_SIZE; x++) {
-                for (int y = startY; y < startY + Paths.REGION_TILE_SIZE; y++) {
-                    Tile tile = new Tile(x, y, plane);
-                    Rectangle rect = context.tileToRect(tile);
-                    if (!rect.intersects(visibleMap)) {
-                        continue;
-                    }
-                    int left = rect.x;
-                    int right = rect.x + rect.width;
-                    int top = rect.y;
-                    int bottom = rect.y + rect.height;
-                    if (!map.n(x, y, plane)) {
-                        g.drawLine(left, top, right, top);
-                    }
-                    if (!map.s(x, y, plane)) {
-                        g.drawLine(left, bottom, right, bottom);
-                    }
-                    if (!map.w(x, y, plane)) {
-                        g.drawLine(left, top, left, bottom);
-                    }
-                    if (!map.e(x, y, plane)) {
-                        g.drawLine(right, top, right, bottom);
-                    }
-                }
+        if (collisionMapMode == ShortestPathPanel.CollisionMapMode.HOVERED_REGION) {
+            paintCollisionRegion(context, g, visibleMap, map, context.hoveredRegionId());
+        } else if (collisionMapMode == ShortestPathPanel.CollisionMapMode.SELECTED_REGION) {
+            for (int regionId : selectedCollisionRegionIds) {
+                paintCollisionRegion(context, g, visibleMap, map, regionId);
             }
         }
         g.setColor(oldColor);
-        g.setStroke(oldStroke);
+    }
+
+    private void paintCollisionRegion(MapRenderContext context, Graphics2D g, Rectangle visibleMap,
+                                      CollisionMap map, int regionId) {
+        if (regionId < 0) {
+            return;
+        }
+        Rectangle regionRect = context.regionToRect(regionId);
+        if (regionRect.isEmpty() || !regionRect.intersects(visibleMap)) {
+            return;
+        }
+        Rectangle tileBounds = context.regionTileBounds(regionId);
+        if (tileBounds.isEmpty()) {
+            return;
+        }
+        Shape collisionShape = context.tileArea(tileBounds, context.plane(), map::isBlocked);
+        if (!collisionShape.getBounds().isEmpty()) {
+            g.fill(collisionShape);
+        }
     }
 
     private void paintEndpoint(MapRenderContext context, Graphics2D g, Rectangle visibleMap, Tile tile, Color color, String label) {
@@ -1103,6 +1195,20 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
         );
     }
 
+    private static ShortestPathPanel.CollisionMapMode loadCollisionMapMode(PluginConfig config) {
+        String raw = config.getString(KEY_COLLISION_MAP_MODE, "");
+        if (raw != null && !raw.isBlank()) {
+            try {
+                return ShortestPathPanel.CollisionMapMode.valueOf(raw.trim());
+            } catch (IllegalArgumentException ignored) {
+                // Fall through to the legacy boolean.
+            }
+        }
+        return config.getBoolean(KEY_SHOW_COLLISION_MAP, false)
+                ? ShortestPathPanel.CollisionMapMode.HOVERED_REGION
+                : ShortestPathPanel.CollisionMapMode.OFF;
+    }
+
     private static void saveOptions(PluginConfig config, PathOptions options) {
         config.setBoolean(KEY_INCLUDE_TRANSPORTS, options.includeTransports());
         config.setBoolean(KEY_INCLUDE_TELEPORTS, options.includeTeleports());
@@ -1110,6 +1216,14 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
         config.setBoolean(KEY_INCLUDE_POH, options.includePoh());
         config.setBoolean(KEY_AVOID_ITEM_TELEPORTS, options.avoidItemTeleports());
         saveEnabledTransportTypes(config, options.enabledTransportTypes());
+    }
+
+    private static void saveCollisionMapMode(PluginConfig config, ShortestPathPanel.CollisionMapMode mode) {
+        ShortestPathPanel.CollisionMapMode value = mode == null
+                ? ShortestPathPanel.CollisionMapMode.OFF
+                : mode;
+        config.setString(KEY_COLLISION_MAP_MODE, value.name());
+        config.setBoolean(KEY_SHOW_COLLISION_MAP, value != ShortestPathPanel.CollisionMapMode.OFF);
     }
 
     private static void saveProfile(PluginConfig config, WikiSyncProfile profile) {
@@ -1403,6 +1517,13 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 
     private static String tileText(Tile tile) {
         return tile == null ? "none" : tile.x + "," + tile.y + "," + tile.z;
+    }
+
+    private static String regionText(int regionId) {
+        if (regionId < 0) {
+            return "none";
+        }
+        return regionId + " (" + (regionId >> 8) + "," + (regionId & 0xFF) + ")";
     }
 
     private static int centerX(Rectangle rect) {
