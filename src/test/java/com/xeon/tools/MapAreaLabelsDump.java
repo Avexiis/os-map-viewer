@@ -91,7 +91,7 @@ public final class MapAreaLabelsDump {
         byte[] metadataBytes = readAtlasMetadata(atlas);
         JsonObject metadata;
         try {
-            JsonElement parsed = JsonParser.parseString(new String(metadataBytes, StandardCharsets.UTF_8));
+            JsonElement parsed = new JsonParser().parse(new String(metadataBytes, StandardCharsets.UTF_8));
             if (!parsed.isJsonObject()) {
                 throw new IllegalStateException("Atlas metadata is not a JSON object");
             }

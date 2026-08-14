@@ -67,6 +67,15 @@ tasks.register<JavaExec>("checkShortestPathData") {
     workingDir = projectDir
 }
 
+tasks.register<JavaExec>("inspectAtlas") {
+    group = "verification"
+    description = "Opens a Swing inspector for a .atlas file. Pass --args=\"path/to/file.atlas\" to inspect another atlas."
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.xeon.tools.AtlasInspectorApp")
+    workingDir = projectDir
+}
+
 tasks.withType<Jar>().configureEach {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     manifest {
