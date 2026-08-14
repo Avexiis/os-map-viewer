@@ -45,6 +45,7 @@ import com.xeon.view.MapControlsPanel;
 import com.xeon.view.MapLegendDialog;
 import com.xeon.view.MapPanel;
 import com.xeon.view.MapView;
+import com.xeon.view3d.Map3DPanel;
 
 import java.util.Enumeration;
 import javax.imageio.ImageIO;
@@ -82,6 +83,15 @@ public class MapViewerController
 			+ "The map printing process can be quite resource intensive and should only be attempted "
 			+ "on devices with at least 10GB of RAM not in use. If your PC cannot handle this, or if "
 			+ "the operation fails, please check the GitHub for the latest release version of OS Map Viewer.";
+	private static final String EXPERIMENTAL_3D_VIEWER_DESCRIPTION =
+		"This option reads a single region from the local OSRS cache and replaces the 2D map workspace "
+			+ "with an embedded LWJGL terrain viewer. It is intended for terrain inspection and early "
+			+ "renderer development, so plugins are cleared while it is active.";
+	private static final String MAP_3D_NOTICE =
+		"NOTICE: The 3D viewer is experimental and currently loads only the region centered in the 2D map. "
+			+ "It reads terrain, overlay, underlay, texture, and height data from the local OSRS cache and "
+			+ "does not modify game files. The 2D map workspace and active plugins will be cleared until you "
+			+ "return to the normal map viewer.";
 	private static final double FULL_JUMP_ZOOM = Double.POSITIVE_INFINITY;
 	private static final MemoryPreset[] MEMORY_PRESETS = new MemoryPreset[]{
 		new MemoryPreset("512 MB", 512),
@@ -95,11 +105,13 @@ public class MapViewerController
 
 	private JFrame frame;
 	private MapPanel mapPanel;
+	private Map3DPanel map3DPanel;
 	private JScrollPane mapScrollPane;
 	private JLabel statusLabel;
 	private BufferedImage appIcon;
 	private MapControlsPanel mapControls;
 	private MapAreaSearchPanel areaSearchPanel;
+	private JPanel mapFooterCenter;
 	private JPanel westPanel;
 	private JPanel toolRail;
 	private JTabbedPane leftTabs;
@@ -121,6 +133,8 @@ public class MapViewerController
 	private boolean showMapFeatureTooltips = settings.mapFeatureTooltips();
 	private boolean mapLocked = false;
 	private boolean mapPrintInProgress = false;
+	private int mapScrollHorizontalPolicy = ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED;
+	private int mapScrollVerticalPolicy = ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED;
 
 	public MapViewerController()
 	{
@@ -165,6 +179,10 @@ public class MapViewerController
 				if (mapPanel != null)
 				{
 					mapPanel.dispose();
+				}
+				if (map3DPanel != null)
+				{
+					map3DPanel.dispose();
 				}
 			}
 		});
@@ -253,6 +271,7 @@ public class MapViewerController
 		searchColumn.add(legendRow);
 		JPanel searchHost = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
 		searchHost.add(searchColumn);
+		mapFooterCenter = searchHost;
 		bottom.add(searchHost, BorderLayout.CENTER);
 		bottom.add(statusLabel, BorderLayout.SOUTH);
 		frame.add(bottom, BorderLayout.SOUTH);
@@ -465,6 +484,11 @@ public class MapViewerController
 
 	private void replaceMapPanel(Path atlasPath)
 	{
+		if (is3DViewerActive())
+		{
+			exit3DViewer();
+		}
+
 		MapPanel oldPanel = mapPanel;
 		Tile center = oldPanel == null ? null : oldPanel.getCenterTile();
 		double zoom = oldPanel == null ? 1.0 : oldPanel.getZoom();
@@ -531,6 +555,12 @@ public class MapViewerController
 
 	private void showMapLegendDialog()
 	{
+		if (is3DViewerActive())
+		{
+			setStatus("Return to the 2D map before using the map legend");
+			return;
+		}
+
 		MapLegendDialog dialog = new MapLegendDialog(frame, tile -> {
 			if (tile == null)
 			{
@@ -545,6 +575,10 @@ public class MapViewerController
 	private boolean installPlugin(PluginHandle handle)
 	{
 		if (handle == null || handle.installed)
+		{
+			return false;
+		}
+		if (is3DViewerActive())
 		{
 			return false;
 		}
@@ -712,6 +746,12 @@ public class MapViewerController
 
 	private void showPluginManagerDialog()
 	{
+		if (is3DViewerActive())
+		{
+			setStatus("Return to the 2D map before managing plugins");
+			return;
+		}
+
 		JDialog dialog = new JDialog(frame, "Plugins", true);
 		dialog.setLayout(new BorderLayout(10, 10));
 
@@ -811,6 +851,11 @@ public class MapViewerController
 		{
 			return;
 		}
+		if (enabled && is3DViewerActive())
+		{
+			setStatus("Return to the 2D map before enabling plugins");
+			return;
+		}
 		if (enabled)
 		{
 			boolean disabledOthers = false;
@@ -899,6 +944,12 @@ public class MapViewerController
 
 	private void promptLoadPluginJar()
 	{
+		if (is3DViewerActive())
+		{
+			setStatus("Return to the 2D map before loading plugins");
+			return;
+		}
+
 		JFileChooser chooser = new JFileChooser();
 		chooser.setDialogTitle("Load plugin JAR");
 		if (chooser.showOpenDialog(frame) != JFileChooser.APPROVE_OPTION)
@@ -952,22 +1003,28 @@ public class MapViewerController
 		list.setLayout(new BoxLayout(list, BoxLayout.Y_AXIS));
 		list.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-		JTextArea description = wrappedText(EXPERIMENTAL_MAP_PRINT_DESCRIPTION, 470, 88);
+		JTextArea printDescription = wrappedText(EXPERIMENTAL_MAP_PRINT_DESCRIPTION, 470, 88);
 		JButton print = new JButton("Print New Map");
 		styleToolbarButton(print);
 		print.addActionListener(e -> promptPrintNewMap(dialog));
+		list.add(experimentalOptionRow(printDescription, print));
+		list.add(Box.createVerticalStrut(8));
 
-		JPanel row = new JPanel(new BorderLayout(10, 8));
-		row.setBorder(BorderFactory.createCompoundBorder(
-			BorderFactory.createLineBorder(new Color(65, 65, 65)),
-			BorderFactory.createEmptyBorder(10, 10, 10, 10)
-		));
-		row.add(description, BorderLayout.CENTER);
-		JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
-		actions.add(print);
-		row.add(actions, BorderLayout.SOUTH);
-		row.setAlignmentX(Component.LEFT_ALIGNMENT);
-		list.add(row);
+		JTextArea viewer3DDescription = wrappedText(EXPERIMENTAL_3D_VIEWER_DESCRIPTION, 470, 88);
+		JButton viewer3D = new JButton(is3DViewerActive() ? "Return to 2D Map" : "Open 3D Viewer");
+		styleToolbarButton(viewer3D);
+		viewer3D.addActionListener(e -> {
+			if (is3DViewerActive())
+			{
+				dialog.dispose();
+				exit3DViewer();
+			}
+			else
+			{
+				promptOpen3DViewer(dialog);
+			}
+		});
+		list.add(experimentalOptionRow(viewer3DDescription, viewer3D));
 
 		JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
 		JButton close = new JButton("Close");
@@ -977,9 +1034,24 @@ public class MapViewerController
 
 		dialog.add(list, BorderLayout.CENTER);
 		dialog.add(buttons, BorderLayout.SOUTH);
-		dialog.setSize(560, 300);
+		dialog.setSize(580, 430);
 		dialog.setLocationRelativeTo(frame);
 		dialog.setVisible(true);
+	}
+
+	private JPanel experimentalOptionRow(JTextArea description, AbstractButton action)
+	{
+		JPanel row = new JPanel(new BorderLayout(10, 8));
+		row.setBorder(BorderFactory.createCompoundBorder(
+			BorderFactory.createLineBorder(new Color(65, 65, 65)),
+			BorderFactory.createEmptyBorder(10, 10, 10, 10)
+		));
+		row.add(description, BorderLayout.CENTER);
+		JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+		actions.add(action);
+		row.add(actions, BorderLayout.SOUTH);
+		row.setAlignmentX(Component.LEFT_ALIGNMENT);
+		return row;
 	}
 
 	private void promptPrintNewMap(Window owner)
@@ -1010,6 +1082,41 @@ public class MapViewerController
 		startMapPrint(cacheDirectory);
 	}
 
+	private void promptOpen3DViewer(Window owner)
+	{
+		if (!confirm3DViewerNotice(owner))
+		{
+			return;
+		}
+
+		Path cacheDirectory = RuneLiteCacheLocator.locateCacheDirectory();
+		if (cacheDirectory == null)
+		{
+			cacheDirectory = chooseCacheDirectory(owner);
+		}
+		if (cacheDirectory == null)
+		{
+			return;
+		}
+
+		int regionId = mapPanel == null ? settings.lastRegionId() : mapPanel.getCenterRegionId();
+		if (regionId < 0)
+		{
+			regionId = settings.lastRegionId();
+		}
+		if (regionId < 0)
+		{
+			Ui.warn("Center the 2D map on a region before opening the 3D viewer.");
+			return;
+		}
+
+		if (owner instanceof JDialog dialog)
+		{
+			dialog.dispose();
+		}
+		enter3DViewer(cacheDirectory, regionId, mapPanel == null ? settings.lastPlane() : mapPanel.getPlane());
+	}
+
 	private boolean confirmMapPrintNotice(Window owner)
 	{
 		JTextArea message = wrappedText(MAP_PRINT_NOTICE, 540, 180);
@@ -1018,6 +1125,82 @@ public class MapViewerController
 		dialog.setVisible(true);
 		Object value = pane.getValue();
 		return value instanceof Integer answer && answer == JOptionPane.YES_OPTION;
+	}
+
+	private boolean confirm3DViewerNotice(Window owner)
+	{
+		JTextArea message = wrappedText(MAP_3D_NOTICE, 540, 155);
+		JOptionPane pane = new JOptionPane(message, JOptionPane.WARNING_MESSAGE, JOptionPane.YES_NO_OPTION);
+		JDialog dialog = pane.createDialog(owner == null ? frame : owner, "Open 3D Viewer");
+		dialog.setVisible(true);
+		Object value = pane.getValue();
+		return value instanceof Integer answer && answer == JOptionPane.YES_OPTION;
+	}
+
+	private void enter3DViewer(Path cacheDirectory, int regionId, int plane)
+	{
+		if (is3DViewerActive())
+		{
+			return;
+		}
+		saveLastViewState();
+		clearWorkspaceFor3D();
+		mapScrollHorizontalPolicy = mapScrollPane.getHorizontalScrollBarPolicy();
+		mapScrollVerticalPolicy = mapScrollPane.getVerticalScrollBarPolicy();
+		map3DPanel = new Map3DPanel(cacheDirectory, regionId, plane, this::exit3DViewer);
+		mapScrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+		mapScrollPane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER);
+		mapScrollPane.setViewportView(map3DPanel);
+		mapControls.setVisible(false);
+		if (mapFooterCenter != null)
+		{
+			mapFooterCenter.setVisible(false);
+		}
+		viewerPane.revalidate();
+		viewerPane.repaint();
+		setStatus("Opened 3D viewer for region " + regionId);
+	}
+
+	private void exit3DViewer()
+	{
+		if (!is3DViewerActive())
+		{
+			return;
+		}
+		Map3DPanel old3DPanel = map3DPanel;
+		map3DPanel = null;
+		old3DPanel.dispose();
+		mapScrollPane.setViewportView(mapPanel);
+		mapScrollPane.setHorizontalScrollBarPolicy(mapScrollHorizontalPolicy);
+		mapScrollPane.setVerticalScrollBarPolicy(mapScrollVerticalPolicy);
+		mapControls.setVisible(true);
+		if (mapFooterCenter != null)
+		{
+			mapFooterCenter.setVisible(true);
+		}
+		viewerPane.revalidate();
+		viewerPane.repaint();
+		setStatus("Returned to 2D map viewer");
+	}
+
+	private void clearWorkspaceFor3D()
+	{
+		for (PluginHandle handle : plugins)
+		{
+			if (handle.installed)
+			{
+				handle.plugin.uninstall();
+				handle.installed = false;
+			}
+			handle.enabled = false;
+		}
+		settings.setActivePluginId(null);
+		refreshPluginHosts();
+	}
+
+	private boolean is3DViewerActive()
+	{
+		return map3DPanel != null;
 	}
 
 	private Path chooseCacheDirectory(Component parent)

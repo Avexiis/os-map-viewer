@@ -9,9 +9,28 @@ val runeliteCacheVersion = "1.12.36"
 val runeliteCacheShadedJar = layout.projectDirectory
     .file("lib/runelite-cache/cache-$runeliteCacheVersion-SNAPSHOT-shaded.jar")
     .asFile
+val lwjglVersion = "3.4.0"
+val jomlVersion = "1.10.5"
+val lwjglNatives = run {
+    val os = System.getProperty("os.name").lowercase()
+    val arch = System.getProperty("os.arch").lowercase()
+    when {
+        os.contains("windows") && arch.contains("aarch64") -> "natives-windows-arm64"
+        os.contains("windows") -> "natives-windows"
+        os.contains("mac") && arch.contains("aarch64") -> "natives-macos-arm64"
+        os.contains("mac") -> "natives-macos"
+        os.contains("linux") && arch.contains("aarch64") -> "natives-linux-arm64"
+        os.contains("linux") && (arch == "arm" || arch.startsWith("armv7")) -> "natives-linux-arm32"
+        os.contains("linux") -> "natives-linux"
+        else -> throw GradleException("Unsupported LWJGL platform: $os/$arch")
+    }
+}
 
 repositories {
     mavenCentral()
+    maven {
+        url = uri("https://repo.runelite.net")
+    }
 }
 
 java {
@@ -45,8 +64,15 @@ sourceSets {
 dependencies {
     implementation(project(":api"))
     implementation("com.formdev:flatlaf:2.6")
+    implementation(platform("org.lwjgl:lwjgl-bom:$lwjglVersion"))
+    implementation("org.joml:joml:$jomlVersion")
+    implementation("org.lwjgl:lwjgl")
+    implementation("org.lwjgl:lwjgl-opengl")
+    implementation("net.runelite:rlawt:1.8")
     compileOnly(files(runeliteCacheShadedJar))
     runtimeOnly(files(runeliteCacheShadedJar))
+    runtimeOnly("org.lwjgl:lwjgl::$lwjglNatives")
+    runtimeOnly("org.lwjgl:lwjgl-opengl::$lwjglNatives")
 }
 
 tasks.register<JavaExec>("dumpMapAreaLabels") {
