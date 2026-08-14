@@ -6,11 +6,13 @@ import com.xeon.io.Paths;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.Properties;
 import java.util.stream.Stream;
 
@@ -111,7 +113,7 @@ public final class AtlasStorage {
         properties.setProperty(KEY_INSTALLED_AT, Instant.now().toString());
         Path path = metadataPath();
         Files.createDirectories(path.getParent());
-        try (java.io.OutputStream out = Files.newOutputStream(path)) {
+        try (OutputStream out = Files.newOutputStream(path)) {
             properties.store(out, "OS Map Viewer atlas install metadata");
         }
     }
@@ -133,7 +135,7 @@ public final class AtlasStorage {
             return;
         }
         try (Stream<Path> paths = Files.walk(root)) {
-            paths.sorted(java.util.Comparator.reverseOrder()).forEach(path -> {
+            paths.sorted(Comparator.reverseOrder()).forEach(path -> {
                 try {
                     Files.deleteIfExists(path);
                 } catch (IOException ignored) {

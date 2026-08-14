@@ -21,6 +21,7 @@ import com.xeon.view.MapLegendDialog;
 import com.xeon.view.MapPanel;
 import com.xeon.view.MapView;
 
+import java.util.Enumeration;
 import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -1039,7 +1040,7 @@ public class MapViewerController {
 
     private void syncMemoryBudgetSelection(ButtonGroup group) {
         int configured = selectedMemoryBudgetMb();
-        java.util.Enumeration<AbstractButton> buttons = group.getElements();
+        Enumeration<AbstractButton> buttons = group.getElements();
         while (buttons.hasMoreElements()) {
             AbstractButton button = buttons.nextElement();
             Object preset = button.getClientProperty("preset");

@@ -29,6 +29,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.RandomAccessFile;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -744,7 +745,7 @@ public final class MapAtlasPrinter
 		int tilesY = ceilDiv(lodHeight, tilePx);
 
 		TileChunk chunk = new TileChunk(Files.createTempFile(chunkDir, "layer" + layerIndex + "-lod" + lod + "-", ".bin"));
-		try (java.io.OutputStream out = Files.newOutputStream(chunk.path))
+		try (OutputStream out = Files.newOutputStream(chunk.path))
 		{
 			for (int ty = 0; ty < tilesY; ty++)
 			{

@@ -5,6 +5,7 @@ import com.xeon.model.Tile;
 import com.xeon.util.NumberField;
 
 import javax.swing.*;
+import javax.swing.border.Border;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.util.Objects;
@@ -40,11 +41,11 @@ public final class MapControlsPanel extends JPanel {
     private final JLabel lbTitle = new JLabel("Map Controls");
     private final JPanel header = new JPanel(new BorderLayout(8, 0));
     private final JPanel body = new JPanel(new BorderLayout(0, 8));
-    private final javax.swing.border.Border expandedBorder = BorderFactory.createCompoundBorder(
+    private final Border expandedBorder = BorderFactory.createCompoundBorder(
             BorderFactory.createLineBorder(new Color(65, 65, 65)),
             new EmptyBorder(10, 10, 10, 10)
     );
-    private final javax.swing.border.Border collapsedBorder = BorderFactory.createCompoundBorder(
+    private final Border collapsedBorder = BorderFactory.createCompoundBorder(
             BorderFactory.createLineBorder(new Color(65, 65, 65)),
             new EmptyBorder(4, 4, 4, 4)
     );

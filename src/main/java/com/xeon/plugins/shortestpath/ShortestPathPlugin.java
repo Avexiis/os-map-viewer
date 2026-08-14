@@ -28,6 +28,7 @@ import com.xeon.view.MapRenderContext;
 import com.xeon.view.MapTool;
 import com.xeon.view.RegionChangeListener;
 
+import java.io.File;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseEvent;
@@ -1113,7 +1114,7 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
         }
         JFileChooser chooser = new JFileChooser(context.configManager().directory().toFile());
         chooser.setDialogTitle("Export Shortest Path Route");
-        chooser.setSelectedFile(new java.io.File("shortest-path-route.json"));
+        chooser.setSelectedFile(new File("shortest-path-route.json"));
         int answer = chooser.showSaveDialog(context.owner());
         if (answer != JFileChooser.APPROVE_OPTION) {
             return;

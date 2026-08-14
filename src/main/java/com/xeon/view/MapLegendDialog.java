@@ -2,6 +2,7 @@ package com.xeon.view;
 
 import com.xeon.model.Tile;
 
+import java.awt.event.ActionEvent;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.event.DocumentEvent;
@@ -125,7 +126,7 @@ public final class MapLegendDialog extends JDialog {
         table.getInputMap(JComponent.WHEN_FOCUSED).put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), "focusEntry");
         table.getActionMap().put("focusEntry", new AbstractAction() {
             @Override
-            public void actionPerformed(java.awt.event.ActionEvent e) {
+            public void actionPerformed(ActionEvent e) {
                 focusSelectedEntry();
             }
         });

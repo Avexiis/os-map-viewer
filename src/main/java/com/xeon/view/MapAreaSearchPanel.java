@@ -2,6 +2,9 @@ package com.xeon.view;
 
 import com.xeon.model.MapArea;
 
+import java.awt.event.ActionEvent;
+import java.util.ArrayList;
+import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
 import javax.swing.DefaultListCellRenderer;
 import javax.swing.DefaultListModel;
@@ -252,9 +255,9 @@ public final class MapAreaSearchPanel extends JPanel {
 
     private void bindFieldKey(KeyStroke keyStroke, String name, Runnable action) {
         field.getInputMap(JComponent.WHEN_FOCUSED).put(keyStroke, name);
-        field.getActionMap().put(name, new javax.swing.AbstractAction() {
+        field.getActionMap().put(name, new AbstractAction() {
             @Override
-            public void actionPerformed(java.awt.event.ActionEvent e) {
+            public void actionPerformed(ActionEvent e) {
                 action.run();
             }
         });
@@ -453,7 +456,7 @@ public final class MapAreaSearchPanel extends JPanel {
     }
 
     public static final class Event<T> {
-        private final java.util.List<Consumer<T>> listeners = new java.util.ArrayList<>();
+        private final List<Consumer<T>> listeners = new ArrayList<>();
 
         public void addListener(Consumer<T> listener) {
             listeners.add(listener);

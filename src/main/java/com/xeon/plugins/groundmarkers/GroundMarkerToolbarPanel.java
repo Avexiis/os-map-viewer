@@ -1,5 +1,7 @@
 package com.xeon.plugins.groundmarkers;
 
+import java.util.ArrayList;
+import java.util.List;
 import javax.swing.*;
 import java.awt.event.ActionEvent;
 import java.util.function.Consumer;
@@ -80,7 +82,7 @@ public final class GroundMarkerToolbarPanel extends JPopupMenu {
     }
 
     public static final class Event<T> {
-        private final java.util.List<Consumer<T>> listeners = new java.util.ArrayList<>();
+        private final List<Consumer<T>> listeners = new ArrayList<>();
 
         public void addListener(Consumer<T> listener) {
             listeners.add(listener);

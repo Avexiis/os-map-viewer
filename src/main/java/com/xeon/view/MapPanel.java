@@ -1,8 +1,5 @@
 package com.xeon.view;
 
-import com.google.gson.stream.JsonReader;
-import com.google.gson.stream.JsonToken;
-
 import com.xeon.io.Paths;
 import com.xeon.model.MapArea;
 import com.xeon.model.Tile;
@@ -32,34 +29,27 @@ import java.awt.event.MouseMotionAdapter;
 import java.awt.event.MouseWheelEvent;
 import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
-import java.io.ByteArrayInputStream;
-import java.io.EOFException;
-import java.io.InputStreamReader;
-import java.io.RandomAccessFile;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.IntConsumer;
-import javax.imageio.ImageIO;
 import javax.swing.AbstractAction;
 import javax.swing.ActionMap;
 import javax.swing.InputMap;
@@ -77,16 +67,16 @@ public class MapPanel extends JComponent implements MapView {
     private static final double MIN_ZOOM = 1.00;
     private static final double MAX_ZOOM = 16.0;
     private static final int CANVAS_PAD = 100;
-    private static final int MAX_INFLIGHT = 512;
+    private static final int MAX_INFLIGHT = 192;
     private static final int VISIBLE_AREA_NOTIFY_DELAY_MS = 80;
+    private static final int ATLAS_REPAINT_DELAY_MS = 33;
     private static final int MAP_ICON_TOOLTIP_RADIUS_TILES = 3;
     private static final int MAP_ICON_COVER_RADIUS_TILES = 2;
     private static final double CUSTOM_MAP_ICON_DIAMETER_LOGICAL = 15.0 / HI_PX_PER_TILE;
     private static final Color CUSTOM_MAP_ICON_FILL = new Color(0xDF28A6B8, true);
     private static final Color CUSTOM_MAP_ICON_HIGHLIGHT = new Color(0xCCFFFFFF, true);
     private static final Color CUSTOM_MAP_ICON_OUTLINE = new Color(0xC8000000, true);
-    private static final int DECODE_THREADS =
-            Math.max(2, Math.min(4, Runtime.getRuntime().availableProcessors() / 2));
+    private static final int DECODE_THREADS = 1;
 
     private enum LOD {
         FULL(1), HALF(2), QUARTER(4);
@@ -110,28 +100,6 @@ public class MapPanel extends JComponent implements MapView {
         }
     }
 
-    private enum AtlasLayerKind {
-        BASE("base"),
-        ICONS("icons"),
-        LABELS("labels");
-
-        final String metadataName;
-
-        AtlasLayerKind(String metadataName) {
-            this.metadataName = metadataName;
-        }
-
-        static AtlasLayerKind fromMetadataName(String value) {
-            for (AtlasLayerKind kind : values()) {
-                if (kind.metadataName.equals(value)) {
-                    return kind;
-                }
-            }
-            return null;
-        }
-    }
-
-    private static final long MIN_CACHE_BUDGET_BYTES = 512L * 1024L * 1024L;
     private final AtlasStoreReader store;
     private final TileCache cache;
     private final Set<String> emptyTiles = ConcurrentHashMap.newKeySet();
@@ -143,6 +111,8 @@ public class MapPanel extends JComponent implements MapView {
     private final List<RegionChangeListener> selectedRegionChangeListeners = new CopyOnWriteArrayList<>();
     private final MapRenderContext renderContext = new MapRenderContext(this);
     private final WorldMapTooltipIndex worldMapTooltipIndex = WorldMapTooltipIndex.loadDefault();
+    private final Queue<Rectangle> pendingAtlasRepaints = new ConcurrentLinkedQueue<>();
+    private final AtomicBoolean atlasRepaintScheduled = new AtomicBoolean(false);
 
     private final int totalW;
     private final int totalH;
@@ -185,9 +155,11 @@ public class MapPanel extends JComponent implements MapView {
     private int heldDY = 0;
     private final RepeatMover repeatMover = new RepeatMover();
     private final KeyEventDispatcher keyEventDispatcher = this::handleGlobalKeyEvent;
-    private final ChangeListener viewportChangeListener = e -> scheduleVisibleAreaChanged();
+    private final ChangeListener viewportChangeListener = e -> handleViewportChanged();
     private final Timer visibleAreaNotifyTimer = new Timer(VISIBLE_AREA_NOTIFY_DELAY_MS, e -> notifyVisibleAreaChanged());
+    private final Timer atlasRepaintTimer = new Timer(ATLAS_REPAINT_DELAY_MS, e -> flushPendingAtlasRepaints());
     private JViewport observedViewport;
+    private int paintLoadBudgetRemaining = 0;
 
     public MapPanel(Path atlasPath, long cacheBudgetBytes) {
         if (atlasPath == null) {
@@ -219,6 +191,7 @@ public class MapPanel extends JComponent implements MapView {
         installMouseHandlers();
         installArrowKeyBindings();
         visibleAreaNotifyTimer.setRepeats(false);
+        atlasRepaintTimer.setRepeats(false);
     }
 
     public static void validateAtlas(Path atlasPath) throws Exception {
@@ -353,8 +326,7 @@ public class MapPanel extends JComponent implements MapView {
             return;
         }
         currentPlane = next;
-        requestEpoch.incrementAndGet();
-        inflight.clear();
+        invalidateTileRequests();
         repaintVisible();
         for (IntConsumer listener : planeChangeListeners) {
             listener.accept(currentPlane);
@@ -660,6 +632,7 @@ public class MapPanel extends JComponent implements MapView {
     public void dispose() {
         repeatMover.stop();
         visibleAreaNotifyTimer.stop();
+        atlasRepaintTimer.stop();
         loader.shutdownNow();
         try {
             store.close();
@@ -744,9 +717,10 @@ public class MapPanel extends JComponent implements MapView {
 
             Rectangle visibleMap = visibleMapPixelRect();
             LOD lodNow = LOD.forZoom(zoom);
-            drawTilesLODProgressive(g, lodNow, visibleMap, AtlasLayerKind.BASE);
+            paintLoadBudgetRemaining = maxLoadsPerPaint(lodNow);
+            drawTilesLODProgressive(g, lodNow, visibleMap, AtlasLayerType.BASE);
             if (showMapIcons) {
-                drawTilesLODProgressive(g, lodNow, visibleMap, AtlasLayerKind.ICONS);
+                drawTilesLODProgressive(g, lodNow, visibleMap, AtlasLayerType.ICONS);
                 Graphics2D markerGraphics = (Graphics2D) g.create();
                 try {
                     markerGraphics.translate(contentOriginX(), contentOriginY());
@@ -757,7 +731,7 @@ public class MapPanel extends JComponent implements MapView {
                 }
             }
             if (showMapLabels) {
-                drawTilesLODProgressive(g, lodNow, visibleMap, AtlasLayerKind.LABELS);
+                drawTilesLODProgressive(g, lodNow, visibleMap, AtlasLayerType.LABELS);
             }
 
             AffineTransform old = g.getTransform();
@@ -776,6 +750,7 @@ public class MapPanel extends JComponent implements MapView {
             }
             g.setTransform(old);
         } finally {
+            paintLoadBudgetRemaining = 0;
             g.dispose();
         }
     }
@@ -949,6 +924,17 @@ public class MapPanel extends JComponent implements MapView {
         }
     }
 
+    private void handleViewportChanged() {
+        invalidateTileRequests();
+        scheduleVisibleAreaChanged();
+    }
+
+    private void invalidateTileRequests() {
+        requestEpoch.incrementAndGet();
+        inflight.clear();
+        loader.getQueue().clear();
+    }
+
     private void scheduleVisibleAreaChanged() {
         visibleAreaNotifyTimer.restart();
     }
@@ -1017,7 +1003,15 @@ public class MapPanel extends JComponent implements MapView {
         return base * Math.max(0.6, Math.min(1.5, 1.0 / Math.sqrt(Math.max(zoom, 0.01))));
     }
 
-    private void drawTilesLODProgressive(Graphics2D g, LOD targetLod, Rectangle visibleMap, AtlasLayerKind layerKind) {
+    private static int maxLoadsPerPaint(LOD lod) {
+        return switch (lod) {
+            case FULL -> 48;
+            case HALF -> 72;
+            case QUARTER -> 128;
+        };
+    }
+
+    private void drawTilesLODProgressive(Graphics2D g, LOD targetLod, Rectangle visibleMap, AtlasLayerType layerKind) {
         final int plane = currentPlane;
         final int layer = store.layerIndex(layerKind, plane);
         if (layer < 0) {
@@ -1028,8 +1022,7 @@ public class MapPanel extends JComponent implements MapView {
             return;
         }
         if (lastLod != targetLod) {
-            requestEpoch.incrementAndGet();
-            inflight.clear();
+            invalidateTileRequests();
             lastLod = targetLod;
         }
         final long epoch = requestEpoch.get();
@@ -1085,13 +1078,6 @@ public class MapPanel extends JComponent implements MapView {
             return dx * dx + dy * dy;
         }));
 
-        final int maxLoadsThisPass = switch (targetLod) {
-            case FULL -> 48;
-            case HALF -> 96;
-            case QUARTER -> 128;
-        };
-        int issuedLoads = 0;
-
         for (int[] tile : order) {
             int tx = tile[0];
             int ty = tile[1];
@@ -1108,18 +1094,13 @@ public class MapPanel extends JComponent implements MapView {
             Rectangle logicalTileRect = new Rectangle(dx1, dy1, dx2 - dx1, dy2 - dy1);
 
             if (!logicalTileRect.intersects(visibleMap)) {
-                if (issuedLoads < maxLoadsThisPass && !hasCache(layer, targetLod.subsample, tx, ty)) {
-                    requestTileAsync(targetLod, layer, tx, ty, epoch);
-                    issuedLoads++;
+                if (!hasCache(layer, targetLod.subsample, tx, ty)) {
+                    tryRequestTileAsync(targetLod, layer, tx, ty, epoch);
                 }
                 continue;
             }
 
             BufferedImage sharp = getCache(layer, targetLod.subsample, tx, ty);
-            if (sharp == null && issuedLoads < maxLoadsThisPass) {
-                requestTileAsync(targetLod, layer, tx, ty, epoch);
-                issuedLoads++;
-            }
 
             BufferedImage fallbackImg = null;
             int srcX = 0;
@@ -1150,10 +1131,12 @@ public class MapPanel extends JComponent implements MapView {
                     srcH = subH;
                     fallbackImg = candidate;
                     break;
-                } else if (issuedLoads < maxLoadsThisPass) {
-                    requestTileAsync(coarse, layer, cTx, cTy, epoch);
-                    issuedLoads++;
+                } else if (sharp == null) {
+                    tryRequestTileAsync(coarse, layer, cTx, cTy, epoch);
                 }
+            }
+            if (sharp == null) {
+                tryRequestTileAsync(targetLod, layer, tx, ty, epoch);
             }
 
             if (fallbackImg != null) {
@@ -1207,13 +1190,24 @@ public class MapPanel extends JComponent implements MapView {
         emptyTiles.add(TileCache.key(layer, lod, tx, ty));
     }
 
-    private void requestTileAsync(LOD lod, int layer, int tx, int ty, long epoch) {
-        if (inflight.size() >= MAX_INFLIGHT) {
-            return;
+    private boolean tryRequestTileAsync(LOD lod, int layer, int tx, int ty, long epoch) {
+        if (paintLoadBudgetRemaining <= 0) {
+            return false;
+        }
+        if (!requestTileAsync(lod, layer, tx, ty, epoch)) {
+            return false;
+        }
+        paintLoadBudgetRemaining--;
+        return true;
+    }
+
+    private boolean requestTileAsync(LOD lod, int layer, int tx, int ty, long epoch) {
+        if (inflight.size() >= MAX_INFLIGHT || loader.isShutdown()) {
+            return false;
         }
         String key = layer + ":" + lod.subsample + ":" + tx + ":" + ty + ":" + epoch;
         if (!inflight.add(key)) {
-            return;
+            return false;
         }
 
         try {
@@ -1234,14 +1228,16 @@ public class MapPanel extends JComponent implements MapView {
                     synchronized (cache) {
                         cache.put(layer, lod.subsample, tx, ty, img);
                     }
-                    SwingUtilities.invokeLater(() -> repaintAtlasTileDeviceRect(lod, tx, ty));
+                    scheduleAtlasTileRepaint(lod, tx, ty);
                 } catch (Throwable ignored) {
                 } finally {
                     inflight.remove(key);
                 }
             });
+            return true;
         } catch (RejectedExecutionException ex) {
             inflight.remove(key);
+            return false;
         }
     }
 
@@ -1266,7 +1262,7 @@ public class MapPanel extends JComponent implements MapView {
         return true;
     }
 
-    private void repaintAtlasTileDeviceRect(LOD lod, int tx, int ty) {
+    private Rectangle atlasTileLogicalRect(LOD lod, int tx, int ty) {
         int tilePx = store.header().tilePx;
         int sx1 = tx * tilePx;
         int sy1 = ty * tilePx;
@@ -1274,7 +1270,34 @@ public class MapPanel extends JComponent implements MapView {
         int dy1 = (sy1 * lod.subsample) / HI_PX_PER_TILE;
         int dx2 = ((sx1 + tilePx) * lod.subsample) / HI_PX_PER_TILE;
         int dy2 = ((sy1 + tilePx) * lod.subsample) / HI_PX_PER_TILE;
-        repaintLogicalRect(new Rectangle(dx1, dy1, dx2 - dx1, dy2 - dy1), 0);
+        return new Rectangle(dx1, dy1, dx2 - dx1, dy2 - dy1);
+    }
+
+    private void scheduleAtlasTileRepaint(LOD lod, int tx, int ty) {
+        pendingAtlasRepaints.add(atlasTileLogicalRect(lod, tx, ty));
+        if (atlasRepaintScheduled.compareAndSet(false, true)) {
+            SwingUtilities.invokeLater(() -> {
+                if (atlasRepaintScheduled.get()) {
+                    atlasRepaintTimer.restart();
+                }
+            });
+        }
+    }
+
+    private void flushPendingAtlasRepaints() {
+        Rectangle dirty = null;
+        Rectangle next;
+        while ((next = pendingAtlasRepaints.poll()) != null) {
+            dirty = dirty == null ? new Rectangle(next) : dirty.union(next);
+        }
+
+        atlasRepaintScheduled.set(false);
+        if (dirty != null) {
+            repaintLogicalRect(dirty, 0);
+        }
+        if (!pendingAtlasRepaints.isEmpty() && atlasRepaintScheduled.compareAndSet(false, true)) {
+            atlasRepaintTimer.restart();
+        }
     }
 
     private void drawRuneLiteCustomMapIcons(Graphics2D g, Rectangle visibleMap) {
@@ -1578,8 +1601,7 @@ public class MapPanel extends JComponent implements MapView {
         double worldY = (anchorY - contentOriginY(oldViewSize, oldPreferredSize)) / effZoom();
 
         zoom = clamped;
-        requestEpoch.incrementAndGet();
-        inflight.clear();
+        invalidateTileRequests();
 
         Dimension newPreferredSize = getPreferredSize();
         Dimension newViewSize = viewSizeFor(newPreferredSize, view.getSize());
@@ -1612,8 +1634,7 @@ public class MapPanel extends JComponent implements MapView {
         double anchorY = (centerView.y - contentOriginY(oldViewSize, oldPreferredSize)) / effZoom();
 
         zoom = clamped;
-        requestEpoch.incrementAndGet();
-        inflight.clear();
+        invalidateTileRequests();
 
         Dimension newPreferredSize = getPreferredSize();
         Dimension newViewSize = viewSizeFor(newPreferredSize, view.getSize());
@@ -1807,821 +1828,4 @@ public class MapPanel extends JComponent implements MapView {
         }
     }
 
-    private static final class TileCache extends LinkedHashMap<String, BufferedImage> {
-        private long budgetBytes;
-        private long liveBytes = 0L;
-
-        TileCache(long budgetBytes) {
-            super(512, 0.75f, true);
-            this.budgetBytes = normalizeBudgetBytes(budgetBytes);
-        }
-
-        synchronized void setBudgetBytes(long budgetBytes) {
-            this.budgetBytes = normalizeBudgetBytes(budgetBytes);
-            trimToBudget();
-        }
-
-        synchronized long budgetBytes() {
-            return budgetBytes;
-        }
-
-        static String key(int plane, int lod, int tx, int ty) {
-            return plane + ":" + lod + ":" + tx + ":" + ty;
-        }
-
-        synchronized BufferedImage get(int plane, int lod, int tx, int ty) {
-            return super.get(key(plane, lod, tx, ty));
-        }
-
-        synchronized void put(int plane, int lod, int tx, int ty, BufferedImage img) {
-            BufferedImage previous = super.put(key(plane, lod, tx, ty), img);
-            if (previous != null) {
-                liveBytes -= approx(previous);
-            }
-            if (img != null) {
-                liveBytes += approx(img);
-            }
-            trimToBudget();
-        }
-
-        private void trimToBudget() {
-            while (liveBytes > budgetBytes && !isEmpty()) {
-                Map.Entry<String, BufferedImage> eldest = entrySet().iterator().next();
-                BufferedImage removed = super.remove(eldest.getKey());
-                if (removed != null) {
-                    liveBytes -= approx(removed);
-                }
-            }
-        }
-
-        @Override
-        public synchronized BufferedImage remove(Object key) {
-            BufferedImage previous = super.remove(key);
-            if (previous != null) {
-                liveBytes -= approx(previous);
-            }
-            return previous;
-        }
-
-        private static long approx(BufferedImage image) {
-            return image == null ? 0 : (long) image.getWidth() * (long) image.getHeight() * 4L;
-        }
-
-        private static long normalizeBudgetBytes(long budgetBytes) {
-            return budgetBytes == Long.MAX_VALUE ? Long.MAX_VALUE : Math.max(MIN_CACHE_BUDGET_BYTES, budgetBytes);
-        }
-    }
-
-    private static final class MapIconArea {
-        final String displayName;
-        final int areaId;
-        final int spriteId;
-        final int worldX;
-        final int worldY;
-        final int plane;
-
-        MapIconArea(String displayName, int areaId, int spriteId, int worldX, int worldY, int plane) {
-            this.displayName = displayName;
-            this.areaId = areaId;
-            this.spriteId = spriteId;
-            this.worldX = worldX;
-            this.worldY = worldY;
-            this.plane = plane;
-        }
-    }
-
-    private static final class AtlasStoreReader implements AutoCloseable {
-        static final class Header {
-            final int srcWidth;
-            final int srcHeight;
-            final int tilePx;
-            final long indexOffset;
-            final long dataOffset;
-            final long metadataOffset;
-            final int metadataLength;
-
-            Header(int srcWidth, int srcHeight, int tilePx, long indexOffset, long dataOffset,
-                   long metadataOffset, int metadataLength) {
-                this.srcWidth = srcWidth;
-                this.srcHeight = srcHeight;
-                this.tilePx = tilePx;
-                this.indexOffset = indexOffset;
-                this.dataOffset = dataOffset;
-                this.metadataOffset = metadataOffset;
-                this.metadataLength = metadataLength;
-            }
-        }
-
-        static final class TileEntry {
-            final int lod;
-            final int z;
-            final int tx;
-            final int ty;
-            final int imgW;
-            final int imgH;
-            final long relOffset;
-            final int length;
-
-            TileEntry(int lod, int z, int tx, int ty, int imgW, int imgH, long relOffset, int length) {
-                this.lod = lod;
-                this.z = z;
-                this.tx = tx;
-                this.ty = ty;
-                this.imgW = imgW;
-                this.imgH = imgH;
-                this.relOffset = relOffset;
-                this.length = length;
-            }
-        }
-
-        private final RandomAccessFile raf;
-        private final java.nio.channels.FileChannel channel;
-        private final long dataOffsetAbs;
-        private final Header header;
-        private final Map<String, TileEntry> index = new ConcurrentHashMap<>();
-        private final Map<String, Integer> layerIndices = new ConcurrentHashMap<>();
-        private byte[] metadataBytes = new byte[0];
-        private volatile AreaIndex areaIndex;
-        private volatile IconIndex iconIndex;
-        private int maxPlanes = 1;
-
-        Header header() {
-            return header;
-        }
-
-        List<MapArea> searchMapAreas(String query, int limit) {
-            String normalizedQuery = normalizeForSearch(query);
-            if (normalizedQuery.length() < 3 || metadataBytes.length == 0 || limit <= 0) {
-                return List.of();
-            }
-            return searchMapAreas(metadataBytes, normalizedQuery, limit);
-        }
-
-        List<MapArea> mapAreasAt(Tile tile) {
-            if (tile == null || metadataBytes.length == 0) {
-                return List.of();
-            }
-            return areaIndex().areasAt(tile);
-        }
-
-        MapArea nearestMapArea(Tile tile, int maxDistanceTiles) {
-            if (tile == null || metadataBytes.length == 0 || maxDistanceTiles < 0) {
-                return null;
-            }
-            return areaIndex().nearest(tile, maxDistanceTiles);
-        }
-
-        List<MapIconArea> nearestMapIcons(Tile tile, int maxDistanceTiles) {
-            if (tile == null || metadataBytes.length == 0 || maxDistanceTiles < 0) {
-                return List.of();
-            }
-            return iconIndex().nearest(tile, maxDistanceTiles);
-        }
-
-        boolean hasMapIconNear(Tile tile, int maxDistanceTiles) {
-            return !nearestMapIcons(tile, maxDistanceTiles).isEmpty();
-        }
-
-        private AreaIndex areaIndex() {
-            AreaIndex current = areaIndex;
-            if (current != null) {
-                return current;
-            }
-            synchronized (this) {
-                current = areaIndex;
-                if (current == null) {
-                    current = new AreaIndex(parseMapAreas(metadataBytes));
-                    areaIndex = current;
-                }
-                return current;
-            }
-        }
-
-        private IconIndex iconIndex() {
-            IconIndex current = iconIndex;
-            if (current != null) {
-                return current;
-            }
-            synchronized (this) {
-                current = iconIndex;
-                if (current == null) {
-                    current = new IconIndex(parseMapIconAreas(metadataBytes));
-                    iconIndex = current;
-                }
-                return current;
-            }
-        }
-
-        static AtlasStoreReader openFile(Path path) throws Exception {
-            if (path == null || !Files.isRegularFile(path)) {
-                throw new IllegalStateException("Atlas file not found");
-            }
-            return new AtlasStoreReader(new RandomAccessFile(path.toFile(), "r"));
-        }
-
-        private AtlasStoreReader(RandomAccessFile raf) throws Exception {
-            this.raf = raf;
-            this.header = readHeader();
-            this.channel = raf.getChannel();
-            this.dataOffsetAbs = header.dataOffset;
-            readMetadata();
-            readIndex();
-        }
-
-        private Header readHeader() throws Exception {
-            raf.seek(0);
-            byte[] magic8 = new byte[8];
-            raf.readFully(magic8);
-            byte[] expected7 = new byte[]{'A', 'T', 'L', 'S', 'v', '3', 0x00};
-            boolean first7Match = true;
-            for (int i = 0; i < 7; i++) {
-                if (magic8[i] != expected7[i]) {
-                    first7Match = false;
-                    break;
-                }
-            }
-            if (!first7Match) {
-                throw new IllegalStateException("Atlas: bad magic");
-            }
-            if (magic8[7] != 0x00) {
-                raf.seek(7);
-            }
-
-            int version = readU32();
-            if (version != 3) {
-                throw new IllegalStateException("Atlas: unsupported version " + version + "; expected 3");
-            }
-            int srcW = readU32();
-            int srcH = readU32();
-            int tile = readU32();
-            int numLods = readU32();
-            for (int i = 0; i < numLods; i++) {
-                readU32();
-            }
-            readU32();
-            readU32();
-            readU32();
-            long indexOff = readU64();
-            long dataOff = readU64();
-            long metadataOff = readU64();
-            int metadataLen = readU32();
-            return new Header(srcW, srcH, tile, indexOff, dataOff, metadataOff, metadataLen);
-        }
-
-        private void readMetadata() throws Exception {
-            layerIndices.clear();
-            metadataBytes = new byte[0];
-            areaIndex = null;
-            iconIndex = null;
-            if (header.metadataOffset <= 0 || header.metadataLength <= 0) {
-                throw new IllegalStateException("Atlas: missing v3 metadata");
-            }
-
-            byte[] bytes = new byte[header.metadataLength];
-            raf.seek(header.metadataOffset);
-            raf.readFully(bytes);
-            metadataBytes = bytes;
-            boolean hasLayers = parseLayerMetadata(bytes);
-            if (!hasLayers || layerIndices.isEmpty()) {
-                throw new IllegalStateException("Atlas: missing v3 layer metadata");
-            }
-        }
-
-        private boolean parseLayerMetadata(byte[] bytes) throws Exception {
-            int maxPlaneSeen = -1;
-            boolean foundLayers = false;
-            try (JsonReader reader = new JsonReader(new InputStreamReader(
-                    new ByteArrayInputStream(bytes),
-                    StandardCharsets.UTF_8
-            ))) {
-                reader.beginObject();
-                while (reader.hasNext()) {
-                    String name = reader.nextName();
-                    if (!"layers".equals(name) || reader.peek() != JsonToken.BEGIN_ARRAY) {
-                        reader.skipValue();
-                        continue;
-                    }
-
-                    foundLayers = true;
-                    reader.beginArray();
-                    while (reader.hasNext()) {
-                        LayerMetadata layer = readLayerMetadataEntry(reader);
-                        if (layer.kind() == null || layer.plane() < 0 || layer.index() < 0) {
-                            continue;
-                        }
-                        layerIndices.put(layerKey(layer.kind(), layer.plane()), layer.index());
-                        maxPlaneSeen = Math.max(maxPlaneSeen, layer.plane());
-                    }
-                    reader.endArray();
-                }
-                reader.endObject();
-            }
-            maxPlanes = Math.max(1, maxPlaneSeen + 1);
-            return foundLayers;
-        }
-
-        private static LayerMetadata readLayerMetadataEntry(JsonReader reader) throws Exception {
-            AtlasLayerKind kind = null;
-            int plane = -1;
-            int index = -1;
-            reader.beginObject();
-            while (reader.hasNext()) {
-                String name = reader.nextName();
-                switch (name) {
-                    case "kind" -> kind = AtlasLayerKind.fromMetadataName(readStringValue(reader));
-                    case "plane" -> plane = readIntValue(reader, -1);
-                    case "index" -> index = readIntValue(reader, -1);
-                    default -> reader.skipValue();
-                }
-            }
-            reader.endObject();
-            return new LayerMetadata(kind, plane, index);
-        }
-
-        private static List<MapArea> searchMapAreas(byte[] bytes, String normalizedQuery, int limit) {
-            int maxCandidates = Math.max(limit, Math.min(500, limit * 3));
-            Map<String, MapArea> out = new LinkedHashMap<>();
-            try (JsonReader reader = new JsonReader(new InputStreamReader(
-                    new ByteArrayInputStream(bytes),
-                    StandardCharsets.UTF_8
-            ))) {
-                reader.beginObject();
-                while (reader.hasNext()) {
-                    if (Thread.currentThread().isInterrupted()) {
-                        throw new InterruptedException();
-                    }
-                    String name = reader.nextName();
-                    if (("locationLabels".equals(name) || "mapIcons".equals(name))
-                            && reader.peek() == JsonToken.BEGIN_ARRAY) {
-                        collectMapAreaMatches(reader, normalizedQuery, out, maxCandidates);
-                    } else {
-                        reader.skipValue();
-                    }
-                }
-                reader.endObject();
-            } catch (Exception ex) {
-                return List.of();
-            }
-
-            List<MapArea> sorted = new ArrayList<>(out.values());
-            sorted.sort(Comparator
-                    .comparingInt((MapArea area) -> searchScore(area, normalizedQuery))
-                    .thenComparing(MapArea::displayName, String.CASE_INSENSITIVE_ORDER)
-                    .thenComparingInt(MapArea::plane)
-                    .thenComparingInt(MapArea::worldX)
-                    .thenComparingInt(MapArea::worldY)
-                    .thenComparing(MapArea::source, String.CASE_INSENSITIVE_ORDER));
-            if (sorted.size() > limit) {
-                sorted = sorted.subList(0, limit);
-            }
-            return List.copyOf(sorted);
-        }
-
-        private static List<MapArea> parseMapAreas(byte[] bytes) {
-            Map<String, MapArea> out = new LinkedHashMap<>();
-            try (JsonReader reader = new JsonReader(new InputStreamReader(
-                    new ByteArrayInputStream(bytes),
-                    StandardCharsets.UTF_8
-            ))) {
-                reader.beginObject();
-                while (reader.hasNext()) {
-                    String name = reader.nextName();
-                    if (("locationLabels".equals(name) || "mapIcons".equals(name))
-                            && reader.peek() == JsonToken.BEGIN_ARRAY) {
-                        collectMapAreas(reader, out);
-                    } else {
-                        reader.skipValue();
-                    }
-                }
-                reader.endObject();
-            } catch (Exception ex) {
-                return List.of();
-            }
-            return List.copyOf(out.values());
-        }
-
-        private static List<MapIconArea> parseMapIconAreas(byte[] bytes) {
-            List<MapIconArea> out = new ArrayList<>();
-            try (JsonReader reader = new JsonReader(new InputStreamReader(
-                    new ByteArrayInputStream(bytes),
-                    StandardCharsets.UTF_8
-            ))) {
-                reader.beginObject();
-                while (reader.hasNext()) {
-                    String name = reader.nextName();
-                    if ("mapIcons".equals(name) && reader.peek() == JsonToken.BEGIN_ARRAY) {
-                        collectMapIconAreas(reader, out);
-                    } else {
-                        reader.skipValue();
-                    }
-                }
-                reader.endObject();
-            } catch (Exception ex) {
-                return List.of();
-            }
-            return List.copyOf(out);
-        }
-
-        private static void collectMapAreas(JsonReader reader, Map<String, MapArea> out) throws Exception {
-            reader.beginArray();
-            while (reader.hasNext()) {
-                MapArea area = readMapArea(reader);
-                if (area != null) {
-                    out.putIfAbsent(areaKey(area), area);
-                }
-            }
-            reader.endArray();
-        }
-
-        private static void collectMapIconAreas(JsonReader reader, List<MapIconArea> out) throws Exception {
-            reader.beginArray();
-            while (reader.hasNext()) {
-                MapIconArea area = readMapIconArea(reader);
-                if (area != null) {
-                    out.add(area);
-                }
-            }
-            reader.endArray();
-        }
-
-        private static void collectMapAreaMatches(JsonReader reader, String normalizedQuery,
-                                                  Map<String, MapArea> out, int maxCandidates) throws Exception {
-            reader.beginArray();
-            while (reader.hasNext()) {
-                if (Thread.currentThread().isInterrupted()) {
-                    throw new InterruptedException();
-                }
-                if (out.size() >= maxCandidates) {
-                    reader.skipValue();
-                    continue;
-                }
-
-                MapArea area = readMapArea(reader);
-                if (area == null || !normalizeForSearch(area.searchText()).contains(normalizedQuery)) {
-                    continue;
-                }
-                out.putIfAbsent(areaKey(area), area);
-            }
-            reader.endArray();
-        }
-
-        private static MapArea readMapArea(JsonReader reader) throws Exception {
-            String name = null;
-            String rawName = null;
-            String objectName = null;
-            String source = null;
-            int areaId = -1;
-            Integer worldX = null;
-            Integer worldY = null;
-            Integer plane = null;
-
-            reader.beginObject();
-            while (reader.hasNext()) {
-                String key = reader.nextName();
-                switch (key) {
-                    case "name" -> name = cleanString(readStringValue(reader));
-                    case "rawName" -> rawName = cleanString(readStringValue(reader));
-                    case "objectName" -> objectName = cleanString(readStringValue(reader));
-                    case "source" -> source = readStringValue(reader);
-                    case "areaId" -> areaId = readIntValue(reader, -1);
-                    case "worldX" -> worldX = readNullableIntValue(reader);
-                    case "worldY" -> worldY = readNullableIntValue(reader);
-                    case "plane" -> plane = readNullableIntValue(reader);
-                    default -> reader.skipValue();
-                }
-            }
-            reader.endObject();
-
-            String displayName = firstNonBlank(name, rawName, objectName);
-            if (displayName == null || worldX == null || worldY == null || plane == null) {
-                return null;
-            }
-            return new MapArea(displayName, rawName, objectName, source, areaId, worldX, worldY, plane);
-        }
-
-        private static MapIconArea readMapIconArea(JsonReader reader) throws Exception {
-            String name = null;
-            String rawName = null;
-            String objectName = null;
-            int areaId = -1;
-            int spriteId = -1;
-            Integer worldX = null;
-            Integer worldY = null;
-            Integer plane = null;
-
-            reader.beginObject();
-            while (reader.hasNext()) {
-                String key = reader.nextName();
-                switch (key) {
-                    case "name" -> name = cleanString(readStringValue(reader));
-                    case "rawName" -> rawName = cleanString(readStringValue(reader));
-                    case "objectName" -> objectName = cleanString(readStringValue(reader));
-                    case "areaId" -> areaId = readIntValue(reader, -1);
-                    case "spriteId" -> spriteId = readIntValue(reader, -1);
-                    case "worldX" -> worldX = readNullableIntValue(reader);
-                    case "worldY" -> worldY = readNullableIntValue(reader);
-                    case "plane" -> plane = readNullableIntValue(reader);
-                    default -> reader.skipValue();
-                }
-            }
-            reader.endObject();
-
-            if (worldX == null || worldY == null || plane == null) {
-                return null;
-            }
-            return new MapIconArea(firstNonBlank(name, rawName, objectName), areaId, spriteId, worldX, worldY, plane);
-        }
-
-        private static String areaKey(MapArea area) {
-            return area.displayName() + '\u0000'
-                    + area.worldX() + '\u0000'
-                    + area.worldY() + '\u0000'
-                    + area.plane() + '\u0000'
-                    + area.source() + '\u0000'
-                    + area.areaId();
-        }
-
-        private static String firstNonBlank(String... values) {
-            for (String value : values) {
-                if (value != null && !value.isBlank()) {
-                    return value;
-                }
-            }
-            return null;
-        }
-
-        private static String readStringValue(JsonReader reader) throws Exception {
-            JsonToken token = reader.peek();
-            if (token == JsonToken.NULL) {
-                reader.nextNull();
-                return null;
-            }
-            if (token == JsonToken.STRING || token == JsonToken.NUMBER || token == JsonToken.BOOLEAN) {
-                return reader.nextString();
-            }
-            reader.skipValue();
-            return null;
-        }
-
-        private static Integer readNullableIntValue(JsonReader reader) throws Exception {
-            JsonToken token = reader.peek();
-            if (token == JsonToken.NULL) {
-                reader.nextNull();
-                return null;
-            }
-            try {
-                if (token == JsonToken.NUMBER || token == JsonToken.STRING) {
-                    return Integer.parseInt(reader.nextString());
-                }
-            } catch (NumberFormatException ex) {
-                return null;
-            }
-            reader.skipValue();
-            return null;
-        }
-
-        private static int readIntValue(JsonReader reader, int fallback) throws Exception {
-            Integer value = readNullableIntValue(reader);
-            return value == null ? fallback : value;
-        }
-
-        private static int searchScore(MapArea area, String query) {
-            String name = normalizeForSearch(area.displayName());
-            if (name.equals(query)) {
-                return 0;
-            }
-            if (name.startsWith(query)) {
-                return 1;
-            }
-            for (String token : name.split("\\s+")) {
-                if (token.startsWith(query)) {
-                    return 2;
-                }
-            }
-            if (normalizeForSearch(area.searchText()).startsWith(query)) {
-                return 3;
-            }
-            return 4;
-        }
-
-        private static String normalizeForSearch(String text) {
-            if (text == null) {
-                return "";
-            }
-            return text.trim().toLowerCase(java.util.Locale.ROOT);
-        }
-
-        private record LayerMetadata(AtlasLayerKind kind, int plane, int index) {
-        }
-
-        private static String cleanString(String value) {
-            if (value == null) {
-                return null;
-            }
-            String cleaned = value.replace("<br>", " ")
-                    .replace("<br/>", " ")
-                    .replace("<br />", " ")
-                    .trim();
-            if ("null".equalsIgnoreCase(cleaned)) {
-                return null;
-            }
-            return cleaned.isEmpty() ? null : cleaned;
-        }
-
-        private void readIndex() throws Exception {
-            raf.seek(header.indexOffset);
-            long entrySize = 36L;
-            long totalEntries = (header.dataOffset - header.indexOffset) / entrySize;
-            for (long i = 0; i < totalEntries; i++) {
-                int lod = readU32();
-                int z = readU32();
-                int tx = readU32();
-                int ty = readU32();
-                int width = readU32();
-                int height = readU32();
-                long rel = readU64();
-                int length = readU32();
-                TileEntry entry = new TileEntry(lod, z, tx, ty, width, height, rel, length);
-                index.put(key(lod, z, tx, ty), entry);
-            }
-        }
-
-        private static final class AreaIndex {
-            private final List<MapArea> areas;
-            private final Map<String, List<MapArea>> byTile;
-
-            AreaIndex(List<MapArea> areas) {
-                this.areas = areas == null ? List.of() : List.copyOf(areas);
-                Map<String, List<MapArea>> grouped = new HashMap<>();
-                for (MapArea area : this.areas) {
-                    grouped.computeIfAbsent(tileKey(area.worldX(), area.worldY(), area.plane()),
-                            ignored -> new ArrayList<>()).add(area);
-                }
-                Map<String, List<MapArea>> immutable = new HashMap<>();
-                for (Map.Entry<String, List<MapArea>> entry : grouped.entrySet()) {
-                    immutable.put(entry.getKey(), List.copyOf(entry.getValue()));
-                }
-                byTile = Map.copyOf(immutable);
-            }
-
-            List<MapArea> areasAt(Tile tile) {
-                if (tile == null) {
-                    return List.of();
-                }
-                return byTile.getOrDefault(tileKey(tile.x, tile.y, tile.z), List.of());
-            }
-
-            MapArea nearest(Tile tile, int maxDistanceTiles) {
-                if (tile == null || maxDistanceTiles < 0) {
-                    return null;
-                }
-                List<MapArea> exact = areasAt(tile);
-                if (!exact.isEmpty()) {
-                    return exact.get(0);
-                }
-                long maxDistanceSq = (long) maxDistanceTiles * maxDistanceTiles;
-                MapArea best = null;
-                long bestDistanceSq = Long.MAX_VALUE;
-                for (MapArea area : areas) {
-                    if (area.plane() != tile.z) {
-                        continue;
-                    }
-                    long dx = (long) area.worldX() - tile.x;
-                    long dy = (long) area.worldY() - tile.y;
-                    long distanceSq = dx * dx + dy * dy;
-                    if (distanceSq > maxDistanceSq || distanceSq > bestDistanceSq) {
-                        continue;
-                    }
-                    if (distanceSq == bestDistanceSq && best != null
-                            && area.displayName().compareToIgnoreCase(best.displayName()) >= 0) {
-                        continue;
-                    }
-                    best = area;
-                    bestDistanceSq = distanceSq;
-                }
-                return best;
-            }
-
-            private static String tileKey(int x, int y, int z) {
-                return x + ":" + y + ":" + z;
-            }
-        }
-
-        private static final class IconIndex {
-            private final Map<String, List<MapIconArea>> byTile;
-
-            IconIndex(List<MapIconArea> areas) {
-                Map<String, List<MapIconArea>> grouped = new HashMap<>();
-                if (areas != null) {
-                    for (MapIconArea area : areas) {
-                        grouped.computeIfAbsent(tileKey(area.worldX, area.worldY, area.plane),
-                                ignored -> new ArrayList<>()).add(area);
-                    }
-                }
-                Map<String, List<MapIconArea>> immutable = new HashMap<>();
-                for (Map.Entry<String, List<MapIconArea>> entry : grouped.entrySet()) {
-                    immutable.put(entry.getKey(), List.copyOf(entry.getValue()));
-                }
-                byTile = Map.copyOf(immutable);
-            }
-
-            List<MapIconArea> nearest(Tile tile, int maxDistanceTiles) {
-                if (tile == null || maxDistanceTiles < 0 || byTile.isEmpty()) {
-                    return List.of();
-                }
-
-                long bestDistanceSq = Long.MAX_VALUE;
-                List<MapIconArea> best = new ArrayList<>();
-                for (int dy = -maxDistanceTiles; dy <= maxDistanceTiles; dy++) {
-                    for (int dx = -maxDistanceTiles; dx <= maxDistanceTiles; dx++) {
-                        long distanceSq = (long) dx * dx + (long) dy * dy;
-                        if (distanceSq > (long) maxDistanceTiles * maxDistanceTiles || distanceSq > bestDistanceSq) {
-                            continue;
-                        }
-                        List<MapIconArea> areas = byTile.get(tileKey(tile.x + dx, tile.y + dy, tile.z));
-                        if (areas == null || areas.isEmpty()) {
-                            continue;
-                        }
-                        if (distanceSq < bestDistanceSq) {
-                            bestDistanceSq = distanceSq;
-                            best.clear();
-                        }
-                        best.addAll(areas);
-                    }
-                }
-                return best.isEmpty() ? List.of() : List.copyOf(best);
-            }
-
-            private static String tileKey(int x, int y, int z) {
-                return x + ":" + y + ":" + z;
-            }
-        }
-
-        private static String key(int lod, int z, int tx, int ty) {
-            return lod + ":" + z + ":" + tx + ":" + ty;
-        }
-
-        private static String layerKey(AtlasLayerKind kind, int plane) {
-            return kind.metadataName + ":" + plane;
-        }
-
-        private int readU32() throws Exception {
-            byte[] bytes = new byte[4];
-            raf.readFully(bytes);
-            return ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).getInt();
-        }
-
-        private long readU64() throws Exception {
-            byte[] bytes = new byte[8];
-            raf.readFully(bytes);
-            return ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).getLong();
-        }
-
-        int maxPlanes() {
-            return maxPlanes;
-        }
-
-        int layerIndex(AtlasLayerKind kind, int plane) {
-            if (kind == null || plane < 0) {
-                return -1;
-            }
-            return layerIndices.getOrDefault(layerKey(kind, plane), -1);
-        }
-
-        TileEntry getEntry(int lod, int layer, int tx, int ty) {
-            return index.get(key(lod, layer, tx, ty));
-        }
-
-        BufferedImage readTileImage(int lod, int layer, int tx, int ty) throws Exception {
-            TileEntry entry = getEntry(lod, layer, tx, ty);
-            if (entry == null) {
-                return null;
-            }
-
-            byte[] buf = new byte[entry.length];
-            ByteBuffer bb = ByteBuffer.wrap(buf);
-            long position = dataOffsetAbs + entry.relOffset;
-            int read = 0;
-            while (read < entry.length) {
-                int n = channel.read(bb, position + read);
-                if (n < 0) {
-                    throw new EOFException("Unexpected EOF reading tile");
-                }
-                read += n;
-            }
-
-            try (ByteArrayInputStream bais = new ByteArrayInputStream(buf)) {
-                return ImageIO.read(bais);
-            }
-        }
-
-        @Override
-        public void close() throws Exception {
-            try {
-                channel.close();
-            } finally {
-                raf.close();
-            }
-        }
-    }
 }
