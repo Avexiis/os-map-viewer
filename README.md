@@ -267,8 +267,9 @@ Saved settings include:
 - Map memory budget.
 - Plugin settings.
 
-## Notes For Plugin Developers
+## Notes For Developers
 
+### Plugins
 The plugin API document is at:
 
 ```text
@@ -297,7 +298,7 @@ The experimental map printer uses a shaded RuneLite cache JAR that is bundled wi
 
 This file is not published by RuneLite, however it is simply their Cache module with dependencies included.
 
-How to generate a shaded RuneLite cache module .jar file without modifying RuneLite's Gradle settings:
+How to generate a shaded RuneLite cache module .jar file without modifying RuneLite's Gradle settings and use it for OS Map Viewer:
 
 1. In this repository, open the excluded `RuneLite Cache Shadow Script` folder and copy `runelite-cache-shadow.gradle.kts`.
 2. In your home folder, open `.gradle/init.d` and paste the script there. Create the `init.d` folder if it does not exist. On Windows this is under `C:\Users\<you>\.gradle\init.d`.
