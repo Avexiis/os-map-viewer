@@ -88,8 +88,11 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
-Shortest Path does not list a year or author in their license, however it is otherwise identical to the above BSD 2-Clause license.
-- It was released by GitHub user **Runemoro** in 2020: https://github.com/Runemoro/shortest-path
-- Its current version is maintained by GitHub user **Skretzo**: https://github.com/Skretzo/shortest-path
+RuneLite's license has been copied into `com.xeon.atlas.MapAtlasPrinter` including the copyright line. This is the only file that uses RuneLite code at this time.
+- RuneLite is available at https://runelite.net/ and https://github.com/runelite/runelite/
 
+Shortest Path does not list a year or author in their license, a generic license with no year or author has been inserted into the files ported over from it.
+- Shortest Path was released by GitHub user **Runemoro** in 2020: https://github.com/Runemoro/shortest-path
+- Its current version is maintained by GitHub user **Skretzo**: https://github.com/Skretzo/shortest-path
+##
 #### This project was developed on Linux!
