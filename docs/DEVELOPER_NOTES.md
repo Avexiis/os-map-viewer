@@ -1,5 +1,13 @@
 # Notes For Developers
 
+## Code Convention
+
+This repository uses the same code convention as RuneLite expects for their core and plugin development.
+
+More information on this can be found at https://github.com/runelite/runelite/wiki/Code-Conventions.
+
+You should also attach a header with the BSD 2-Clause license and your copyright information in each file, just like RuneLite expects.
+
 ## Plugins
 
 The plugin API document is at [PLUGIN_API.md](PLUGIN_API.md)

@@ -9,123 +9,135 @@ import java.awt.Rectangle;
 import java.util.List;
 import java.util.function.IntConsumer;
 
-public interface MapView {
-    void addLayer(MapLayer layer);
+public interface MapView
+{
+	void addLayer(MapLayer layer);
 
-    void removeLayer(MapLayer layer);
+	void removeLayer(MapLayer layer);
 
-    void setActiveTool(MapTool activeTool);
+	void setActiveTool(MapTool activeTool);
 
-    void clearActiveTool(MapTool tool);
+	void clearActiveTool(MapTool tool);
 
-    void addPlaneChangeListener(IntConsumer listener);
+	void addPlaneChangeListener(IntConsumer listener);
 
-    void removePlaneChangeListener(IntConsumer listener);
+	void removePlaneChangeListener(IntConsumer listener);
 
-    void addVisibleAreaChangeListener(Runnable listener);
+	void addVisibleAreaChangeListener(Runnable listener);
 
-    void removeVisibleAreaChangeListener(Runnable listener);
+	void removeVisibleAreaChangeListener(Runnable listener);
 
-    void setShowGrid(boolean value);
+	void setShowGrid(boolean value);
 
-    void setShowRegionIds(boolean value);
+	void setShowRegionIds(boolean value);
 
-    void setMapLocked(boolean value);
+	void setMapLocked(boolean value);
 
-    boolean isMapLocked();
+	boolean isMapLocked();
 
-    Color getMapBackgroundColor();
+	Color getMapBackgroundColor();
 
-    void setMapBackgroundColor(Color color);
+	void setMapBackgroundColor(Color color);
 
-    void setPlane(int z);
+	void setPlane(int z);
 
-    int getPlane();
+	int getPlane();
 
-    int getPlaneCount();
+	int getPlaneCount();
 
-    double getZoom();
+	double getZoom();
 
-    double getEffectiveZoom();
+	double getEffectiveZoom();
 
-    Tile getHoverTile();
+	Tile getHoverTile();
 
-    int getHoverRegionId();
+	int getHoverRegionId();
 
-    default int getHoveredRegionId() {
-        return getHoverRegionId();
-    }
+	default int getHoveredRegionId()
+	{
+		return getHoverRegionId();
+	}
 
-    default void addHoveredRegionChangeListener(RegionChangeListener listener) {
-    }
+	default void addHoveredRegionChangeListener(RegionChangeListener listener)
+	{
+	}
 
-    default void removeHoveredRegionChangeListener(RegionChangeListener listener) {
-    }
+	default void removeHoveredRegionChangeListener(RegionChangeListener listener)
+	{
+	}
 
-    default int getSelectedRegionId() {
-        return -1;
-    }
+	default int getSelectedRegionId()
+	{
+		return -1;
+	}
 
-    default void setSelectedRegionId(int regionId) {
-    }
+	default void setSelectedRegionId(int regionId)
+	{
+	}
 
-    default void clearSelectedRegionId() {
-        setSelectedRegionId(-1);
-    }
+	default void clearSelectedRegionId()
+	{
+		setSelectedRegionId(-1);
+	}
 
-    default void addSelectedRegionChangeListener(RegionChangeListener listener) {
-    }
+	default void addSelectedRegionChangeListener(RegionChangeListener listener)
+	{
+	}
 
-    default void removeSelectedRegionChangeListener(RegionChangeListener listener) {
-    }
+	default void removeSelectedRegionChangeListener(RegionChangeListener listener)
+	{
+	}
 
-    boolean isRegionSelectionActive();
+	boolean isRegionSelectionActive();
 
-    int getTotalWidthTiles();
+	int getTotalWidthTiles();
 
-    int getTotalHeightTiles();
+	int getTotalHeightTiles();
 
-    void focusTile(Tile tile, Double targetZoom);
+	void focusTile(Tile tile, Double targetZoom);
 
-    void focusRegion(int regionId, int plane, Double targetZoom);
+	void focusRegion(int regionId, int plane, Double targetZoom);
 
-    List<MapArea> searchMapAreas(String query, int limit);
+	List<MapArea> searchMapAreas(String query, int limit);
 
-    List<MapArea> mapAreasAt(Tile tile);
+	List<MapArea> mapAreasAt(Tile tile);
 
-    MapArea nearestMapArea(Tile tile, int maxDistanceTiles);
+	MapArea nearestMapArea(Tile tile, int maxDistanceTiles);
 
-    Tile getCenterTile();
+	Tile getCenterTile();
 
-    int getCenterRegionId();
+	int getCenterRegionId();
 
-    default Rectangle visibleViewRect() {
-        return new Rectangle();
-    }
+	default Rectangle visibleViewRect()
+	{
+		return new Rectangle();
+	}
 
-    Tile pointToTile(Point point);
+	Tile pointToTile(Point point);
 
-    int regionIdFor(Tile tile);
+	int regionIdFor(Tile tile);
 
-    Rectangle tileToRect(Tile tile);
+	Rectangle tileToRect(Tile tile);
 
-    Rectangle regionToRect(int regionId);
+	Rectangle regionToRect(int regionId);
 
-    default Rectangle regionTileBounds(int regionId) {
-        return new Rectangle();
-    }
+	default Rectangle regionTileBounds(int regionId)
+	{
+		return new Rectangle();
+	}
 
-    default Rectangle tileBounds(Rectangle mapRect) {
-        return new Rectangle();
-    }
+	default Rectangle tileBounds(Rectangle mapRect)
+	{
+		return new Rectangle();
+	}
 
-    List<Integer> visibleRegionIds(Rectangle visibleMap);
+	List<Integer> visibleRegionIds(Rectangle visibleMap);
 
-    List<Integer> currentVisibleRegionIds();
+	List<Integer> currentVisibleRegionIds();
 
-    void repaintVisible();
+	void repaintVisible();
 
-    void repaintTile(Tile tile);
+	void repaintTile(Tile tile);
 
-    void repaintRegion(int regionId);
+	void repaintRegion(int regionId);
 }

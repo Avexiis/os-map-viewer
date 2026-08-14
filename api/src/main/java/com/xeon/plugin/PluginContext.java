@@ -7,20 +7,22 @@ import com.xeon.view.MapView;
 import javax.swing.*;
 import java.awt.*;
 
-public interface PluginContext {
-    JFrame frame();
+public interface PluginContext
+{
+	JFrame frame();
 
-    MapView mapPanel();
+	MapView mapPanel();
 
-    void setStatus(String message);
+	void setStatus(String message);
 
-    void promptLoadPluginJar();
+	void promptLoadPluginJar();
 
-    ConfigManager configManager();
+	ConfigManager configManager();
 
-    PluginConfig config();
+	PluginConfig config();
 
-    default Window owner() {
-        return frame();
-    }
+	default Window owner()
+	{
+		return frame();
+	}
 }
