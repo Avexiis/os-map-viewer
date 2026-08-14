@@ -275,11 +275,7 @@ The plugin API document is at:
 docs/PLUGIN_API.md
 ```
 
-Build the API JAR with:
-
-```bash
-./gradlew buildPluginApi
-```
+Build the API JAR by running the Gradle task `buildPluginApi` from your IDE or Gradle tool window.
 
 The API lets plugins do things like:
 
@@ -297,11 +293,19 @@ Plugins are loaded from JAR files with Java `ServiceLoader`. See `docs/PLUGIN_AP
 
 The experimental map printer uses a shaded RuneLite cache JAR that is bundled with this repository:
 
-```text
-lib/runelite-cache/cache-<version>-SNAPSHOT-shaded.jar
-```
+`lib/runelite-cache/cache-<version>-SNAPSHOT-shaded.jar`
 
-This file is not published by RuneLite and was created in a local fork of the RuneLite repository. It is simply the RuneLite Cache .JAR file, but with its dependencies included. You can accomplish this by adding a shadowJar task to the cache module in a local fork of RuneLite.
+Developer note:
+
+1. In this repository, open the excluded `RuneLite Cache Shadow Script` folder and copy `runelite-cache-shadow.gradle.kts`.
+2. In your home folder, open `.gradle/init.d` and paste the script there. Create the `init.d` folder if it does not exist. On Windows this is under `C:\Users\<you>\.gradle\init.d`.
+3. Open the RuneLite cache module in your IDE and run the Gradle tasks `shadowJar` and `publishToMavenLocal`.
+4. After the Gradle tasks finish, open your home folder and browse to `.m2/repository/net/runelite/cache/<version>-SNAPSHOT/`.
+5. Copy `cache-<version>-SNAPSHOT-shaded.jar` from that folder.
+6. In this repository, open `lib/runelite-cache`, remove the old shaded cache JAR, and paste the new one.
+7. Open the root `build.gradle.kts` and update `runeliteCacheVersion` to the same version number, without `-SNAPSHOT`.
+8. Rebuild OS Map Viewer from your IDE or Gradle tool window to verify the updated bundled JAR.
+- The inclusion of this script is purely an open-source measure. OS Map Viewer will bump the cache module version as game updates roll out.
 
 ## Third-Party Attributions
 
