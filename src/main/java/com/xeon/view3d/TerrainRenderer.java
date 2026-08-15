@@ -41,6 +41,7 @@ final class TerrainRenderer
 		layout(location = 1) in vec3 aNormal;
 		layout(location = 2) in vec3 aColor;
 		layout(location = 3) in float aAlpha;
+		layout(location = 4) in float aDepthBias;
 
 		uniform mat4 uMvp;
 		uniform vec3 uCameraPosition;
@@ -58,6 +59,7 @@ final class TerrainRenderer
 			vAlpha = aAlpha;
 			vDistance = distance(aPosition, uCameraPosition);
 			gl_Position = uMvp * worldPosition;
+			gl_Position.z += aDepthBias / 128.0;
 		}
 		""";
 	private static final String TERRAIN_FRAGMENT_SHADER = """
@@ -111,6 +113,7 @@ final class TerrainRenderer
 	private static final int NORMAL_FLOATS = 3;
 	private static final int COLOR_FLOATS = 3;
 	private static final int ALPHA_FLOATS = 1;
+	private static final int DEPTH_BIAS_FLOATS = 1;
 	private static final int OUTLINE_VERTICES = 8;
 	private static final float OUTLINE_HEIGHT_OFFSET = SceneScale.SCENE_TO_WORLD * 1.5f;
 
@@ -359,6 +362,15 @@ final class TerrainRenderer
 			false,
 			stride,
 			(POSITION_FLOATS + NORMAL_FLOATS + COLOR_FLOATS) * Float.BYTES
+		);
+		GL33C.glEnableVertexAttribArray(4);
+		GL33C.glVertexAttribPointer(
+			4,
+			DEPTH_BIAS_FLOATS,
+			GL33C.GL_FLOAT,
+			false,
+			stride,
+			(POSITION_FLOATS + NORMAL_FLOATS + COLOR_FLOATS + ALPHA_FLOATS) * Float.BYTES
 		);
 		GL33C.glBindVertexArray(0);
 		vertexCount = mesh.vertexCount();

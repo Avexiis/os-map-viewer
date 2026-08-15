@@ -25,8 +25,6 @@
  */
 package com.xeon.view3d;
 
-import java.util.ArrayList;
-import java.util.List;
 import net.runelite.cache.ObjectManager;
 import net.runelite.cache.definitions.ModelDefinition;
 import net.runelite.cache.definitions.ObjectDefinition;
@@ -50,6 +48,7 @@ final class ObjectMeshBuilder
 	private static final int QUARTER_TURN = 512;
 	private static final int HALF_DIAGONAL_TURN = 256;
 	private static final int DEFAULT_RGB = 0x8A8170;
+	private static final int SPECIAL_FACE_RGB = 0x808080;
 	private static final float MIN_VISIBLE_ALPHA = 1.0f / 255.0f;
 
 	private ObjectMeshBuilder()
@@ -60,53 +59,67 @@ final class ObjectMeshBuilder
 		SceneMeshBuffer data,
 		Region region,
 		int plane,
-		TerrainHeightMap heightMap,
+		boolean allPlanes,
+		TerrainHeightMap[] heightMaps,
 		ObjectManager objectManager,
 		ObjectModelProvider modelProvider,
 		RSTextureProvider textureProvider
 	)
 	{
-		for (Location location : visibleLocations(region, plane))
+		for (Location location : region.getLocations())
 		{
-			ObjectDefinition definition = objectManager.getObject(location.getId());
-			if (definition == null || definition.getObjectModels() == null)
+			Position position = location.getPosition();
+			int sourcePlane = position.getZ();
+			if (sourcePlane < 0 || sourcePlane >= Region.Z)
 			{
 				continue;
 			}
 
-			int localX = location.getPosition().getX() - region.getBaseX();
-			int localY = location.getPosition().getY() - region.getBaseY();
-			appendLocation(data, heightMap, modelProvider, textureProvider, definition, localX, localY, location);
-		}
-	}
-
-	private static List<Location> visibleLocations(Region region, int plane)
-	{
-		List<Location> out = new ArrayList<>();
-		for (Location location : region.getLocations())
-		{
-			Position position = location.getPosition();
 			int localX = position.getX() - region.getBaseX();
 			int localY = position.getY() - region.getBaseY();
 			if (localX < 0 || localY < 0 || localX >= Region.X || localY >= Region.Y)
 			{
 				continue;
 			}
-
-			boolean bridge = (region.getTileSetting(1, localX, localY) & 2) != 0;
-			int tilePlane = plane + (bridge ? 1 : 0);
-			if (position.getZ() == tilePlane && (region.getTileSetting(plane, localX, localY) & 24) == 0)
+			if (!isVisible(region, plane, allPlanes, sourcePlane, localX, localY))
 			{
-				out.add(location);
+				continue;
 			}
-			else if (plane < Region.Z - 1
-				&& position.getZ() == tilePlane + 1
-				&& (region.getTileSetting(plane + 1, localX, localY) & 8) != 0)
+
+			ObjectDefinition definition = objectManager.getObject(location.getId());
+			if (definition == null || definition.getObjectModels() == null)
 			{
-				out.add(location);
+				continue;
+			}
+
+			appendLocation(
+				data,
+				heightMaps[sourcePlane],
+				modelProvider,
+				textureProvider,
+				definition,
+				localX,
+				localY,
+				location
+			);
+		}
+	}
+
+	private static boolean isVisible(Region region, int plane, boolean allPlanes, int sourcePlane, int localX, int localY)
+	{
+		if (!allPlanes)
+		{
+			return SceneTileFlags.visibleOnDisplayPlane(region, plane, sourcePlane, localX, localY);
+		}
+
+		for (int displayPlane = 0; displayPlane < Region.Z; displayPlane++)
+		{
+			if (SceneTileFlags.visibleOnDisplayPlane(region, displayPlane, sourcePlane, localX, localY))
+			{
+				return true;
 			}
 		}
-		return out;
+		return false;
 	}
 
 	private static void appendLocation(
@@ -252,7 +265,7 @@ final class ObjectMeshBuilder
 			{
 				continue;
 			}
-			appendModel(data, textureProvider, definition, model, orientation, placement);
+			appendModel(data, textureProvider, definition, model, modelType, orientation, placement);
 		}
 	}
 
@@ -300,11 +313,12 @@ final class ObjectMeshBuilder
 		RSTextureProvider textureProvider,
 		ObjectDefinition definition,
 		ModelDefinition model,
+		int modelType,
 		int orientation,
 		Placement placement
 	)
 	{
-		TransformedModel transformed = transform(definition, model, orientation, placement);
+		TransformedModel transformed = transform(definition, model, modelType, orientation, placement);
 		for (int face = 0; face < model.faceCount; face++)
 		{
 			float alpha = faceAlpha(model, face);
@@ -328,20 +342,22 @@ final class ObjectMeshBuilder
 			Vertex vb = transformed.vertex(b);
 			Vertex vc = transformed.vertex(c);
 			Normal normal = faceNormal(va, vb, vc);
-			data.addVertex(va.x(), va.y(), va.z(), normal.x(), normal.y(), normal.z(), rgb, alpha);
-			data.addVertex(vb.x(), vb.y(), vb.z(), normal.x(), normal.y(), normal.z(), rgb, alpha);
-			data.addVertex(vc.x(), vc.y(), vc.z(), normal.x(), normal.y(), normal.z(), rgb, alpha);
+			float depthBias = faceDepthBias(model, face);
+			data.addVertex(va.x(), va.y(), va.z(), normal.x(), normal.y(), normal.z(), rgb, alpha, depthBias);
+			data.addVertex(vb.x(), vb.y(), vb.z(), normal.x(), normal.y(), normal.z(), rgb, alpha, depthBias);
+			data.addVertex(vc.x(), vc.y(), vc.z(), normal.x(), normal.y(), normal.z(), rgb, alpha, depthBias);
 		}
 	}
 
 	private static TransformedModel transform(
 		ObjectDefinition definition,
 		ModelDefinition model,
+		int modelType,
 		int orientation,
 		Placement placement
 	)
 	{
-		boolean inverted = definition.isRotated() ^ orientation > 3;
+		boolean inverted = definition.isRotated() || modelType == TYPE_WALL_CORNER && orientation > 3;
 		int rotation = orientation & 3;
 		Vertex[] vertices = new Vertex[model.vertexCount];
 		for (int i = 0; i < model.vertexCount; i++)
@@ -404,6 +420,10 @@ final class ObjectMeshBuilder
 
 	private static boolean isHidden(ModelDefinition model, int face)
 	{
+		if (faceRenderType(model, face) == 2)
+		{
+			return true;
+		}
 		return model.faceColors != null && face < model.faceColors.length && model.faceColors[face] == -2;
 	}
 
@@ -413,8 +433,44 @@ final class ObjectMeshBuilder
 		{
 			return 1.0f;
 		}
+		byte rawTransparency = model.faceTransparencies[face];
+		if (rawTransparency == -1 || rawTransparency == -2)
+		{
+			return 1.0f;
+		}
 		int transparency = model.faceTransparencies[face] & 0xFF;
 		return Math.max(0.0f, Math.min(1.0f, (255.0f - transparency) / 255.0f));
+	}
+
+	private static int faceRenderType(ModelDefinition model, int face)
+	{
+		int type = model.faceRenderTypes == null || face >= model.faceRenderTypes.length
+			? 0
+			: model.faceRenderTypes[face] & 0xFF;
+		if (model.faceTransparencies == null || face >= model.faceTransparencies.length)
+		{
+			return type;
+		}
+
+		byte alpha = model.faceTransparencies[face];
+		if (alpha == -2)
+		{
+			return 3;
+		}
+		if (alpha == -1)
+		{
+			return 2;
+		}
+		return type;
+	}
+
+	private static float faceDepthBias(ModelDefinition model, int face)
+	{
+		if (model.faceZOffsets == null || face >= model.faceZOffsets.length)
+		{
+			return 0.0f;
+		}
+		return model.faceZOffsets[face] & 0xFF;
 	}
 
 	private static int faceRgb(
@@ -424,6 +480,11 @@ final class ObjectMeshBuilder
 		int face
 	)
 	{
+		if (faceRenderType(model, face) == 3)
+		{
+			return SPECIAL_FACE_RGB;
+		}
+
 		short texture = faceTexture(model, definition, face);
 		if (texture >= 0 && textureProvider != null)
 		{
@@ -452,6 +513,10 @@ final class ObjectMeshBuilder
 		}
 
 		short hsl = faceColor(model.faceColors[face], definition);
+		if (hsl == -2)
+		{
+			return DEFAULT_RGB;
+		}
 		return JagexColor.HSLtoRGB(hsl, JagexColor.BRIGHTNESS_MIN);
 	}
 

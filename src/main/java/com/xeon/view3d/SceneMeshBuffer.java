@@ -44,6 +44,21 @@ final class SceneMeshBuffer
 
 	void addVertex(float x, float y, float z, float normalX, float normalY, float normalZ, int rgb, float alpha)
 	{
+		addVertex(x, y, z, normalX, normalY, normalZ, rgb, alpha, 0.0f);
+	}
+
+	void addVertex(
+		float x,
+		float y,
+		float z,
+		float normalX,
+		float normalY,
+		float normalZ,
+		int rgb,
+		float alpha,
+		float depthBias
+	)
+	{
 		add(x);
 		add(y);
 		add(z);
@@ -54,6 +69,7 @@ final class SceneMeshBuffer
 		add(((rgb >> 8) & 0xFF) / 255.0f);
 		add((rgb & 0xFF) / 255.0f);
 		add(alpha);
+		add(depthBias);
 	}
 
 	int size()

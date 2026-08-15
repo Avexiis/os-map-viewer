@@ -60,39 +60,45 @@ final class TerrainMeshBuilder
 		);
 		int[] sceneHeights = sceneHeights(region);
 		boolean[] renderableTiles = new boolean[Region.Z * Region.X * Region.Y];
+		boolean[] renderedTiles = new boolean[Region.Z * Region.X * Region.Y];
+		TerrainColorizer[] colorizers = new TerrainColorizer[Region.Z];
+		TerrainHeightMap[] heightMaps = new TerrainHeightMap[Region.Z];
+		TerrainLightMap[] lightMaps = new TerrainLightMap[Region.Z];
 		float maxHeight = Float.NEGATIVE_INFINITY;
+
+		for (int sourcePlane = 0; sourcePlane < Region.Z; sourcePlane++)
+		{
+			colorizers[sourcePlane] = new TerrainColorizer(region, underlays, overlays, textureProvider, sourcePlane);
+			heightMaps[sourcePlane] = new TerrainHeightMap(region, sourcePlane);
+			lightMaps[sourcePlane] = new TerrainLightMap(heightMaps[sourcePlane]);
+		}
 
 		for (int buildPlane = startPlane; buildPlane <= endPlane; buildPlane++)
 		{
-			TerrainColorizer colorizer = new TerrainColorizer(region, underlays, overlays, textureProvider, buildPlane);
-			TerrainHeightMap heightMap = new TerrainHeightMap(region, buildPlane);
-			TerrainLightMap lightMap = new TerrainLightMap(heightMap);
-			for (int x = 0; x < Region.X; x++)
-			{
-				for (int y = 0; y < Region.Y; y++)
-				{
-					TerrainTilePaint paint = colorizer.paintFor(x, y);
-					if (paint == null || (!paint.hasUnderlay() && !paint.hasOverlay()))
-					{
-						continue;
-					}
-
-					renderableTiles[tileIndex(buildPlane, x, y)] = true;
-					maxHeight = Math.max(maxHeight, maxCornerHeight(heightMap, x, y));
-					if (!paint.hasOverlay())
-					{
-						putTileQuad(data, heightMap, x, y, colorizer.underlayColorFor(paint), lightMap);
-					}
-					else
-					{
-						putOverlayTile(data, heightMap, x, y, paint, colorizer, lightMap);
-					}
-				}
-			}
-			if (objectManager != null && modelProvider != null)
-			{
-				ObjectMeshBuilder.append(data, region, buildPlane, heightMap, objectManager, modelProvider, textureProvider);
-			}
+			maxHeight = putDisplayPlane(
+				data,
+				region,
+				buildPlane,
+				colorizers,
+				heightMaps,
+				lightMaps,
+				renderableTiles,
+				renderedTiles,
+				maxHeight
+			);
+		}
+		if (objectManager != null && modelProvider != null)
+		{
+			ObjectMeshBuilder.append(
+				data,
+				region,
+				plane,
+				allPlanes,
+				heightMaps,
+				objectManager,
+				modelProvider,
+				textureProvider
+			);
 		}
 
 		return new TerrainMesh(
@@ -109,6 +115,122 @@ final class TerrainMeshBuilder
 			Math.max(16.0f, maxHeight + 18.0f),
 			-76.0f
 		);
+	}
+
+	private static float putDisplayPlane(
+		SceneMeshBuffer data,
+		Region region,
+		int displayPlane,
+		TerrainColorizer[] colorizers,
+		TerrainHeightMap[] heightMaps,
+		TerrainLightMap[] lightMaps,
+		boolean[] renderableTiles,
+		boolean[] renderedTiles,
+		float maxHeight
+	)
+	{
+		for (int x = 0; x < Region.X; x++)
+		{
+			for (int y = 0; y < Region.Y; y++)
+			{
+				int visualPlane = SceneTileFlags.visualPlane(region, displayPlane, x, y);
+				if (visualPlane >= Region.Z)
+				{
+					continue;
+				}
+				if (SceneTileFlags.canRenderBaseLayer(region, displayPlane, x, y))
+				{
+					if (displayPlane == 0 && visualPlane != displayPlane)
+					{
+						maxHeight = putSourceTile(
+							data,
+							colorizers,
+							heightMaps,
+							lightMaps,
+							renderableTiles,
+							renderedTiles,
+							displayPlane,
+							x,
+							y,
+							maxHeight
+						);
+					}
+					maxHeight = putSourceTile(
+						data,
+						colorizers,
+						heightMaps,
+						lightMaps,
+						renderableTiles,
+						renderedTiles,
+						visualPlane,
+						x,
+						y,
+						maxHeight
+					);
+				}
+
+				int lowerSourcePlane = visualPlane + 1;
+				if (lowerSourcePlane < Region.Z
+					&& SceneTileFlags.renderOnLowerPlane(region, lowerSourcePlane, x, y))
+				{
+					maxHeight = putSourceTile(
+						data,
+						colorizers,
+						heightMaps,
+						lightMaps,
+						renderableTiles,
+						renderedTiles,
+						lowerSourcePlane,
+						x,
+						y,
+						maxHeight
+					);
+				}
+			}
+		}
+		return maxHeight;
+	}
+
+	private static float putSourceTile(
+		SceneMeshBuffer data,
+		TerrainColorizer[] colorizers,
+		TerrainHeightMap[] heightMaps,
+		TerrainLightMap[] lightMaps,
+		boolean[] renderableTiles,
+		boolean[] renderedTiles,
+		int sourcePlane,
+		int x,
+		int y,
+		float maxHeight
+	)
+	{
+		int index = tileIndex(sourcePlane, x, y);
+		if (renderedTiles[index])
+		{
+			return maxHeight;
+		}
+
+		TerrainColorizer colorizer = colorizers[sourcePlane];
+		TerrainTilePaint paint = colorizer.paintFor(x, y);
+		if (paint == null || (!paint.hasUnderlay() && !paint.hasOverlay()))
+		{
+			return maxHeight;
+		}
+
+		TerrainHeightMap heightMap = heightMaps[sourcePlane];
+		TerrainLightMap lightMap = lightMaps[sourcePlane];
+		renderedTiles[index] = true;
+		renderableTiles[index] = true;
+		maxHeight = Math.max(maxHeight, maxCornerHeight(heightMap, x, y));
+		if (!paint.hasOverlay())
+		{
+			putTileQuad(data, heightMap, x, y, colorizer.underlayColorFor(paint), lightMap);
+		}
+		else
+		{
+			putOverlayTile(data, heightMap, x, y, paint, colorizer, lightMap);
+		}
+		return maxHeight;
 	}
 
 	private static void putTileQuad(

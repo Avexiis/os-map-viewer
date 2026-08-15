@@ -31,7 +31,7 @@ import org.joml.Vector3fc;
 
 public final class TerrainMesh
 {
-	public static final int FLOATS_PER_VERTEX = 10;
+	public static final int FLOATS_PER_VERTEX = 11;
 	private static final float PICK_STEP = 0.25f;
 	private static final float PICK_EPSILON = 0.08f;
 	private static final int HEIGHTS_PER_PLANE = Region.X * Region.Y;
@@ -135,11 +135,9 @@ public final class TerrainMesh
 				continue;
 			}
 
-			int startPlane = allPlanes ? 0 : plane;
-			int endPlane = allPlanes ? Region.Z - 1 : plane;
 			int tileX = clamp((int) Math.floor(localX), 0, Region.X - 1);
 			int tileY = clamp((int) Math.floor(localY), 0, Region.Y - 1);
-			for (int samplePlane = endPlane; samplePlane >= startPlane; samplePlane--)
+			for (int samplePlane = Region.Z - 1; samplePlane >= 0; samplePlane--)
 			{
 				if (!isRenderableTile(samplePlane, tileX, tileY))
 				{
