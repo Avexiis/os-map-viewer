@@ -1114,7 +1114,7 @@ public class MapViewerController
 		{
 			dialog.dispose();
 		}
-		enter3DViewer(cacheDirectory, regionId, mapPanel == null ? settings.lastPlane() : mapPanel.getPlane());
+		enter3DViewer(cacheDirectory, regionId);
 	}
 
 	private boolean confirmMapPrintNotice(Window owner)
@@ -1137,7 +1137,7 @@ public class MapViewerController
 		return value instanceof Integer answer && answer == JOptionPane.YES_OPTION;
 	}
 
-	private void enter3DViewer(Path cacheDirectory, int regionId, int plane)
+	private void enter3DViewer(Path cacheDirectory, int regionId)
 	{
 		if (is3DViewerActive())
 		{
@@ -1147,7 +1147,7 @@ public class MapViewerController
 		clearWorkspaceFor3D();
 		mapScrollHorizontalPolicy = mapScrollPane.getHorizontalScrollBarPolicy();
 		mapScrollVerticalPolicy = mapScrollPane.getVerticalScrollBarPolicy();
-		map3DPanel = new Map3DPanel(cacheDirectory, regionId, plane, this::exit3DViewer);
+		map3DPanel = new Map3DPanel(cacheDirectory, regionId, this::exit3DViewer);
 		mapScrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
 		mapScrollPane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER);
 		mapScrollPane.setViewportView(map3DPanel);

@@ -48,6 +48,11 @@ final class SceneTileFlags
 		return (tileSetting(region, displayPlane, x, y) & HIDDEN_RENDER_FLAGS) == 0;
 	}
 
+	static boolean canRenderSourceLayer(Region region, int sourcePlane, int x, int y)
+	{
+		return (tileSetting(region, sourcePlane, x, y) & DISABLE_RENDERING) == 0;
+	}
+
 	static boolean renderOnLowerPlane(Region region, int sourcePlane, int x, int y)
 	{
 		return sourcePlane >= 0

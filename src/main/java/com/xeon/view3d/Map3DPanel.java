@@ -45,7 +45,6 @@ import java.util.concurrent.ExecutionException;
 import javax.swing.AbstractButton;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
-import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JToggleButton;
@@ -65,8 +64,6 @@ public final class Map3DPanel extends JPanel
 	private final Canvas canvas;
 	private final Path cacheDirectory;
 	private final int regionId;
-	private final JComboBox<Integer> planeSelector;
-	private final JToggleButton allPlanesButton = new JToggleButton("All Planes");
 	private final JToggleButton lockCameraButton = new JToggleButton("Lock Camera");
 	private final JLabel title = new JLabel("3D Region Viewer");
 	private final JLabel detail = new JLabel("Loading terrain...");
@@ -79,27 +76,22 @@ public final class Map3DPanel extends JPanel
 	private HoveredTile hoveredTile;
 	private AWTContext awtContext;
 	private Point lastMousePoint;
-	private int selectedPlane;
 	private boolean disposed;
 	private boolean glContextReady;
 	private boolean glContextFailed;
-	private boolean showAllPlanes;
 	private boolean middleMouseLook;
 	private boolean cameraLocked;
 	private long lastFrameNanos;
 
-	public Map3DPanel(Path cacheDirectory, int regionId, int plane, Runnable exitAction)
+	public Map3DPanel(Path cacheDirectory, int regionId, Runnable exitAction)
 	{
 		super(new BorderLayout());
 		this.cacheDirectory = cacheDirectory;
 		this.regionId = regionId;
-		this.selectedPlane = Math.max(0, Math.min(3, plane));
 		this.exitAction = exitAction;
 		setOpaque(true);
 		setBackground(Color.BLACK);
 
-		planeSelector = new JComboBox<>(new Integer[]{0, 1, 2, 3});
-		planeSelector.setSelectedItem(selectedPlane);
 		canvas = new Canvas();
 		canvas.setBackground(Color.BLACK);
 		canvas.setFocusable(true);
@@ -166,29 +158,10 @@ public final class Map3DPanel extends JPanel
 		labels.add(detail);
 		toolbar.add(labels, BorderLayout.WEST);
 
-		JLabel planeLabel = new JLabel("Plane");
-		planeLabel.setForeground(new Color(220, 220, 220));
-		planeSelector.setFocusable(false);
-		planeSelector.addActionListener(e -> {
-			Integer plane = (Integer) planeSelector.getSelectedItem();
-			if (plane != null && plane != selectedPlane)
-			{
-				selectedPlane = plane;
-				loadTerrain();
-			}
-		});
-		styleToolbarButton(allPlanesButton);
-		allPlanesButton.addActionListener(e -> {
-			showAllPlanes = allPlanesButton.isSelected();
-			loadTerrain();
-		});
 		styleToolbarButton(lockCameraButton);
 		lockCameraButton.addActionListener(e -> cameraLocked = lockCameraButton.isSelected());
 		JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
 		controls.setOpaque(false);
-		controls.add(planeLabel);
-		controls.add(planeSelector);
-		controls.add(allPlanesButton);
 		controls.add(lockCameraButton);
 		controls.add(compassHud);
 		controls.add(tileHud);
@@ -378,14 +351,12 @@ public final class Map3DPanel extends JPanel
 		renderer.setHoveredTile(null);
 		updateTileHud();
 		detail.setText("Loading region " + regionId + "...");
-		planeSelector.setEnabled(false);
-		allPlanesButton.setEnabled(false);
 		loadWorker = new SwingWorker<>()
 		{
 			@Override
 			protected TerrainMesh doInBackground() throws Exception
 			{
-				return loader.load(cacheDirectory, regionId, selectedPlane, showAllPlanes);
+				return loader.loadFullScene(cacheDirectory, regionId);
 			}
 
 			@Override
@@ -408,8 +379,7 @@ public final class Map3DPanel extends JPanel
 					if (!glContextFailed)
 					{
 						title.setText("3D Region " + mesh.regionId());
-						String planeText = mesh.allPlanes() ? "All planes" : "Plane " + mesh.plane();
-						detail.setText("Region " + mesh.regionX() + "," + mesh.regionY() + " - " + planeText);
+						detail.setText("Region " + mesh.regionX() + "," + mesh.regionY() + " - Full scene");
 					}
 					canvas.requestFocusInWindow();
 				}
@@ -426,11 +396,6 @@ public final class Map3DPanel extends JPanel
 				{
 					Throwable cause = ex.getCause() == null ? ex : ex.getCause();
 					detail.setText("Failed to load terrain: " + cause.getMessage());
-				}
-				finally
-				{
-					planeSelector.setEnabled(true);
-					allPlanesButton.setEnabled(true);
 				}
 			}
 		};

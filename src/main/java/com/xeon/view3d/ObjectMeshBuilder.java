@@ -50,6 +50,8 @@ final class ObjectMeshBuilder
 	private static final int DEFAULT_RGB = 0x8A8170;
 	private static final int SPECIAL_FACE_RGB = 0x808080;
 	private static final float MIN_VISIBLE_ALPHA = 1.0f / 255.0f;
+	private static final float FALLBACK_FACE_DEPTH_BIAS_STEP = 0.125f;
+	private static final int FALLBACK_FACE_DEPTH_BIAS_MASK = 3;
 
 	private ObjectMeshBuilder()
 	{
@@ -58,8 +60,6 @@ final class ObjectMeshBuilder
 	static void append(
 		SceneMeshBuffer data,
 		Region region,
-		int plane,
-		boolean allPlanes,
 		TerrainHeightMap[] heightMaps,
 		ObjectManager objectManager,
 		ObjectModelProvider modelProvider,
@@ -81,10 +81,6 @@ final class ObjectMeshBuilder
 			{
 				continue;
 			}
-			if (!isVisible(region, plane, allPlanes, sourcePlane, localX, localY))
-			{
-				continue;
-			}
 
 			ObjectDefinition definition = objectManager.getObject(location.getId());
 			if (definition == null || definition.getObjectModels() == null)
@@ -103,23 +99,6 @@ final class ObjectMeshBuilder
 				location
 			);
 		}
-	}
-
-	private static boolean isVisible(Region region, int plane, boolean allPlanes, int sourcePlane, int localX, int localY)
-	{
-		if (!allPlanes)
-		{
-			return SceneTileFlags.visibleOnDisplayPlane(region, plane, sourcePlane, localX, localY);
-		}
-
-		for (int displayPlane = 0; displayPlane < Region.Z; displayPlane++)
-		{
-			if (SceneTileFlags.visibleOnDisplayPlane(region, displayPlane, sourcePlane, localX, localY))
-			{
-				return true;
-			}
-		}
-		return false;
 	}
 
 	private static void appendLocation(
@@ -260,7 +239,7 @@ final class ObjectMeshBuilder
 
 		for (int modelId : modelIds)
 		{
-			ModelDefinition model = modelProvider.load(modelId & 0xFFFF);
+			ModelDefinition model = modelProvider.load(modelId);
 			if (model == null || model.vertexCount == 0 || model.faceCount == 0)
 			{
 				continue;
@@ -283,29 +262,14 @@ final class ObjectMeshBuilder
 			return modelType == TYPE_GAME_OBJECT ? objectModels : null;
 		}
 
-		int count = 0;
-		for (int objectType : objectTypes)
-		{
-			if (objectType == modelType)
-			{
-				count++;
-			}
-		}
-		if (count == 0)
-		{
-			return null;
-		}
-
-		int[] out = new int[count];
-		int index = 0;
-		for (int i = 0; i < objectTypes.length; i++)
+		for (int i = 0; i < objectTypes.length && i < objectModels.length; i++)
 		{
 			if (objectTypes[i] == modelType)
 			{
-				out[index++] = objectModels[i];
+				return new int[]{objectModels[i]};
 			}
 		}
-		return out;
+		return null;
 	}
 
 	private static void appendModel(
@@ -357,7 +321,7 @@ final class ObjectMeshBuilder
 		Placement placement
 	)
 	{
-		boolean inverted = definition.isRotated() || modelType == TYPE_WALL_CORNER && orientation > 3;
+		boolean inverted = definition.isRotated() ^ (orientation > 3);
 		int rotation = orientation & 3;
 		Vertex[] vertices = new Vertex[model.vertexCount];
 		for (int i = 0; i < model.vertexCount; i++)
@@ -466,11 +430,11 @@ final class ObjectMeshBuilder
 
 	private static float faceDepthBias(ModelDefinition model, int face)
 	{
-		if (model.faceZOffsets == null || face >= model.faceZOffsets.length)
+		if (model.faceZOffsets != null && face < model.faceZOffsets.length)
 		{
-			return 0.0f;
+			return model.faceZOffsets[face] & 0xFF;
 		}
-		return model.faceZOffsets[face] & 0xFF;
+		return (face & FALLBACK_FACE_DEPTH_BIAS_MASK) * FALLBACK_FACE_DEPTH_BIAS_STEP;
 	}
 
 	private static int faceRgb(

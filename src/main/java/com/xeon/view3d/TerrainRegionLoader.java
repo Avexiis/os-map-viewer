@@ -46,12 +46,7 @@ public final class TerrainRegionLoader
 {
 	private static final String XTEA_RESOURCE = "/com/xeon/xteas.json";
 
-	public TerrainMesh load(Path cacheDirectory, int regionId, int plane) throws IOException
-	{
-		return load(cacheDirectory, regionId, plane, false);
-	}
-
-	public TerrainMesh load(Path cacheDirectory, int regionId, int plane, boolean allPlanes) throws IOException
+	public TerrainMesh loadFullScene(Path cacheDirectory, int regionId) throws IOException
 	{
 		if (cacheDirectory == null)
 		{
@@ -81,11 +76,8 @@ public final class TerrainRegionLoader
 				throw new IOException("Region " + regionId + " was not found in the cache.");
 			}
 
-			int clampedPlane = Math.max(0, Math.min(Region.Z - 1, plane));
 			return TerrainMeshBuilder.build(
 				region,
-				clampedPlane,
-				allPlanes,
 				underlays,
 				overlays,
 				objects,

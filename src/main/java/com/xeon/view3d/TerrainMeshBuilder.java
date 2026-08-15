@@ -43,8 +43,6 @@ final class TerrainMeshBuilder
 
 	static TerrainMesh build(
 		Region region,
-		int plane,
-		boolean allPlanes,
 		UnderlayManager underlays,
 		OverlayManager overlays,
 		ObjectManager objectManager,
@@ -52,11 +50,8 @@ final class TerrainMeshBuilder
 		RSTextureProvider textureProvider
 	)
 	{
-		int startPlane = allPlanes ? 0 : plane;
-		int endPlane = allPlanes ? Region.Z - 1 : plane;
-		int planeCount = endPlane - startPlane + 1;
 		SceneMeshBuffer data = new SceneMeshBuffer(
-			Region.X * Region.Y * MAX_TILE_TRIANGLES * 3 * TerrainMesh.FLOATS_PER_VERTEX * planeCount
+			Region.X * Region.Y * MAX_TILE_TRIANGLES * 3 * TerrainMesh.FLOATS_PER_VERTEX * Region.Z
 		);
 		int[] sceneHeights = sceneHeights(region);
 		boolean[] renderableTiles = new boolean[Region.Z * Region.X * Region.Y];
@@ -73,27 +68,33 @@ final class TerrainMeshBuilder
 			lightMaps[sourcePlane] = new TerrainLightMap(heightMaps[sourcePlane]);
 		}
 
-		for (int buildPlane = startPlane; buildPlane <= endPlane; buildPlane++)
+		for (int sourcePlane = 0; sourcePlane < Region.Z; sourcePlane++)
 		{
-			maxHeight = putDisplayPlane(
-				data,
-				region,
-				buildPlane,
-				colorizers,
-				heightMaps,
-				lightMaps,
-				renderableTiles,
-				renderedTiles,
-				maxHeight
-			);
+			for (int x = 0; x < Region.X; x++)
+			{
+				for (int y = 0; y < Region.Y; y++)
+				{
+					maxHeight = putSourceTile(
+						data,
+						region,
+						colorizers,
+						heightMaps,
+						lightMaps,
+						renderableTiles,
+						renderedTiles,
+						sourcePlane,
+						x,
+						y,
+						maxHeight
+					);
+				}
+			}
 		}
 		if (objectManager != null && modelProvider != null)
 		{
 			ObjectMeshBuilder.append(
 				data,
 				region,
-				plane,
-				allPlanes,
 				heightMaps,
 				objectManager,
 				modelProvider,
@@ -105,8 +106,8 @@ final class TerrainMeshBuilder
 			region.getRegionID(),
 			region.getRegionX(),
 			region.getRegionY(),
-			plane,
-			allPlanes,
+			Region.Z - 1,
+			true,
 			data.toArray(),
 			data.size() / TerrainMesh.FLOATS_PER_VERTEX,
 			sceneHeights,
@@ -117,82 +118,9 @@ final class TerrainMeshBuilder
 		);
 	}
 
-	private static float putDisplayPlane(
-		SceneMeshBuffer data,
-		Region region,
-		int displayPlane,
-		TerrainColorizer[] colorizers,
-		TerrainHeightMap[] heightMaps,
-		TerrainLightMap[] lightMaps,
-		boolean[] renderableTiles,
-		boolean[] renderedTiles,
-		float maxHeight
-	)
-	{
-		for (int x = 0; x < Region.X; x++)
-		{
-			for (int y = 0; y < Region.Y; y++)
-			{
-				int visualPlane = SceneTileFlags.visualPlane(region, displayPlane, x, y);
-				if (visualPlane >= Region.Z)
-				{
-					continue;
-				}
-				if (SceneTileFlags.canRenderBaseLayer(region, displayPlane, x, y))
-				{
-					if (displayPlane == 0 && visualPlane != displayPlane)
-					{
-						maxHeight = putSourceTile(
-							data,
-							colorizers,
-							heightMaps,
-							lightMaps,
-							renderableTiles,
-							renderedTiles,
-							displayPlane,
-							x,
-							y,
-							maxHeight
-						);
-					}
-					maxHeight = putSourceTile(
-						data,
-						colorizers,
-						heightMaps,
-						lightMaps,
-						renderableTiles,
-						renderedTiles,
-						visualPlane,
-						x,
-						y,
-						maxHeight
-					);
-				}
-
-				int lowerSourcePlane = visualPlane + 1;
-				if (lowerSourcePlane < Region.Z
-					&& SceneTileFlags.renderOnLowerPlane(region, lowerSourcePlane, x, y))
-				{
-					maxHeight = putSourceTile(
-						data,
-						colorizers,
-						heightMaps,
-						lightMaps,
-						renderableTiles,
-						renderedTiles,
-						lowerSourcePlane,
-						x,
-						y,
-						maxHeight
-					);
-				}
-			}
-		}
-		return maxHeight;
-	}
-
 	private static float putSourceTile(
 		SceneMeshBuffer data,
+		Region region,
 		TerrainColorizer[] colorizers,
 		TerrainHeightMap[] heightMaps,
 		TerrainLightMap[] lightMaps,
@@ -204,6 +132,11 @@ final class TerrainMeshBuilder
 		float maxHeight
 	)
 	{
+		if (!SceneTileFlags.canRenderSourceLayer(region, sourcePlane, x, y))
+		{
+			return maxHeight;
+		}
+
 		int index = tileIndex(sourcePlane, x, y);
 		if (renderedTiles[index])
 		{
