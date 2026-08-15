@@ -38,14 +38,12 @@ final class TerrainLightMap
 	private static final float MIN_MULTIPLIER = 0.62f;
 	private static final float MAX_MULTIPLIER = 1.32f;
 
-	private final Region region;
-	private final int plane;
+	private final TerrainHeightMap heightMap;
 	private final float[][] lights = new float[Region.X + 1][Region.Y + 1];
 
-	TerrainLightMap(Region region, int plane)
+	TerrainLightMap(TerrainHeightMap heightMap)
 	{
-		this.region = region;
-		this.plane = plane;
+		this.heightMap = heightMap;
 		build();
 	}
 
@@ -62,8 +60,8 @@ final class TerrainLightMap
 		{
 			for (int y = 0; y <= Region.Y; y++)
 			{
-				int dhX = rawHeight(x + 1, y) - rawHeight(x - 1, y);
-				int dhY = rawHeight(x, y + 1) - rawHeight(x, y - 1);
+				int dhX = heightMap.rawSceneHeight(x + 1, y) - heightMap.rawSceneHeight(x - 1, y);
+				int dhY = heightMap.rawSceneHeight(x, y + 1) - heightMap.rawSceneHeight(x, y - 1);
 				int distance = (int) Math.sqrt(dhX * dhX + 0x10000 + dhY * dhY);
 				int normalX = (dhX << 8) / distance;
 				int normalY = 0x10000 / distance;
@@ -86,11 +84,6 @@ final class TerrainLightMap
 		float lx0 = lerp(lights[x0][y0], lights[x1][y0], tx);
 		float lx1 = lerp(lights[x0][y1], lights[x1][y1], tx);
 		return lerp(lx0, lx1, ty);
-	}
-
-	private int rawHeight(int x, int y)
-	{
-		return region.getTileHeight(plane, clamp(x, 0, Region.X - 1), clamp(y, 0, Region.Y - 1));
 	}
 
 	private static int scale(int rgb, float multiplier)

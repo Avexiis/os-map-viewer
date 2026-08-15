@@ -25,13 +25,14 @@
  */
 package com.xeon.view3d;
 
-import java.util.Arrays;
+import net.runelite.cache.ObjectManager;
+import net.runelite.cache.OverlayManager;
+import net.runelite.cache.UnderlayManager;
+import net.runelite.cache.item.RSTextureProvider;
 import net.runelite.cache.region.Region;
 
 final class TerrainMeshBuilder
 {
-	private static final float REGION_CENTER = 32.0f;
-	private static final float HEIGHT_SCALE = 1.0f / 64.0f;
 	private static final float NORMAL_SAMPLE_DISTANCE = 1.0f;
 	private static final float NORMAL_Y_SCALE = 2.0f;
 	private static final int MAX_TILE_TRIANGLES = 6;
@@ -40,28 +41,57 @@ final class TerrainMeshBuilder
 	{
 	}
 
-	static TerrainMesh build(Region region, int plane, TerrainColorizer colorizer)
+	static TerrainMesh build(
+		Region region,
+		int plane,
+		boolean allPlanes,
+		UnderlayManager underlays,
+		OverlayManager overlays,
+		ObjectManager objectManager,
+		ObjectModelProvider modelProvider,
+		RSTextureProvider textureProvider
+	)
 	{
-		FloatList data = new FloatList(
-			Region.X * Region.Y * MAX_TILE_TRIANGLES * 3 * TerrainMesh.FLOATS_PER_VERTEX
+		int startPlane = allPlanes ? 0 : plane;
+		int endPlane = allPlanes ? Region.Z - 1 : plane;
+		int planeCount = endPlane - startPlane + 1;
+		SceneMeshBuffer data = new SceneMeshBuffer(
+			Region.X * Region.Y * MAX_TILE_TRIANGLES * 3 * TerrainMesh.FLOATS_PER_VERTEX * planeCount
 		);
-		TerrainLightMap lightMap = new TerrainLightMap(region, plane);
+		int[] sceneHeights = sceneHeights(region);
+		boolean[] renderableTiles = new boolean[Region.Z * Region.X * Region.Y];
 		float maxHeight = Float.NEGATIVE_INFINITY;
 
-		for (int x = 0; x < Region.X; x++)
+		for (int buildPlane = startPlane; buildPlane <= endPlane; buildPlane++)
 		{
-			for (int y = 0; y < Region.Y; y++)
+			TerrainColorizer colorizer = new TerrainColorizer(region, underlays, overlays, textureProvider, buildPlane);
+			TerrainHeightMap heightMap = new TerrainHeightMap(region, buildPlane);
+			TerrainLightMap lightMap = new TerrainLightMap(heightMap);
+			for (int x = 0; x < Region.X; x++)
 			{
-				TerrainTilePaint paint = colorizer.paintFor(x, y);
-				maxHeight = Math.max(maxHeight, maxCornerHeight(region, plane, x, y));
-				if (paint == null || !paint.hasOverlay())
+				for (int y = 0; y < Region.Y; y++)
 				{
-					putTileQuad(data, region, plane, x, y, colorizer.underlayColorFor(paint), lightMap);
+					TerrainTilePaint paint = colorizer.paintFor(x, y);
+					if (paint == null || (!paint.hasUnderlay() && !paint.hasOverlay()))
+					{
+						continue;
+					}
+
+					renderableTiles[tileIndex(buildPlane, x, y)] = true;
+					maxHeight = Math.max(maxHeight, maxCornerHeight(heightMap, x, y));
+					if (!paint.hasOverlay())
+					{
+						putTileQuad(data, heightMap, x, y, colorizer.underlayColorFor(paint), lightMap);
+					}
+					else
+					{
+						putOverlayTile(data, heightMap, x, y, paint, colorizer, lightMap);
+					}
 				}
-				else
-				{
-					putOverlayTile(data, region, plane, x, y, paint, colorizer, lightMap);
-				}
+			}
+			if (objectManager != null && modelProvider != null)
+			{
+				ObjectMeshBuilder.append(data, region, buildPlane, heightMap, objectManager, modelProvider, textureProvider);
 			}
 		}
 
@@ -70,8 +100,11 @@ final class TerrainMeshBuilder
 			region.getRegionX(),
 			region.getRegionY(),
 			plane,
+			allPlanes,
 			data.toArray(),
 			data.size() / TerrainMesh.FLOATS_PER_VERTEX,
+			sceneHeights,
+			renderableTiles,
 			0.0f,
 			Math.max(16.0f, maxHeight + 18.0f),
 			-76.0f
@@ -79,23 +112,21 @@ final class TerrainMeshBuilder
 	}
 
 	private static void putTileQuad(
-		FloatList data,
-		Region region,
-		int plane,
+		SceneMeshBuffer data,
+		TerrainHeightMap heightMap,
 		int x,
 		int y,
 		int rgb,
 		TerrainLightMap lightMap
 	)
 	{
-		Vertex[] corners = tileCorners(region, plane, x, y);
+		Vertex[] corners = tileCorners(heightMap, x, y);
 		putQuad(data, corners[0], corners[1], corners[2], corners[3], rgb, lightMap);
 	}
 
 	private static void putOverlayTile(
-		FloatList data,
-		Region region,
-		int plane,
+		SceneMeshBuffer data,
+		TerrainHeightMap heightMap,
 		int x,
 		int y,
 		TerrainTilePaint paint,
@@ -106,7 +137,7 @@ final class TerrainMeshBuilder
 		int shapeType = TileShapeModel.shapeTypeFor(paint.overlayPath());
 		if (shapeType == TileShapeModel.SIMPLE_OVERLAY_TYPE || !TileShapeModel.isShaped(shapeType))
 		{
-			putTileQuad(data, region, plane, x, y, colorizer.overlayColorFor(paint), lightMap);
+			putTileQuad(data, heightMap, x, y, colorizer.overlayColorFor(paint), lightMap);
 			return;
 		}
 
@@ -117,8 +148,7 @@ final class TerrainMeshBuilder
 		{
 			int vertexType = TileShapeModel.rotateVertexType(vertexTypes[i], rotation);
 			vertices[i] = vertexAt(
-				region,
-				plane,
+				heightMap,
 				x + TileShapeModel.localX(vertexType),
 				y + TileShapeModel.localY(vertexType)
 			);
@@ -132,23 +162,28 @@ final class TerrainMeshBuilder
 			int a = TileShapeModel.rotateFaceVertex(faceData[i + 1], rotation);
 			int b = TileShapeModel.rotateFaceVertex(faceData[i + 2], rotation);
 			int c = TileShapeModel.rotateFaceVertex(faceData[i + 3], rotation);
-			int rgb = faceData[i] == TileShapeModel.FACE_OVERLAY ? overlayRgb : underlayRgb;
+			boolean overlayFace = faceData[i] == TileShapeModel.FACE_OVERLAY;
+			if (overlayFace && !paint.hasOverlay() || !overlayFace && !paint.hasUnderlay())
+			{
+				continue;
+			}
+			int rgb = overlayFace ? overlayRgb : underlayRgb;
 			putTriangle(data, vertices[a], vertices[b], vertices[c], rgb, lightMap);
 		}
 	}
 
-	private static Vertex[] tileCorners(Region region, int plane, int x, int y)
+	private static Vertex[] tileCorners(TerrainHeightMap heightMap, int x, int y)
 	{
 		return new Vertex[]{
-			vertexAt(region, plane, x, y),
-			vertexAt(region, plane, x + 1.0f, y),
-			vertexAt(region, plane, x + 1.0f, y + 1.0f),
-			vertexAt(region, plane, x, y + 1.0f)
+			vertexAt(heightMap, x, y),
+			vertexAt(heightMap, x + 1.0f, y),
+			vertexAt(heightMap, x + 1.0f, y + 1.0f),
+			vertexAt(heightMap, x, y + 1.0f)
 		};
 	}
 
 	private static void putQuad(
-		FloatList data,
+		SceneMeshBuffer data,
 		Vertex v00,
 		Vertex v10,
 		Vertex v11,
@@ -162,7 +197,7 @@ final class TerrainMeshBuilder
 	}
 
 	private static void putTriangle(
-		FloatList data,
+		SceneMeshBuffer data,
 		Vertex a,
 		Vertex b,
 		Vertex c,
@@ -175,30 +210,22 @@ final class TerrainMeshBuilder
 		putVertex(data, c, rgb, lightMap);
 	}
 
-	private static void putVertex(FloatList data, Vertex vertex, int rgb, TerrainLightMap lightMap)
+	private static void putVertex(SceneMeshBuffer data, Vertex vertex, int rgb, TerrainLightMap lightMap)
 	{
 		rgb = lightMap.apply(rgb, vertex.tileX(), vertex.tileY());
-		data.add(vertex.x());
-		data.add(vertex.y());
-		data.add(vertex.z());
-		data.add(vertex.normalX());
-		data.add(vertex.normalY());
-		data.add(vertex.normalZ());
-		data.add(((rgb >> 16) & 0xFF) / 255.0f);
-		data.add(((rgb >> 8) & 0xFF) / 255.0f);
-		data.add((rgb & 0xFF) / 255.0f);
+		data.addVertex(vertex.x(), vertex.y(), vertex.z(), vertex.normalX(), vertex.normalY(), vertex.normalZ(), rgb);
 	}
 
-	private static Vertex vertexAt(Region region, int plane, float x, float y)
+	private static Vertex vertexAt(TerrainHeightMap heightMap, float x, float y)
 	{
-		float height = heightAt(region, plane, x, y);
-		float left = heightAt(region, plane, x - NORMAL_SAMPLE_DISTANCE, y);
-		float right = heightAt(region, plane, x + NORMAL_SAMPLE_DISTANCE, y);
-		float down = heightAt(region, plane, x, y - NORMAL_SAMPLE_DISTANCE);
-		float up = heightAt(region, plane, x, y + NORMAL_SAMPLE_DISTANCE);
+		float height = heightMap.worldHeightAt(x, y);
+		float left = heightMap.worldHeightAt(x - NORMAL_SAMPLE_DISTANCE, y);
+		float right = heightMap.worldHeightAt(x + NORMAL_SAMPLE_DISTANCE, y);
+		float down = heightMap.worldHeightAt(x, y - NORMAL_SAMPLE_DISTANCE);
+		float up = heightMap.worldHeightAt(x, y + NORMAL_SAMPLE_DISTANCE);
 		float normalX = left - right;
 		float normalY = NORMAL_Y_SCALE;
-		float normalZ = down - up;
+		float normalZ = up - down;
 		float length = (float) Math.sqrt(normalX * normalX + normalY * normalY + normalZ * normalZ);
 		if (length <= 0.00001f)
 		{
@@ -213,65 +240,46 @@ final class TerrainMeshBuilder
 			normalZ /= length;
 		}
 
-		return new Vertex(worldX(x), height, worldZ(y), normalX, normalY, normalZ, x, y);
+		return new Vertex(
+			SceneScale.worldXFromTile(x),
+			height,
+			SceneScale.worldZFromTile(y),
+			normalX,
+			normalY,
+			normalZ,
+			x,
+			y
+		);
 	}
 
-	private static float maxCornerHeight(Region region, int plane, int x, int y)
+	private static float maxCornerHeight(TerrainHeightMap heightMap, int x, int y)
 	{
-		float h00 = heightAt(region, plane, x, y);
-		float h10 = heightAt(region, plane, x + 1.0f, y);
-		float h11 = heightAt(region, plane, x + 1.0f, y + 1.0f);
-		float h01 = heightAt(region, plane, x, y + 1.0f);
+		float h00 = heightMap.worldHeightAt(x, y);
+		float h10 = heightMap.worldHeightAt(x + 1.0f, y);
+		float h11 = heightMap.worldHeightAt(x + 1.0f, y + 1.0f);
+		float h01 = heightMap.worldHeightAt(x, y + 1.0f);
 		return Math.max(Math.max(h00, h10), Math.max(h11, h01));
 	}
 
-	private static float heightAt(Region region, int plane, float x, float y)
+	private static int[] sceneHeights(Region region)
 	{
-		x = clamp(x, 0.0f, Region.X - 1.0f);
-		y = clamp(y, 0.0f, Region.Y - 1.0f);
-		int x0 = clamp((int) Math.floor(x), 0, Region.X - 1);
-		int y0 = clamp((int) Math.floor(y), 0, Region.Y - 1);
-		int x1 = clamp(x0 + 1, 0, Region.X - 1);
-		int y1 = clamp(y0 + 1, 0, Region.Y - 1);
-		float tx = x1 == x0 ? 0.0f : x - x0;
-		float ty = y1 == y0 ? 0.0f : y - y0;
-		float h00 = height(region, plane, x0, y0);
-		float h10 = height(region, plane, x1, y0);
-		float h01 = height(region, plane, x0, y1);
-		float h11 = height(region, plane, x1, y1);
-		float hx0 = lerp(h00, h10, tx);
-		float hx1 = lerp(h01, h11, tx);
-		return lerp(hx0, hx1, ty);
+		int[] heights = new int[Region.Z * Region.X * Region.Y];
+		for (int plane = 0; plane < Region.Z; plane++)
+		{
+			for (int x = 0; x < Region.X; x++)
+			{
+				for (int y = 0; y < Region.Y; y++)
+				{
+					heights[plane * Region.X * Region.Y + x * Region.Y + y] = region.getTileHeight(plane, x, y);
+				}
+			}
+		}
+		return heights;
 	}
 
-	private static float height(Region region, int plane, int x, int y)
+	private static int tileIndex(int plane, int x, int y)
 	{
-		return -region.getTileHeight(plane, x, y) * HEIGHT_SCALE;
-	}
-
-	private static float lerp(float a, float b, float t)
-	{
-		return a + (b - a) * t;
-	}
-
-	private static int clamp(int value, int min, int max)
-	{
-		return Math.max(min, Math.min(max, value));
-	}
-
-	private static float clamp(float value, float min, float max)
-	{
-		return Math.max(min, Math.min(max, value));
-	}
-
-	private static float worldX(float localX)
-	{
-		return localX - REGION_CENTER;
-	}
-
-	private static float worldZ(float localY)
-	{
-		return localY - REGION_CENTER;
+		return plane * Region.X * Region.Y + x * Region.Y + y;
 	}
 
 	private record Vertex(
@@ -285,35 +293,5 @@ final class TerrainMeshBuilder
 		float tileY
 	)
 	{
-	}
-
-	private static final class FloatList
-	{
-		private float[] values;
-		private int size;
-
-		private FloatList(int initialCapacity)
-		{
-			values = new float[Math.max(128, initialCapacity)];
-		}
-
-		private void add(float value)
-		{
-			if (size == values.length)
-			{
-				values = Arrays.copyOf(values, values.length * 2);
-			}
-			values[size++] = value;
-		}
-
-		private int size()
-		{
-			return size;
-		}
-
-		private float[] toArray()
-		{
-			return Arrays.copyOf(values, size);
-		}
 	}
 }

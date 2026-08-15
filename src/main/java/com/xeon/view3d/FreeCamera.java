@@ -28,6 +28,7 @@ package com.xeon.view3d;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector3fc;
+import org.joml.Vector4f;
 
 final class FreeCamera
 {
@@ -117,9 +118,37 @@ final class FreeCamera
 		return destination.identity().lookAt(position, target, WORLD_UP);
 	}
 
+	Vector3f rayDirectionFromScreen(float screenX, float screenY, int width, int height, Vector3f destination)
+	{
+		float safeWidth = Math.max(1.0f, width);
+		float safeHeight = Math.max(1.0f, height);
+		float ndcX = screenX * 2.0f / safeWidth - 1.0f;
+		float ndcY = 1.0f - screenY * 2.0f / safeHeight;
+		Matrix4f inverseViewProjection = new Matrix4f()
+			.perspective(SceneScale.CAMERA_FOV_RADIANS, safeWidth / safeHeight, SceneScale.CAMERA_NEAR_PLANE, SceneScale.CAMERA_FAR_PLANE)
+			.mul(viewMatrix(new Matrix4f()))
+			.invert();
+		Vector4f near = inverseViewProjection.transform(new Vector4f(ndcX, ndcY, -1.0f, 1.0f));
+		Vector4f far = inverseViewProjection.transform(new Vector4f(ndcX, ndcY, 1.0f, 1.0f));
+		near.div(near.w);
+		far.div(far.w);
+		return destination.set(far.x - near.x, far.y - near.y, far.z - near.z).normalize();
+	}
+
 	Vector3fc position()
 	{
 		return position;
+	}
+
+	Vector3f direction(Vector3f destination)
+	{
+		float yawRadians = (float) Math.toRadians(yaw);
+		float pitchRadians = (float) Math.toRadians(pitch);
+		float pitchCos = (float) Math.cos(pitchRadians);
+		destination.x = (float) Math.sin(yawRadians) * pitchCos;
+		destination.y = (float) Math.sin(pitchRadians);
+		destination.z = (float) Math.cos(yawRadians) * pitchCos;
+		return destination.normalize();
 	}
 
 	void setForward(boolean value)
@@ -152,14 +181,4 @@ final class FreeCamera
 		lower = value;
 	}
 
-	private Vector3f direction(Vector3f destination)
-	{
-		float yawRadians = (float) Math.toRadians(yaw);
-		float pitchRadians = (float) Math.toRadians(pitch);
-		float pitchCos = (float) Math.cos(pitchRadians);
-		destination.x = (float) Math.sin(yawRadians) * pitchCos;
-		destination.y = (float) Math.sin(pitchRadians);
-		destination.z = (float) Math.cos(yawRadians) * pitchCos;
-		return destination.normalize();
-	}
 }

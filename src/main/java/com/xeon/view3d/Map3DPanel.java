@@ -25,35 +25,34 @@
  */
 package com.xeon.view3d;
 
-import java.awt.AWTException;
 import java.awt.BorderLayout;
 import java.awt.Canvas;
 import java.awt.Color;
-import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.GraphicsConfiguration;
-import java.awt.Image;
 import java.awt.Insets;
 import java.awt.Point;
-import java.awt.Robot;
-import java.awt.Toolkit;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionAdapter;
-import java.awt.image.BufferedImage;
 import java.awt.geom.AffineTransform;
 import java.nio.file.Path;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
+import javax.swing.AbstractButton;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
+import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JToggleButton;
 import javax.swing.SwingWorker;
 import javax.swing.Timer;
 import net.runelite.rlawt.AWTContext;
+import org.joml.Vector3f;
 
 public final class Map3DPanel extends JPanel
 {
@@ -64,35 +63,47 @@ public final class Map3DPanel extends JPanel
 	private final TerrainRenderer renderer = new TerrainRenderer();
 	private final FreeCamera camera = new FreeCamera();
 	private final Canvas canvas;
+	private final Path cacheDirectory;
+	private final int regionId;
+	private final JComboBox<Integer> planeSelector;
+	private final JToggleButton allPlanesButton = new JToggleButton("All Planes");
+	private final JToggleButton lockCameraButton = new JToggleButton("Lock Camera");
 	private final JLabel title = new JLabel("3D Region Viewer");
 	private final JLabel detail = new JLabel("Loading terrain...");
+	private final JLabel compassHud = new JLabel("Heading --");
+	private final JLabel tileHud = new JLabel("Tile --");
 	private final Timer renderTimer;
 	private final Runnable exitAction;
 	private SwingWorker<TerrainMesh, Void> loadWorker;
+	private TerrainMesh currentMesh;
+	private HoveredTile hoveredTile;
 	private AWTContext awtContext;
-	private Cursor defaultCursor;
-	private Cursor blankCursor;
-	private Robot robot;
 	private Point lastMousePoint;
+	private int selectedPlane;
 	private boolean disposed;
 	private boolean glContextReady;
 	private boolean glContextFailed;
-	private boolean mouseCaptured;
-	private boolean suppressNextMouseMove;
+	private boolean showAllPlanes;
+	private boolean middleMouseLook;
+	private boolean cameraLocked;
 	private long lastFrameNanos;
 
 	public Map3DPanel(Path cacheDirectory, int regionId, int plane, Runnable exitAction)
 	{
 		super(new BorderLayout());
+		this.cacheDirectory = cacheDirectory;
+		this.regionId = regionId;
+		this.selectedPlane = Math.max(0, Math.min(3, plane));
 		this.exitAction = exitAction;
 		setOpaque(true);
 		setBackground(Color.BLACK);
 
+		planeSelector = new JComboBox<>(new Integer[]{0, 1, 2, 3});
+		planeSelector.setSelectedItem(selectedPlane);
 		canvas = new Canvas();
 		canvas.setBackground(Color.BLACK);
 		canvas.setFocusable(true);
 		canvas.setIgnoreRepaint(true);
-		defaultCursor = canvas.getCursor();
 
 		add(buildToolbar(), BorderLayout.NORTH);
 		add(canvas, BorderLayout.CENTER);
@@ -100,7 +111,7 @@ public final class Map3DPanel extends JPanel
 
 		renderTimer = new Timer(FRAME_DELAY_MS, e -> renderFrame());
 		renderTimer.start();
-		loadTerrain(cacheDirectory, regionId, plane);
+		loadTerrain();
 	}
 
 	public void dispose()
@@ -111,7 +122,6 @@ public final class Map3DPanel extends JPanel
 			loadWorker.cancel(true);
 		}
 		renderTimer.stop();
-		releaseMouse();
 		try
 		{
 			if (renderer.isInitialized() && glContextReady && awtContext != null)
@@ -148,11 +158,41 @@ public final class Map3DPanel extends JPanel
 
 		title.setForeground(new Color(225, 225, 225));
 		detail.setForeground(new Color(165, 165, 165));
+		compassHud.setForeground(new Color(220, 220, 220));
+		tileHud.setForeground(new Color(220, 220, 220));
 		JPanel labels = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 6));
 		labels.setOpaque(false);
 		labels.add(title);
 		labels.add(detail);
 		toolbar.add(labels, BorderLayout.WEST);
+
+		JLabel planeLabel = new JLabel("Plane");
+		planeLabel.setForeground(new Color(220, 220, 220));
+		planeSelector.setFocusable(false);
+		planeSelector.addActionListener(e -> {
+			Integer plane = (Integer) planeSelector.getSelectedItem();
+			if (plane != null && plane != selectedPlane)
+			{
+				selectedPlane = plane;
+				loadTerrain();
+			}
+		});
+		styleToolbarButton(allPlanesButton);
+		allPlanesButton.addActionListener(e -> {
+			showAllPlanes = allPlanesButton.isSelected();
+			loadTerrain();
+		});
+		styleToolbarButton(lockCameraButton);
+		lockCameraButton.addActionListener(e -> cameraLocked = lockCameraButton.isSelected());
+		JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
+		controls.setOpaque(false);
+		controls.add(planeLabel);
+		controls.add(planeSelector);
+		controls.add(allPlanesButton);
+		controls.add(lockCameraButton);
+		controls.add(compassHud);
+		controls.add(tileHud);
+		toolbar.add(controls, BorderLayout.CENTER);
 
 		JButton exit = new JButton("Return to 2D Map");
 		styleToolbarButton(exit);
@@ -192,7 +232,31 @@ public final class Map3DPanel extends JPanel
 			public void mousePressed(MouseEvent e)
 			{
 				canvas.requestFocusInWindow();
-				captureMouse();
+				updateHoveredTile(e);
+				if (e.getButton() == MouseEvent.BUTTON2)
+				{
+					middleMouseLook = true;
+					lastMousePoint = e.getPoint();
+				}
+			}
+
+			@Override
+			public void mouseReleased(MouseEvent e)
+			{
+				if (e.getButton() == MouseEvent.BUTTON2)
+				{
+					middleMouseLook = false;
+					lastMousePoint = null;
+				}
+				updateHoveredTile(e);
+			}
+
+			@Override
+			public void mouseExited(MouseEvent e)
+			{
+				hoveredTile = null;
+				renderer.setHoveredTile(null);
+				updateTileHud();
 			}
 		});
 
@@ -226,7 +290,10 @@ public final class Map3DPanel extends JPanel
 			{
 				if (pressed)
 				{
-					releaseMouse();
+					if (exitAction != null)
+					{
+						exitAction.run();
+					}
 				}
 			}
 			default ->
@@ -237,113 +304,88 @@ public final class Map3DPanel extends JPanel
 
 	private void handleMouseMovement(MouseEvent event)
 	{
-		if (mouseCaptured)
-		{
-			if (suppressNextMouseMove)
-			{
-				suppressNextMouseMove = false;
-				return;
-			}
-			Point center = canvasCenterOnScreen();
-			if (center == null)
-			{
-				return;
-			}
-			int deltaX = event.getXOnScreen() - center.x;
-			int deltaY = event.getYOnScreen() - center.y;
-			if (deltaX != 0 || deltaY != 0)
-			{
-				camera.rotate(deltaX, deltaY);
-				centerMouse(center);
-			}
-			return;
-		}
-
 		Point point = event.getPoint();
-		if (canvas.hasFocus() && lastMousePoint != null)
+		if (middleMouseLook && !cameraLocked && canvas.hasFocus() && lastMousePoint != null)
 		{
 			camera.rotate(point.x - lastMousePoint.x, point.y - lastMousePoint.y);
 		}
+		updateHoveredTile(event);
 		lastMousePoint = point;
 	}
 
-	private void captureMouse()
+	private void updateHoveredTile(MouseEvent event)
 	{
-		if (mouseCaptured)
+		if (currentMesh == null || canvas.getWidth() <= 0 || canvas.getHeight() <= 0)
 		{
+			hoveredTile = null;
+			renderer.setHoveredTile(null);
+			updateTileHud();
 			return;
 		}
-		mouseCaptured = true;
-		lastMousePoint = null;
-		if (blankCursor == null)
+		AffineTransform transform = graphicsTransform();
+		float screenX = (float) (event.getX() * transform.getScaleX());
+		float screenY = (float) (event.getY() * transform.getScaleY());
+		Vector3f rayDirection = camera.rayDirectionFromScreen(
+			screenX,
+			screenY,
+			renderWidth(),
+			renderHeight(),
+			new Vector3f()
+		);
+		hoveredTile = currentMesh.pickTile(camera.position(), rayDirection);
+		renderer.setHoveredTile(hoveredTile);
+		updateTileHud();
+	}
+
+	private void updateCompassHud()
+	{
+		Vector3f direction = camera.direction(new Vector3f());
+		float degrees = (float) Math.toDegrees(Math.atan2(direction.x, -direction.z));
+		if (degrees < 0.0f)
 		{
-			Image image = new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB);
-			blankCursor = Toolkit.getDefaultToolkit().createCustomCursor(image, new Point(0, 0), "3D camera cursor");
+			degrees += 360.0f;
 		}
-		canvas.setCursor(blankCursor);
-		Point center = canvasCenterOnScreen();
-		if (center == null)
+		compassHud.setText("Heading " + cardinal(degrees) + " " + Math.round(degrees) + " deg");
+	}
+
+	private void updateTileHud()
+	{
+		if (hoveredTile == null)
 		{
+			tileHud.setText("Tile --");
 			return;
 		}
-		if (robot == null)
-		{
-			try
-			{
-				GraphicsConfiguration configuration = canvas.getGraphicsConfiguration();
-				robot = configuration == null ? new Robot() : new Robot(configuration.getDevice());
-			}
-			catch (AWTException ex)
-			{
-				System.err.println("Mouse capture is unavailable: " + ex.getMessage());
-				mouseCaptured = false;
-				canvas.setCursor(defaultCursor == null ? Cursor.getDefaultCursor() : defaultCursor);
-				return;
-			}
-		}
-		centerMouse(center);
+		tileHud.setText(
+			"Tile " + hoveredTile.worldX() + "," + hoveredTile.worldY() + "," + hoveredTile.plane()
+		);
 	}
 
-	private void releaseMouse()
+	private static String cardinal(float degrees)
 	{
-		mouseCaptured = false;
-		suppressNextMouseMove = false;
-		lastMousePoint = null;
-		if (canvas != null)
-		{
-			canvas.setCursor(defaultCursor == null ? Cursor.getDefaultCursor() : defaultCursor);
-		}
+		String[] names = new String[]{"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
+		int index = Math.floorMod(Math.round(degrees / 45.0f), names.length);
+		return names[index];
 	}
 
-	private Point canvasCenterOnScreen()
+	private void loadTerrain()
 	{
-		if (!canvas.isShowing())
+		if (loadWorker != null && !loadWorker.isDone())
 		{
-			return null;
+			loadWorker.cancel(true);
 		}
-		Point location = canvas.getLocationOnScreen();
-		return new Point(location.x + canvas.getWidth() / 2, location.y + canvas.getHeight() / 2);
-	}
-
-	private void centerMouse(Point center)
-	{
-		if (robot == null)
-		{
-			return;
-		}
-		suppressNextMouseMove = true;
-		robot.mouseMove(center.x, center.y);
-	}
-
-	private void loadTerrain(Path cacheDirectory, int regionId, int plane)
-	{
+		currentMesh = null;
+		hoveredTile = null;
+		renderer.setHoveredTile(null);
+		updateTileHud();
 		detail.setText("Loading region " + regionId + "...");
+		planeSelector.setEnabled(false);
+		allPlanesButton.setEnabled(false);
 		loadWorker = new SwingWorker<>()
 		{
 			@Override
 			protected TerrainMesh doInBackground() throws Exception
 			{
-				return loader.load(cacheDirectory, regionId, plane);
+				return loader.load(cacheDirectory, regionId, selectedPlane, showAllPlanes);
 			}
 
 			@Override
@@ -353,17 +395,27 @@ public final class Map3DPanel extends JPanel
 				{
 					return;
 				}
+				if (loadWorker != this)
+				{
+					return;
+				}
 				try
 				{
 					TerrainMesh mesh = get();
+					currentMesh = mesh;
 					renderer.setMesh(mesh);
 					camera.reset(mesh.initialCameraX(), mesh.initialCameraY(), mesh.initialCameraZ());
 					if (!glContextFailed)
 					{
 						title.setText("3D Region " + mesh.regionId());
-						detail.setText("Region " + mesh.regionX() + "," + mesh.regionY() + " - Plane " + mesh.plane());
+						String planeText = mesh.allPlanes() ? "All planes" : "Plane " + mesh.plane();
+						detail.setText("Region " + mesh.regionX() + "," + mesh.regionY() + " - " + planeText);
 					}
 					canvas.requestFocusInWindow();
+				}
+				catch (CancellationException ex)
+				{
+					detail.setText("Terrain loading cancelled");
 				}
 				catch (InterruptedException ex)
 				{
@@ -374,6 +426,11 @@ public final class Map3DPanel extends JPanel
 				{
 					Throwable cause = ex.getCause() == null ? ex : ex.getCause();
 					detail.setText("Failed to load terrain: " + cause.getMessage());
+				}
+				finally
+				{
+					planeSelector.setEnabled(true);
+					allPlanesButton.setEnabled(true);
 				}
 			}
 		};
@@ -393,7 +450,11 @@ public final class Map3DPanel extends JPanel
 		}
 		float deltaSeconds = Math.min(0.05f, (now - lastFrameNanos) / 1_000_000_000.0f);
 		lastFrameNanos = now;
-		camera.update(deltaSeconds);
+		if (!cameraLocked)
+		{
+			camera.update(deltaSeconds);
+		}
+		updateCompassHud();
 		if (!ensureContext())
 		{
 			return;
@@ -524,7 +585,7 @@ public final class Map3DPanel extends JPanel
 		return message == null || message.isBlank() ? current.getClass().getSimpleName() : message;
 	}
 
-	private static void styleToolbarButton(JButton button)
+	private static void styleToolbarButton(AbstractButton button)
 	{
 		button.setFocusable(false);
 		button.setMargin(new Insets(4, 10, 4, 10));

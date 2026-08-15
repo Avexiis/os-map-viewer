@@ -30,6 +30,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import net.runelite.cache.ObjectManager;
 import net.runelite.cache.OverlayManager;
 import net.runelite.cache.SpriteManager;
 import net.runelite.cache.TextureManager;
@@ -46,6 +47,11 @@ public final class TerrainRegionLoader
 	private static final String XTEA_RESOURCE = "/com/xeon/xteas.json";
 
 	public TerrainMesh load(Path cacheDirectory, int regionId, int plane) throws IOException
+	{
+		return load(cacheDirectory, regionId, plane, false);
+	}
+
+	public TerrainMesh load(Path cacheDirectory, int regionId, int plane, boolean allPlanes) throws IOException
 	{
 		if (cacheDirectory == null)
 		{
@@ -64,6 +70,8 @@ public final class TerrainRegionLoader
 			underlays.load();
 			OverlayManager overlays = new OverlayManager(store);
 			overlays.load();
+			ObjectManager objects = new ObjectManager(store);
+			objects.load();
 			RSTextureProvider textureProvider = loadTextureProvider(store);
 
 			RegionLoader regionLoader = new RegionLoader(store, loadKeyProvider());
@@ -74,8 +82,16 @@ public final class TerrainRegionLoader
 			}
 
 			int clampedPlane = Math.max(0, Math.min(Region.Z - 1, plane));
-			TerrainColorizer colorizer = new TerrainColorizer(region, underlays, overlays, textureProvider, clampedPlane);
-			return TerrainMeshBuilder.build(region, clampedPlane, colorizer);
+			return TerrainMeshBuilder.build(
+				region,
+				clampedPlane,
+				allPlanes,
+				underlays,
+				overlays,
+				objects,
+				new ObjectModelProvider(store),
+				textureProvider
+			);
 		}
 	}
 

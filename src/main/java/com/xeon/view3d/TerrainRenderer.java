@@ -40,12 +40,14 @@ final class TerrainRenderer
 		layout(location = 0) in vec3 aPosition;
 		layout(location = 1) in vec3 aNormal;
 		layout(location = 2) in vec3 aColor;
+		layout(location = 3) in float aAlpha;
 
 		uniform mat4 uMvp;
 		uniform vec3 uCameraPosition;
 
 		out vec3 vColor;
 		out vec3 vNormal;
+		out float vAlpha;
 		out float vDistance;
 
 		void main()
@@ -53,6 +55,7 @@ final class TerrainRenderer
 			vec4 worldPosition = vec4(aPosition, 1.0);
 			vColor = aColor;
 			vNormal = aNormal;
+			vAlpha = aAlpha;
 			vDistance = distance(aPosition, uCameraPosition);
 			gl_Position = uMvp * worldPosition;
 		}
@@ -61,6 +64,7 @@ final class TerrainRenderer
 		#version 330 core
 		in vec3 vColor;
 		in vec3 vNormal;
+		in float vAlpha;
 		in float vDistance;
 
 		out vec4 fragColor;
@@ -74,19 +78,25 @@ final class TerrainRenderer
 			vec3 sky = vec3(0.43, 0.53, 0.62);
 			float fog = smoothstep(82.0, 138.0, vDistance);
 			vec3 color = mix(vColor * shade, sky, fog);
-			fragColor = vec4(color, 1.0);
+			if (vAlpha <= 0.01)
+			{
+				discard;
+			}
+			fragColor = vec4(color, vAlpha);
 		}
 		""";
-	private static final String CROSSHAIR_VERTEX_SHADER = """
+	private static final String OUTLINE_VERTEX_SHADER = """
 		#version 330 core
-		layout(location = 0) in vec2 aPosition;
+		layout(location = 0) in vec3 aPosition;
+
+		uniform mat4 uMvp;
 
 		void main()
 		{
-			gl_Position = vec4(aPosition, 0.0, 1.0);
+			gl_Position = uMvp * vec4(aPosition, 1.0);
 		}
 		""";
-	private static final String CROSSHAIR_FRAGMENT_SHADER = """
+	private static final String OUTLINE_FRAGMENT_SHADER = """
 		#version 330 core
 		uniform vec4 uColor;
 
@@ -100,21 +110,26 @@ final class TerrainRenderer
 	private static final int POSITION_FLOATS = 3;
 	private static final int NORMAL_FLOATS = 3;
 	private static final int COLOR_FLOATS = 3;
-	private static final int CROSSHAIR_VERTICES = 8;
+	private static final int ALPHA_FLOATS = 1;
+	private static final int OUTLINE_VERTICES = 8;
+	private static final float OUTLINE_HEIGHT_OFFSET = SceneScale.SCENE_TO_WORLD * 1.5f;
 
 	private final Matrix4f projection = new Matrix4f();
 	private final Matrix4f view = new Matrix4f();
 	private final Matrix4f mvp = new Matrix4f();
 	private TerrainMesh pendingMesh;
+	private TerrainMesh currentMesh;
+	private HoveredTile hoveredTile;
 	private int terrainProgram;
 	private int terrainMvpLocation;
 	private int terrainCameraLocation;
-	private int crosshairProgram;
-	private int crosshairColorLocation;
+	private int outlineProgram;
+	private int outlineMvpLocation;
+	private int outlineColorLocation;
 	private int terrainVao;
 	private int terrainVbo;
-	private int crosshairVao;
-	private int crosshairVbo;
+	private int outlineVao;
+	private int outlineVbo;
 	private int vertexCount;
 	private boolean initialized;
 
@@ -127,20 +142,29 @@ final class TerrainRenderer
 
 		GL.createCapabilities();
 		GL33C.glEnable(GL33C.GL_DEPTH_TEST);
+		GL33C.glDepthFunc(GL33C.GL_LEQUAL);
 		GL33C.glEnable(GL33C.GL_MULTISAMPLE);
+		GL33C.glEnable(GL33C.GL_BLEND);
+		GL33C.glBlendFunc(GL33C.GL_SRC_ALPHA, GL33C.GL_ONE_MINUS_SRC_ALPHA);
 		GL33C.glClearColor(0.43f, 0.53f, 0.62f, 1.0f);
 
 		terrainProgram = createProgram(TERRAIN_VERTEX_SHADER, TERRAIN_FRAGMENT_SHADER);
 		terrainMvpLocation = GL33C.glGetUniformLocation(terrainProgram, "uMvp");
 		terrainCameraLocation = GL33C.glGetUniformLocation(terrainProgram, "uCameraPosition");
-		crosshairProgram = createProgram(CROSSHAIR_VERTEX_SHADER, CROSSHAIR_FRAGMENT_SHADER);
-		crosshairColorLocation = GL33C.glGetUniformLocation(crosshairProgram, "uColor");
+		outlineProgram = createProgram(OUTLINE_VERTEX_SHADER, OUTLINE_FRAGMENT_SHADER);
+		outlineMvpLocation = GL33C.glGetUniformLocation(outlineProgram, "uMvp");
+		outlineColorLocation = GL33C.glGetUniformLocation(outlineProgram, "uColor");
 		initialized = true;
 	}
 
 	void setMesh(TerrainMesh mesh)
 	{
 		pendingMesh = mesh;
+	}
+
+	void setHoveredTile(HoveredTile hoveredTile)
+	{
+		this.hoveredTile = hoveredTile;
 	}
 
 	boolean isInitialized()
@@ -164,9 +188,10 @@ final class TerrainRenderer
 
 		if (vertexCount > 0)
 		{
-			renderTerrain(camera, safeWidth / (float) safeHeight);
+			prepareMatrices(camera, safeWidth / (float) safeHeight);
+			renderTerrain(camera);
+			renderHoveredTile();
 		}
-		renderCrosshair(safeWidth, safeHeight);
 	}
 
 	void dispose()
@@ -185,36 +210,44 @@ final class TerrainRenderer
 			GL33C.glDeleteVertexArrays(terrainVao);
 			terrainVao = 0;
 		}
-		if (crosshairVbo != 0)
+		if (outlineVbo != 0)
 		{
-			GL33C.glDeleteBuffers(crosshairVbo);
-			crosshairVbo = 0;
+			GL33C.glDeleteBuffers(outlineVbo);
+			outlineVbo = 0;
 		}
-		if (crosshairVao != 0)
+		if (outlineVao != 0)
 		{
-			GL33C.glDeleteVertexArrays(crosshairVao);
-			crosshairVao = 0;
+			GL33C.glDeleteVertexArrays(outlineVao);
+			outlineVao = 0;
 		}
 		if (terrainProgram != 0)
 		{
 			GL33C.glDeleteProgram(terrainProgram);
 			terrainProgram = 0;
 		}
-		if (crosshairProgram != 0)
+		if (outlineProgram != 0)
 		{
-			GL33C.glDeleteProgram(crosshairProgram);
-			crosshairProgram = 0;
+			GL33C.glDeleteProgram(outlineProgram);
+			outlineProgram = 0;
 		}
 		initialized = false;
 	}
 
-	private void renderTerrain(FreeCamera camera, float aspectRatio)
+	private void prepareMatrices(FreeCamera camera, float aspectRatio)
 	{
-		Vector3fc cameraPosition = camera.position();
-		projection.identity().perspective((float) Math.toRadians(68.0), aspectRatio, 0.1f, 260.0f);
+		projection.identity().perspective(
+			SceneScale.CAMERA_FOV_RADIANS,
+			aspectRatio,
+			SceneScale.CAMERA_NEAR_PLANE,
+			SceneScale.CAMERA_FAR_PLANE
+		);
 		camera.viewMatrix(view);
 		projection.mul(view, mvp);
+	}
 
+	private void renderTerrain(FreeCamera camera)
+	{
+		Vector3fc cameraPosition = camera.position();
 		GL33C.glUseProgram(terrainProgram);
 		try (MemoryStack stack = MemoryStack.stackPush())
 		{
@@ -228,51 +261,52 @@ final class TerrainRenderer
 		GL33C.glUseProgram(0);
 	}
 
-	private void renderCrosshair(int width, int height)
+	private void renderHoveredTile()
 	{
-		if (crosshairVao == 0)
+		if (currentMesh == null || hoveredTile == null)
 		{
-			crosshairVao = GL33C.glGenVertexArrays();
-			crosshairVbo = GL33C.glGenBuffers();
-			GL33C.glBindVertexArray(crosshairVao);
-			GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, crosshairVbo);
+			return;
+		}
+		if (outlineVao == 0)
+		{
+			outlineVao = GL33C.glGenVertexArrays();
+			outlineVbo = GL33C.glGenBuffers();
+			GL33C.glBindVertexArray(outlineVao);
+			GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, outlineVbo);
 			GL33C.glEnableVertexAttribArray(0);
-			GL33C.glVertexAttribPointer(0, 2, GL33C.GL_FLOAT, false, 2 * Float.BYTES, 0L);
+			GL33C.glVertexAttribPointer(
+				0,
+				POSITION_FLOATS,
+				GL33C.GL_FLOAT,
+				false,
+				POSITION_FLOATS * Float.BYTES,
+				0L
+			);
 			GL33C.glBindVertexArray(0);
 		}
 
-		float gapX = 5.0f * 2.0f / width;
-		float gapY = 5.0f * 2.0f / height;
-		float lengthX = 16.0f * 2.0f / width;
-		float lengthY = 16.0f * 2.0f / height;
-		float[] vertices = new float[]{
-			-lengthX, 0.0f,
-			-gapX, 0.0f,
-			gapX, 0.0f,
-			lengthX, 0.0f,
-			0.0f, -lengthY,
-			0.0f, -gapY,
-			0.0f, gapY,
-			0.0f, lengthY
-		};
-
+		float[] vertices = outlineVertices();
 		FloatBuffer buffer = BufferUtils.createFloatBuffer(vertices.length);
 		buffer.put(vertices).flip();
 
-		GL33C.glDisable(GL33C.GL_DEPTH_TEST);
-		GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, crosshairVbo);
+		GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, outlineVbo);
 		GL33C.glBufferData(GL33C.GL_ARRAY_BUFFER, buffer, GL33C.GL_DYNAMIC_DRAW);
-		GL33C.glUseProgram(crosshairProgram);
-		GL33C.glBindVertexArray(crosshairVao);
-		GL33C.glUniform4f(crosshairColorLocation, 0.0f, 0.0f, 0.0f, 0.75f);
+		GL33C.glUseProgram(outlineProgram);
+		try (MemoryStack stack = MemoryStack.stackPush())
+		{
+			FloatBuffer matrixBuffer = stack.mallocFloat(16);
+			GL33C.glUniformMatrix4fv(outlineMvpLocation, false, mvp.get(matrixBuffer));
+		}
+		GL33C.glBindVertexArray(outlineVao);
+		GL33C.glUniform4f(outlineColorLocation, 0.0f, 0.0f, 0.0f, 0.78f);
 		GL33C.glLineWidth(4.0f);
-		GL33C.glDrawArrays(GL33C.GL_LINES, 0, CROSSHAIR_VERTICES);
-		GL33C.glUniform4f(crosshairColorLocation, 1.0f, 1.0f, 1.0f, 0.95f);
+		GL33C.glDrawArrays(GL33C.GL_LINES, 0, OUTLINE_VERTICES);
+		GL33C.glUniform4f(outlineColorLocation, 1.0f, 0.92f, 0.24f, 0.95f);
 		GL33C.glLineWidth(2.0f);
-		GL33C.glDrawArrays(GL33C.GL_LINES, 0, CROSSHAIR_VERTICES);
+		GL33C.glDrawArrays(GL33C.GL_LINES, 0, OUTLINE_VERTICES);
+		GL33C.glLineWidth(1.0f);
 		GL33C.glBindVertexArray(0);
 		GL33C.glUseProgram(0);
-		GL33C.glEnable(GL33C.GL_DEPTH_TEST);
 	}
 
 	private void uploadMesh(TerrainMesh mesh)
@@ -300,7 +334,14 @@ final class TerrainRenderer
 		GL33C.glEnableVertexAttribArray(0);
 		GL33C.glVertexAttribPointer(0, POSITION_FLOATS, GL33C.GL_FLOAT, false, stride, 0L);
 		GL33C.glEnableVertexAttribArray(1);
-		GL33C.glVertexAttribPointer(1, NORMAL_FLOATS, GL33C.GL_FLOAT, false, stride, POSITION_FLOATS * Float.BYTES);
+		GL33C.glVertexAttribPointer(
+			1,
+			NORMAL_FLOATS,
+			GL33C.GL_FLOAT,
+			false,
+			stride,
+			POSITION_FLOATS * Float.BYTES
+		);
 		GL33C.glEnableVertexAttribArray(2);
 		GL33C.glVertexAttribPointer(
 			2,
@@ -310,8 +351,45 @@ final class TerrainRenderer
 			stride,
 			(POSITION_FLOATS + NORMAL_FLOATS) * Float.BYTES
 		);
+		GL33C.glEnableVertexAttribArray(3);
+		GL33C.glVertexAttribPointer(
+			3,
+			ALPHA_FLOATS,
+			GL33C.GL_FLOAT,
+			false,
+			stride,
+			(POSITION_FLOATS + NORMAL_FLOATS + COLOR_FLOATS) * Float.BYTES
+		);
 		GL33C.glBindVertexArray(0);
 		vertexCount = mesh.vertexCount();
+		currentMesh = mesh;
+	}
+
+	private float[] outlineVertices()
+	{
+		float x0 = hoveredTile.localX();
+		float y0 = hoveredTile.localY();
+		float x1 = x0 + 1.0f;
+		float y1 = y0 + 1.0f;
+		float worldX0 = SceneScale.worldXFromTile(x0);
+		float worldX1 = SceneScale.worldXFromTile(x1);
+		float worldZ0 = SceneScale.worldZFromTile(y0);
+		float worldZ1 = SceneScale.worldZFromTile(y1);
+		float h00 = currentMesh.worldHeightAt(hoveredTile.plane(), x0, y0) + OUTLINE_HEIGHT_OFFSET;
+		float h10 = currentMesh.worldHeightAt(hoveredTile.plane(), x1, y0) + OUTLINE_HEIGHT_OFFSET;
+		float h11 = currentMesh.worldHeightAt(hoveredTile.plane(), x1, y1) + OUTLINE_HEIGHT_OFFSET;
+		float h01 = currentMesh.worldHeightAt(hoveredTile.plane(), x0, y1) + OUTLINE_HEIGHT_OFFSET;
+
+		return new float[]{
+			worldX0, h00, worldZ0,
+			worldX1, h10, worldZ0,
+			worldX1, h10, worldZ0,
+			worldX1, h11, worldZ1,
+			worldX1, h11, worldZ1,
+			worldX0, h01, worldZ1,
+			worldX0, h01, worldZ1,
+			worldX0, h00, worldZ0
+		};
 	}
 
 	private static int createProgram(String vertexSource, String fragmentSource)
