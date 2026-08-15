@@ -44,6 +44,8 @@ final class TerrainColorizer
 	private final UnderlayManager underlays;
 	private final OverlayManager overlays;
 	private final RSTextureProvider textureProvider;
+	private final TerrainFloorTextures floorTextures;
+	private final SceneTextureSet textureSet;
 	private final TerrainTilePaint[][] paints = new TerrainTilePaint[Region.X][Region.Y];
 
 	TerrainColorizer(
@@ -51,6 +53,8 @@ final class TerrainColorizer
 		UnderlayManager underlays,
 		OverlayManager overlays,
 		RSTextureProvider textureProvider,
+		TerrainFloorTextures floorTextures,
+		SceneTextureSet textureSet,
 		int plane
 	)
 	{
@@ -58,6 +62,8 @@ final class TerrainColorizer
 		this.underlays = underlays;
 		this.overlays = overlays;
 		this.textureProvider = textureProvider;
+		this.floorTextures = floorTextures;
+		this.textureSet = textureSet;
 		build(plane);
 	}
 
@@ -94,13 +100,17 @@ final class TerrainColorizer
 				int overlayId = region.getOverlayId(plane, x, y);
 				int underlayRgb = underlayId > 0 ? blendedUnderlayRgb(plane, x, y) : 0;
 				int overlayRgb = overlayId > 0 ? overlayRgb(overlayId - 1) : 0;
-				boolean hasUnderlay = underlayRgb != 0;
-				boolean hasOverlay = overlayRgb != 0;
+				int underlayTextureLayer = underlayId > 0 ? textureLayerForUnderlay(underlayId - 1) : 0;
+				int overlayTextureLayer = overlayId > 0 ? textureLayerForOverlay(overlayId - 1) : 0;
+				boolean hasUnderlay = underlayRgb != 0 || underlayTextureLayer > 0;
+				boolean hasOverlay = overlayRgb != 0 || overlayTextureLayer > 0;
 				paints[x][y] = new TerrainTilePaint(
 					underlayRgb,
 					overlayRgb,
 					region.getOverlayPath(plane, x, y),
 					region.getOverlayRotation(plane, x, y),
+					underlayTextureLayer,
+					overlayTextureLayer,
 					hasUnderlay,
 					hasOverlay
 				);
@@ -194,6 +204,23 @@ final class TerrainColorizer
 			rgb = JagexColor.getRGBFull(secondaryHsl);
 		}
 		return rgb;
+	}
+
+	private int textureLayerForUnderlay(int underlayId)
+	{
+		int texture = floorTextures.underlayTexture(underlayId);
+		return texture < 0 ? 0 : textureSet.layerForTexture(texture);
+	}
+
+	private int textureLayerForOverlay(int overlayId)
+	{
+		int texture = floorTextures.overlayTexture(overlayId);
+		if (texture < 0)
+		{
+			OverlayDefinition overlay = overlays.provide(overlayId);
+			texture = overlay == null ? -1 : overlay.getTexture();
+		}
+		return texture < 0 ? 0 : textureSet.layerForTexture(texture);
 	}
 
 	private int overlayHsl(OverlayDefinition overlay)

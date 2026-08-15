@@ -63,7 +63,8 @@ final class ObjectMeshBuilder
 		TerrainHeightMap[] heightMaps,
 		ObjectManager objectManager,
 		ObjectModelProvider modelProvider,
-		RSTextureProvider textureProvider
+		RSTextureProvider textureProvider,
+		SceneTextureSet textureSet
 	)
 	{
 		for (Location location : region.getLocations())
@@ -93,6 +94,7 @@ final class ObjectMeshBuilder
 				heightMaps[sourcePlane],
 				modelProvider,
 				textureProvider,
+				textureSet,
 				definition,
 				localX,
 				localY,
@@ -106,6 +108,7 @@ final class ObjectMeshBuilder
 		TerrainHeightMap heightMap,
 		ObjectModelProvider modelProvider,
 		RSTextureProvider textureProvider,
+		SceneTextureSet textureSet,
 		ObjectDefinition definition,
 		int localX,
 		int localY,
@@ -117,8 +120,8 @@ final class ObjectMeshBuilder
 		if (type == TYPE_WALL_CORNER)
 		{
 			Placement placement = singleTilePlacement(heightMap, localX, localY, 0, 0, 0);
-			appendModel(data, modelProvider, textureProvider, definition, type, orientation + 4, placement);
-			appendModel(data, modelProvider, textureProvider, definition, type, orientation + 1 & 3, placement);
+			appendModel(data, modelProvider, textureProvider, textureSet, definition, type, orientation + 4, placement);
+			appendModel(data, modelProvider, textureProvider, textureSet, definition, type, orientation + 1 & 3, placement);
 			return;
 		}
 
@@ -128,6 +131,7 @@ final class ObjectMeshBuilder
 			data,
 			modelProvider,
 			textureProvider,
+			textureSet,
 			definition,
 			modelUse.modelType(),
 			modelUse.modelOrientation(),
@@ -225,6 +229,7 @@ final class ObjectMeshBuilder
 		SceneMeshBuffer data,
 		ObjectModelProvider modelProvider,
 		RSTextureProvider textureProvider,
+		SceneTextureSet textureSet,
 		ObjectDefinition definition,
 		int modelType,
 		int orientation,
@@ -244,7 +249,7 @@ final class ObjectMeshBuilder
 			{
 				continue;
 			}
-			appendModel(data, textureProvider, definition, model, modelType, orientation, placement);
+			appendModel(data, textureProvider, textureSet, definition, model, modelType, orientation, placement);
 		}
 	}
 
@@ -275,6 +280,7 @@ final class ObjectMeshBuilder
 	private static void appendModel(
 		SceneMeshBuffer data,
 		RSTextureProvider textureProvider,
+		SceneTextureSet textureSet,
 		ObjectDefinition definition,
 		ModelDefinition model,
 		int modelType,
@@ -282,6 +288,10 @@ final class ObjectMeshBuilder
 		Placement placement
 	)
 	{
+		if (model.faceTextures != null)
+		{
+			model.computeTextureUVCoordinates();
+		}
 		TransformedModel transformed = transform(definition, model, modelType, orientation, placement);
 		for (int face = 0; face < model.faceCount; face++)
 		{
@@ -294,23 +304,106 @@ final class ObjectMeshBuilder
 			int a = model.faceIndices1[face];
 			int b = model.faceIndices2[face];
 			int c = model.faceIndices3[face];
-			if (transformed.inverted() ^ SceneScale.MIRRORS_WORLD_Z)
+			boolean swapped = transformed.inverted() ^ SceneScale.MIRRORS_WORLD_Z;
+			if (swapped)
 			{
 				int tmp = a;
 				a = c;
 				c = tmp;
 			}
 
-			int rgb = faceRgb(model, definition, textureProvider, face);
+			TextureFace textureFace = textureFace(model, definition, textureSet, face);
+			int rgb = textureFace.textured() ? texturedFaceTint(model, definition, face) : faceRgb(model, definition, textureProvider, face);
 			Vertex va = transformed.vertex(a);
 			Vertex vb = transformed.vertex(b);
 			Vertex vc = transformed.vertex(c);
+			TextureVertex uva = textureFace.vertex(0);
+			TextureVertex uvb = textureFace.vertex(1);
+			TextureVertex uvc = textureFace.vertex(2);
+			if (swapped)
+			{
+				uva = textureFace.vertex(2);
+				uvc = textureFace.vertex(0);
+			}
 			Normal normal = faceNormal(va, vb, vc);
 			float depthBias = faceDepthBias(model, face);
-			data.addVertex(va.x(), va.y(), va.z(), normal.x(), normal.y(), normal.z(), rgb, alpha, depthBias);
-			data.addVertex(vb.x(), vb.y(), vb.z(), normal.x(), normal.y(), normal.z(), rgb, alpha, depthBias);
-			data.addVertex(vc.x(), vc.y(), vc.z(), normal.x(), normal.y(), normal.z(), rgb, alpha, depthBias);
+			putVertex(data, va, normal, rgb, alpha, depthBias, textureFace, uva);
+			putVertex(data, vb, normal, rgb, alpha, depthBias, textureFace, uvb);
+			putVertex(data, vc, normal, rgb, alpha, depthBias, textureFace, uvc);
 		}
+	}
+
+	private static void putVertex(
+		SceneMeshBuffer data,
+		Vertex vertex,
+		Normal normal,
+		int rgb,
+		float alpha,
+		float depthBias,
+		TextureFace textureFace,
+		TextureVertex textureVertex
+	)
+	{
+		data.addVertex(
+			vertex.x(),
+			vertex.y(),
+			vertex.z(),
+			normal.x(),
+			normal.y(),
+			normal.z(),
+			rgb,
+			alpha,
+			depthBias,
+			textureVertex.u(),
+			textureVertex.v(),
+			textureFace.layer(),
+			textureFace.material().animationU(),
+			textureFace.material().animationV(),
+			textureFace.material().alphaCutoff()
+		);
+	}
+
+	private static TextureFace textureFace(
+		ModelDefinition model,
+		ObjectDefinition definition,
+		SceneTextureSet textureSet,
+		int face
+	)
+	{
+		short texture = faceTexture(model, definition, face);
+		int layer = texture < 0 ? 0 : textureSet.layerForTexture(texture);
+		if (layer <= 0)
+		{
+			return TextureFace.NONE;
+		}
+
+		float[] u = model.faceTextureUCoordinates == null || face >= model.faceTextureUCoordinates.length
+			? null
+			: model.faceTextureUCoordinates[face];
+		float[] v = model.faceTextureVCoordinates == null || face >= model.faceTextureVCoordinates.length
+			? null
+			: model.faceTextureVCoordinates[face];
+		TextureVertex a = new TextureVertex(u == null ? 0.0f : u[0], v == null ? 0.0f : v[0]);
+		TextureVertex b = new TextureVertex(u == null ? 1.0f : u[1], v == null ? 0.0f : v[1]);
+		TextureVertex c = new TextureVertex(u == null ? 0.0f : u[2], v == null ? 1.0f : v[2]);
+		return new TextureFace(layer, textureSet.materialForLayer(layer), a, b, c);
+	}
+
+	private static int texturedFaceTint(ModelDefinition model, ObjectDefinition definition, int face)
+	{
+		if (model.faceColors == null || face >= model.faceColors.length)
+		{
+			return 0xFF_FFFF;
+		}
+
+		short hsl = faceColor(model.faceColors[face], definition);
+		if (hsl < 0)
+		{
+			return 0xFF_FFFF;
+		}
+
+		int component = Math.max(24, Math.min(255, (hsl & 0x7F) * 255 / 127));
+		return component << 16 | component << 8 | component;
 	}
 
 	private static TransformedModel transform(
@@ -583,6 +676,46 @@ final class ObjectMeshBuilder
 		{
 			return vertices[index];
 		}
+	}
+
+	private record TextureFace(
+		int layer,
+		SceneTextureSet.Material material,
+		TextureVertex a,
+		TextureVertex b,
+		TextureVertex c
+	)
+	{
+		private static final TextureFace NONE = new TextureFace(
+			0,
+			new SceneTextureSet.Material(0.0f, 0.0f, 0.0f),
+			new TextureVertex(0.0f, 0.0f),
+			new TextureVertex(0.0f, 0.0f),
+			new TextureVertex(0.0f, 0.0f)
+		);
+
+		private boolean textured()
+		{
+			return layer > 0;
+		}
+
+		private TextureVertex vertex(int index)
+		{
+			return switch (index)
+			{
+				case 0 -> a;
+				case 1 -> b;
+				case 2 -> c;
+				default -> throw new IllegalArgumentException("Texture vertex index out of range: " + index);
+			};
+		}
+	}
+
+	private record TextureVertex(
+		float u,
+		float v
+	)
+	{
 	}
 
 	private record Vertex(

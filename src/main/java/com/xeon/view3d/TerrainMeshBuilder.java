@@ -47,7 +47,9 @@ final class TerrainMeshBuilder
 		OverlayManager overlays,
 		ObjectManager objectManager,
 		ObjectModelProvider modelProvider,
-		RSTextureProvider textureProvider
+		RSTextureProvider textureProvider,
+		TerrainFloorTextures floorTextures,
+		SceneTextureSet textureSet
 	)
 	{
 		SceneMeshBuffer data = new SceneMeshBuffer(
@@ -63,7 +65,15 @@ final class TerrainMeshBuilder
 
 		for (int sourcePlane = 0; sourcePlane < Region.Z; sourcePlane++)
 		{
-			colorizers[sourcePlane] = new TerrainColorizer(region, underlays, overlays, textureProvider, sourcePlane);
+			colorizers[sourcePlane] = new TerrainColorizer(
+				region,
+				underlays,
+				overlays,
+				textureProvider,
+				floorTextures,
+				textureSet,
+				sourcePlane
+			);
 			heightMaps[sourcePlane] = new TerrainHeightMap(region, sourcePlane);
 			lightMaps[sourcePlane] = new TerrainLightMap(heightMaps[sourcePlane]);
 		}
@@ -85,6 +95,7 @@ final class TerrainMeshBuilder
 						sourcePlane,
 						x,
 						y,
+						textureSet,
 						maxHeight
 					);
 				}
@@ -98,7 +109,8 @@ final class TerrainMeshBuilder
 				heightMaps,
 				objectManager,
 				modelProvider,
-				textureProvider
+				textureProvider,
+				textureSet
 			);
 		}
 
@@ -110,6 +122,7 @@ final class TerrainMeshBuilder
 			true,
 			data.toArray(),
 			data.size() / TerrainMesh.FLOATS_PER_VERTEX,
+			textureSet,
 			sceneHeights,
 			renderableTiles,
 			0.0f,
@@ -129,6 +142,7 @@ final class TerrainMeshBuilder
 		int sourcePlane,
 		int x,
 		int y,
+		SceneTextureSet textureSet,
 		float maxHeight
 	)
 	{
@@ -157,11 +171,20 @@ final class TerrainMeshBuilder
 		maxHeight = Math.max(maxHeight, maxCornerHeight(heightMap, x, y));
 		if (!paint.hasOverlay())
 		{
-			putTileQuad(data, heightMap, x, y, colorizer.underlayColorFor(paint), lightMap);
+			putTileQuad(
+				data,
+				heightMap,
+				x,
+				y,
+				colorizer.underlayColorFor(paint),
+				lightMap,
+				paint.underlayTextureLayer(),
+				textureSet
+			);
 		}
 		else
 		{
-			putOverlayTile(data, heightMap, x, y, paint, colorizer, lightMap);
+			putOverlayTile(data, heightMap, x, y, paint, colorizer, lightMap, textureSet);
 		}
 		return maxHeight;
 	}
@@ -172,11 +195,13 @@ final class TerrainMeshBuilder
 		int x,
 		int y,
 		int rgb,
-		TerrainLightMap lightMap
+		TerrainLightMap lightMap,
+		int textureLayer,
+		SceneTextureSet textureSet
 	)
 	{
 		Vertex[] corners = tileCorners(heightMap, x, y);
-		putQuad(data, corners[0], corners[1], corners[2], corners[3], rgb, lightMap);
+		putQuad(data, corners[0], corners[1], corners[2], corners[3], rgb, lightMap, x, y, textureLayer, textureSet);
 	}
 
 	private static void putOverlayTile(
@@ -186,13 +211,23 @@ final class TerrainMeshBuilder
 		int y,
 		TerrainTilePaint paint,
 		TerrainColorizer colorizer,
-		TerrainLightMap lightMap
+		TerrainLightMap lightMap,
+		SceneTextureSet textureSet
 	)
 	{
 		int shapeType = TileShapeModel.shapeTypeFor(paint.overlayPath());
 		if (shapeType == TileShapeModel.SIMPLE_OVERLAY_TYPE || !TileShapeModel.isShaped(shapeType))
 		{
-			putTileQuad(data, heightMap, x, y, colorizer.overlayColorFor(paint), lightMap);
+			putTileQuad(
+				data,
+				heightMap,
+				x,
+				y,
+				colorizer.overlayColorFor(paint),
+				lightMap,
+				paint.overlayTextureLayer(),
+				textureSet
+			);
 			return;
 		}
 
@@ -223,7 +258,8 @@ final class TerrainMeshBuilder
 				continue;
 			}
 			int rgb = overlayFace ? overlayRgb : underlayRgb;
-			putTriangle(data, vertices[a], vertices[b], vertices[c], rgb, lightMap);
+			int textureLayer = overlayFace ? paint.overlayTextureLayer() : paint.underlayTextureLayer();
+			putTriangle(data, vertices[a], vertices[b], vertices[c], rgb, lightMap, x, y, textureLayer, textureSet);
 		}
 	}
 
@@ -244,11 +280,15 @@ final class TerrainMeshBuilder
 		Vertex v11,
 		Vertex v01,
 		int rgb,
-		TerrainLightMap lightMap
+		TerrainLightMap lightMap,
+		int tileX,
+		int tileY,
+		int textureLayer,
+		SceneTextureSet textureSet
 	)
 	{
-		putTriangle(data, v00, v11, v10, rgb, lightMap);
-		putTriangle(data, v00, v01, v11, rgb, lightMap);
+		putTriangle(data, v00, v11, v10, rgb, lightMap, tileX, tileY, textureLayer, textureSet);
+		putTriangle(data, v00, v01, v11, rgb, lightMap, tileX, tileY, textureLayer, textureSet);
 	}
 
 	private static void putTriangle(
@@ -257,18 +297,49 @@ final class TerrainMeshBuilder
 		Vertex b,
 		Vertex c,
 		int rgb,
-		TerrainLightMap lightMap
+		TerrainLightMap lightMap,
+		int tileX,
+		int tileY,
+		int textureLayer,
+		SceneTextureSet textureSet
 	)
 	{
-		putVertex(data, a, rgb, lightMap);
-		putVertex(data, b, rgb, lightMap);
-		putVertex(data, c, rgb, lightMap);
+		putVertex(data, a, rgb, lightMap, tileX, tileY, textureLayer, textureSet);
+		putVertex(data, b, rgb, lightMap, tileX, tileY, textureLayer, textureSet);
+		putVertex(data, c, rgb, lightMap, tileX, tileY, textureLayer, textureSet);
 	}
 
-	private static void putVertex(SceneMeshBuffer data, Vertex vertex, int rgb, TerrainLightMap lightMap)
+	private static void putVertex(
+		SceneMeshBuffer data,
+		Vertex vertex,
+		int rgb,
+		TerrainLightMap lightMap,
+		int tileX,
+		int tileY,
+		int textureLayer,
+		SceneTextureSet textureSet
+	)
 	{
-		rgb = lightMap.apply(rgb, vertex.tileX(), vertex.tileY());
-		data.addVertex(vertex.x(), vertex.y(), vertex.z(), vertex.normalX(), vertex.normalY(), vertex.normalZ(), rgb);
+		boolean textured = textureLayer > 0;
+		rgb = lightMap.apply(textured ? 0xFF_FFFF : rgb, vertex.tileX(), vertex.tileY());
+		SceneTextureSet.Material material = textureSet.materialForLayer(textureLayer);
+		data.addVertex(
+			vertex.x(),
+			vertex.y(),
+			vertex.z(),
+			vertex.normalX(),
+			vertex.normalY(),
+			vertex.normalZ(),
+			rgb,
+			1.0f,
+			0.0f,
+			vertex.tileX() - tileX,
+			vertex.tileY() - tileY,
+			textureLayer,
+			material.animationU(),
+			material.animationV(),
+			material.alphaCutoff()
+		);
 	}
 
 	private static Vertex vertexAt(TerrainHeightMap heightMap, float x, float y)

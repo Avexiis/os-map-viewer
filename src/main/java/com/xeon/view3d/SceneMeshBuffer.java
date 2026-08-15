@@ -59,6 +59,27 @@ final class SceneMeshBuffer
 		float depthBias
 	)
 	{
+		addVertex(x, y, z, normalX, normalY, normalZ, rgb, alpha, depthBias, 0.0f, 0.0f, 0, 0.0f, 0.0f, 0.0f);
+	}
+
+	void addVertex(
+		float x,
+		float y,
+		float z,
+		float normalX,
+		float normalY,
+		float normalZ,
+		int rgb,
+		float alpha,
+		float depthBias,
+		float textureU,
+		float textureV,
+		int textureLayer,
+		float animationU,
+		float animationV,
+		float textureAlphaCutoff
+	)
+	{
 		add(x);
 		add(y);
 		add(z);
@@ -70,6 +91,12 @@ final class SceneMeshBuffer
 		add((rgb & 0xFF) / 255.0f);
 		add(alpha);
 		add(depthBias);
+		add(textureU);
+		add(textureV);
+		add(textureLayer);
+		add(animationU);
+		add(animationV);
+		add(textureAlphaCutoff);
 	}
 
 	int size()

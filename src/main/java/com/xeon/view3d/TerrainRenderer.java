@@ -25,6 +25,7 @@
  */
 package com.xeon.view3d;
 
+import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import org.joml.Matrix4f;
 import org.joml.Vector3fc;
@@ -42,14 +43,23 @@ final class TerrainRenderer
 		layout(location = 2) in vec3 aColor;
 		layout(location = 3) in float aAlpha;
 		layout(location = 4) in float aDepthBias;
+		layout(location = 5) in vec2 aTexCoord;
+		layout(location = 6) in float aTextureLayer;
+		layout(location = 7) in float aTextureAnimU;
+		layout(location = 8) in float aTextureAnimV;
+		layout(location = 9) in float aTextureAlphaCutoff;
 
 		uniform mat4 uMvp;
 		uniform vec3 uCameraPosition;
+		uniform float uTimeSeconds;
 
 		out vec3 vColor;
 		out vec3 vNormal;
 		out float vAlpha;
 		out float vDistance;
+		out vec2 vTexCoord;
+		flat out float vTextureLayer;
+		flat out float vTextureAlphaCutoff;
 
 		void main()
 		{
@@ -58,6 +68,10 @@ final class TerrainRenderer
 			vNormal = aNormal;
 			vAlpha = aAlpha;
 			vDistance = distance(aPosition, uCameraPosition);
+			vec2 animation = vec2(aTextureAnimU, aTextureAnimV);
+			vTexCoord = aTexCoord + mod(mod(uTimeSeconds, 128.0) * animation / 64.0, 1.0);
+			vTextureLayer = aTextureLayer;
+			vTextureAlphaCutoff = aTextureAlphaCutoff;
 			gl_Position = uMvp * worldPosition;
 			gl_Position.z += aDepthBias / 128.0;
 		}
@@ -68,6 +82,12 @@ final class TerrainRenderer
 		in vec3 vNormal;
 		in float vAlpha;
 		in float vDistance;
+		in vec2 vTexCoord;
+		flat in float vTextureLayer;
+		flat in float vTextureAlphaCutoff;
+
+		uniform sampler2DArray uTextures;
+		uniform float uTextureLayerCount;
 
 		out vec4 fragColor;
 
@@ -77,14 +97,26 @@ final class TerrainRenderer
 			vec3 lightDirection = normalize(vec3(-0.45, 0.88, 0.36));
 			float diffuse = max(dot(normal, lightDirection), 0.0);
 			float shade = 0.42 + diffuse * 0.62;
+			vec3 baseColor = vColor;
+			float alpha = vAlpha;
+			if (vTextureLayer > 0.5 && vTextureLayer < uTextureLayerCount)
+			{
+				vec4 textureColor = texture(uTextures, vec3(vTexCoord, vTextureLayer));
+				if (textureColor.a < vTextureAlphaCutoff)
+				{
+					discard;
+				}
+				baseColor *= textureColor.rgb;
+				alpha *= textureColor.a;
+			}
 			vec3 sky = vec3(0.43, 0.53, 0.62);
 			float fog = smoothstep(82.0, 138.0, vDistance);
-			vec3 color = mix(vColor * shade, sky, fog);
-			if (vAlpha <= 0.01)
+			vec3 color = mix(baseColor * shade, sky, fog);
+			if (alpha <= 0.01)
 			{
 				discard;
 			}
-			fragColor = vec4(color, vAlpha);
+			fragColor = vec4(color, alpha);
 		}
 		""";
 	private static final String OUTLINE_VERTEX_SHADER = """
@@ -114,6 +146,10 @@ final class TerrainRenderer
 	private static final int COLOR_FLOATS = 3;
 	private static final int ALPHA_FLOATS = 1;
 	private static final int DEPTH_BIAS_FLOATS = 1;
+	private static final int UV_FLOATS = 2;
+	private static final int TEXTURE_LAYER_FLOATS = 1;
+	private static final int TEXTURE_ANIMATION_FLOATS = 1;
+	private static final int TEXTURE_ALPHA_CUTOFF_FLOATS = 1;
 	private static final int OUTLINE_VERTICES = 8;
 	private static final float OUTLINE_HEIGHT_OFFSET = SceneScale.SCENE_TO_WORLD * 1.5f;
 
@@ -126,15 +162,21 @@ final class TerrainRenderer
 	private int terrainProgram;
 	private int terrainMvpLocation;
 	private int terrainCameraLocation;
+	private int terrainTimeLocation;
+	private int terrainTextureLocation;
+	private int terrainTextureLayerCountLocation;
 	private int outlineProgram;
 	private int outlineMvpLocation;
 	private int outlineColorLocation;
 	private int terrainVao;
 	private int terrainVbo;
+	private int terrainTextureArray;
+	private int uploadedTextureLayerCount;
 	private int outlineVao;
 	private int outlineVbo;
 	private int vertexCount;
 	private boolean initialized;
+	private long startNanos;
 
 	void init()
 	{
@@ -154,9 +196,13 @@ final class TerrainRenderer
 		terrainProgram = createProgram(TERRAIN_VERTEX_SHADER, TERRAIN_FRAGMENT_SHADER);
 		terrainMvpLocation = GL33C.glGetUniformLocation(terrainProgram, "uMvp");
 		terrainCameraLocation = GL33C.glGetUniformLocation(terrainProgram, "uCameraPosition");
+		terrainTimeLocation = GL33C.glGetUniformLocation(terrainProgram, "uTimeSeconds");
+		terrainTextureLocation = GL33C.glGetUniformLocation(terrainProgram, "uTextures");
+		terrainTextureLayerCountLocation = GL33C.glGetUniformLocation(terrainProgram, "uTextureLayerCount");
 		outlineProgram = createProgram(OUTLINE_VERTEX_SHADER, OUTLINE_FRAGMENT_SHADER);
 		outlineMvpLocation = GL33C.glGetUniformLocation(outlineProgram, "uMvp");
 		outlineColorLocation = GL33C.glGetUniformLocation(outlineProgram, "uColor");
+		startNanos = System.nanoTime();
 		initialized = true;
 	}
 
@@ -213,6 +259,12 @@ final class TerrainRenderer
 			GL33C.glDeleteVertexArrays(terrainVao);
 			terrainVao = 0;
 		}
+		if (terrainTextureArray != 0)
+		{
+			GL33C.glDeleteTextures(terrainTextureArray);
+			terrainTextureArray = 0;
+			uploadedTextureLayerCount = 0;
+		}
 		if (outlineVbo != 0)
 		{
 			GL33C.glDeleteBuffers(outlineVbo);
@@ -258,9 +310,15 @@ final class TerrainRenderer
 			GL33C.glUniformMatrix4fv(terrainMvpLocation, false, mvp.get(matrixBuffer));
 		}
 		GL33C.glUniform3f(terrainCameraLocation, cameraPosition.x(), cameraPosition.y(), cameraPosition.z());
+		GL33C.glUniform1f(terrainTimeLocation, (System.nanoTime() - startNanos) / 1_000_000_000.0f);
+		GL33C.glUniform1f(terrainTextureLayerCountLocation, uploadedTextureLayerCount);
+		GL33C.glActiveTexture(GL33C.GL_TEXTURE0);
+		GL33C.glBindTexture(GL33C.GL_TEXTURE_2D_ARRAY, terrainTextureArray);
+		GL33C.glUniform1i(terrainTextureLocation, 0);
 		GL33C.glBindVertexArray(terrainVao);
 		GL33C.glDrawArrays(GL33C.GL_TRIANGLES, 0, vertexCount);
 		GL33C.glBindVertexArray(0);
+		GL33C.glBindTexture(GL33C.GL_TEXTURE_2D_ARRAY, 0);
 		GL33C.glUseProgram(0);
 	}
 
@@ -322,6 +380,12 @@ final class TerrainRenderer
 		{
 			GL33C.glDeleteVertexArrays(terrainVao);
 		}
+		if (terrainTextureArray != 0)
+		{
+			GL33C.glDeleteTextures(terrainTextureArray);
+			terrainTextureArray = 0;
+			uploadedTextureLayerCount = 0;
+		}
 
 		float[] vertexData = mesh.vertexData();
 		FloatBuffer buffer = BufferUtils.createFloatBuffer(vertexData.length);
@@ -372,9 +436,125 @@ final class TerrainRenderer
 			stride,
 			(POSITION_FLOATS + NORMAL_FLOATS + COLOR_FLOATS + ALPHA_FLOATS) * Float.BYTES
 		);
+		GL33C.glEnableVertexAttribArray(5);
+		GL33C.glVertexAttribPointer(
+			5,
+			UV_FLOATS,
+			GL33C.GL_FLOAT,
+			false,
+			stride,
+			(POSITION_FLOATS + NORMAL_FLOATS + COLOR_FLOATS + ALPHA_FLOATS + DEPTH_BIAS_FLOATS) * Float.BYTES
+		);
+		GL33C.glEnableVertexAttribArray(6);
+		GL33C.glVertexAttribPointer(
+			6,
+			TEXTURE_LAYER_FLOATS,
+			GL33C.GL_FLOAT,
+			false,
+			stride,
+			(POSITION_FLOATS + NORMAL_FLOATS + COLOR_FLOATS + ALPHA_FLOATS + DEPTH_BIAS_FLOATS + UV_FLOATS)
+				* Float.BYTES
+		);
+		GL33C.glEnableVertexAttribArray(7);
+		GL33C.glVertexAttribPointer(
+			7,
+			TEXTURE_ANIMATION_FLOATS,
+			GL33C.GL_FLOAT,
+			false,
+			stride,
+			(POSITION_FLOATS
+				+ NORMAL_FLOATS
+				+ COLOR_FLOATS
+				+ ALPHA_FLOATS
+				+ DEPTH_BIAS_FLOATS
+				+ UV_FLOATS
+				+ TEXTURE_LAYER_FLOATS) * Float.BYTES
+		);
+		GL33C.glEnableVertexAttribArray(8);
+		GL33C.glVertexAttribPointer(
+			8,
+			TEXTURE_ANIMATION_FLOATS,
+			GL33C.GL_FLOAT,
+			false,
+			stride,
+			(POSITION_FLOATS
+				+ NORMAL_FLOATS
+				+ COLOR_FLOATS
+				+ ALPHA_FLOATS
+				+ DEPTH_BIAS_FLOATS
+				+ UV_FLOATS
+				+ TEXTURE_LAYER_FLOATS
+				+ TEXTURE_ANIMATION_FLOATS) * Float.BYTES
+		);
+		GL33C.glEnableVertexAttribArray(9);
+		GL33C.glVertexAttribPointer(
+			9,
+			TEXTURE_ALPHA_CUTOFF_FLOATS,
+			GL33C.GL_FLOAT,
+			false,
+			stride,
+			(POSITION_FLOATS
+				+ NORMAL_FLOATS
+				+ COLOR_FLOATS
+				+ ALPHA_FLOATS
+				+ DEPTH_BIAS_FLOATS
+				+ UV_FLOATS
+				+ TEXTURE_LAYER_FLOATS
+				+ TEXTURE_ANIMATION_FLOATS
+				+ TEXTURE_ANIMATION_FLOATS) * Float.BYTES
+		);
 		GL33C.glBindVertexArray(0);
+		uploadTextureSet(mesh.textureSet());
 		vertexCount = mesh.vertexCount();
 		currentMesh = mesh;
+	}
+
+	private void uploadTextureSet(SceneTextureSet textureSet)
+	{
+		int requestedLayers = Math.max(1, textureSet.layerCount());
+		int maxLayers = GL33C.glGetInteger(GL33C.GL_MAX_ARRAY_TEXTURE_LAYERS);
+		int layers = Math.min(requestedLayers, maxLayers);
+		if (layers < requestedLayers)
+		{
+			System.err.println(
+				"3D texture layers capped at " + layers + " by GL_MAX_ARRAY_TEXTURE_LAYERS; extra textures use color fallback."
+			);
+		}
+
+		int textureSize = SceneTextureSet.TEXTURE_SIZE;
+		int[] pixelsArgb = textureSet.pixelsArgb();
+		ByteBuffer pixels = BufferUtils.createByteBuffer(textureSize * textureSize * layers * 4);
+		for (int i = 0; i < textureSize * textureSize * layers; i++)
+		{
+			int argb = pixelsArgb[i];
+			pixels.put((byte) (argb >> 16 & 0xFF));
+			pixels.put((byte) (argb >> 8 & 0xFF));
+			pixels.put((byte) (argb & 0xFF));
+			pixels.put((byte) (argb >> 24 & 0xFF));
+		}
+		pixels.flip();
+
+		terrainTextureArray = GL33C.glGenTextures();
+		GL33C.glBindTexture(GL33C.GL_TEXTURE_2D_ARRAY, terrainTextureArray);
+		GL33C.glPixelStorei(GL33C.GL_UNPACK_ALIGNMENT, 1);
+		GL33C.glTexParameteri(GL33C.GL_TEXTURE_2D_ARRAY, GL33C.GL_TEXTURE_MIN_FILTER, GL33C.GL_LINEAR);
+		GL33C.glTexParameteri(GL33C.GL_TEXTURE_2D_ARRAY, GL33C.GL_TEXTURE_MAG_FILTER, GL33C.GL_LINEAR);
+		GL33C.glTexParameteri(GL33C.GL_TEXTURE_2D_ARRAY, GL33C.GL_TEXTURE_WRAP_S, GL33C.GL_REPEAT);
+		GL33C.glTexParameteri(GL33C.GL_TEXTURE_2D_ARRAY, GL33C.GL_TEXTURE_WRAP_T, GL33C.GL_REPEAT);
+		GL33C.glTexImage3D(
+			GL33C.GL_TEXTURE_2D_ARRAY,
+			0,
+			GL33C.GL_RGBA8,
+			textureSize,
+			textureSize,
+			layers,
+			0,
+			GL33C.GL_RGBA,
+			GL33C.GL_UNSIGNED_BYTE,
+			pixels
+		);
+		GL33C.glBindTexture(GL33C.GL_TEXTURE_2D_ARRAY, 0);
+		uploadedTextureLayerCount = layers;
 	}
 
 	private float[] outlineVertices()

@@ -67,7 +67,8 @@ public final class TerrainRegionLoader
 			overlays.load();
 			ObjectManager objects = new ObjectManager(store);
 			objects.load();
-			RSTextureProvider textureProvider = loadTextureProvider(store);
+			TextureResources textures = loadTextureResources(store);
+			TerrainFloorTextures floorTextures = TerrainFloorTextures.load(store);
 
 			RegionLoader regionLoader = new RegionLoader(store, loadKeyProvider());
 			Region region = regionLoader.loadRegionFromArchive(regionId);
@@ -82,23 +83,30 @@ public final class TerrainRegionLoader
 				overlays,
 				objects,
 				new ObjectModelProvider(store),
-				textureProvider
+				textures.textureProvider(),
+				floorTextures,
+				textures.textureSet()
 			);
 		}
 	}
 
-	private static RSTextureProvider loadTextureProvider(Store store)
+	private static TextureResources loadTextureResources(Store store)
 	{
 		try
 		{
 			TextureManager textures = new TextureManager(store);
 			textures.load();
-			return new RSTextureProvider(textures, new SpriteManager(store));
+			SpriteManager sprites = new SpriteManager(store);
+			sprites.load();
+			return new TextureResources(
+				new RSTextureProvider(textures, sprites),
+				SceneTextureSet.build(textures, sprites)
+			);
 		}
 		catch (IOException | RuntimeException ex)
 		{
 			System.err.println("Failed to load cache texture metadata for 3D terrain: " + ex.getMessage());
-			return null;
+			return new TextureResources(null, SceneTextureSet.empty());
 		}
 	}
 
@@ -122,5 +130,12 @@ public final class TerrainRegionLoader
 			keyManager.loadKeys(in);
 		}
 		return keyManager;
+	}
+
+	private record TextureResources(
+		RSTextureProvider textureProvider,
+		SceneTextureSet textureSet
+	)
+	{
 	}
 }

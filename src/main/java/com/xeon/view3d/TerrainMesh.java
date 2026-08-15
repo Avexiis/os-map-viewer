@@ -31,7 +31,7 @@ import org.joml.Vector3fc;
 
 public final class TerrainMesh
 {
-	public static final int FLOATS_PER_VERTEX = 11;
+	public static final int FLOATS_PER_VERTEX = 17;
 	private static final float PICK_STEP = 0.25f;
 	private static final float PICK_EPSILON = 0.08f;
 	private static final int HEIGHTS_PER_PLANE = Region.X * Region.Y;
@@ -43,6 +43,7 @@ public final class TerrainMesh
 	private final boolean allPlanes;
 	private final float[] vertexData;
 	private final int vertexCount;
+	private final SceneTextureSet textureSet;
 	private final int[] sceneHeights;
 	private final boolean[] renderableTiles;
 	private final float initialCameraX;
@@ -57,6 +58,7 @@ public final class TerrainMesh
 		boolean allPlanes,
 		float[] vertexData,
 		int vertexCount,
+		SceneTextureSet textureSet,
 		int[] sceneHeights,
 		boolean[] renderableTiles,
 		float initialCameraX,
@@ -71,6 +73,7 @@ public final class TerrainMesh
 		this.allPlanes = allPlanes;
 		this.vertexData = Arrays.copyOf(vertexData, vertexData.length);
 		this.vertexCount = vertexCount;
+		this.textureSet = textureSet == null ? SceneTextureSet.empty() : textureSet;
 		this.sceneHeights = Arrays.copyOf(sceneHeights, sceneHeights.length);
 		this.renderableTiles = Arrays.copyOf(renderableTiles, renderableTiles.length);
 		this.initialCameraX = initialCameraX;
@@ -111,6 +114,11 @@ public final class TerrainMesh
 	public int vertexCount()
 	{
 		return vertexCount;
+	}
+
+	SceneTextureSet textureSet()
+	{
+		return textureSet;
 	}
 
 	float worldHeightAt(int samplePlane, float x, float y)

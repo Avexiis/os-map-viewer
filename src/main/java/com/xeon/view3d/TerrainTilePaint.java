@@ -30,6 +30,8 @@ record TerrainTilePaint(
 	int overlayRgb,
 	int overlayPath,
 	int overlayRotation,
+	int underlayTextureLayer,
+	int overlayTextureLayer,
 	boolean hasUnderlay,
 	boolean hasOverlay
 )
