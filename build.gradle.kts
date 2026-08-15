@@ -25,6 +25,19 @@ val lwjglNatives = run {
         else -> throw GradleException("Unsupported LWJGL platform: $os/$arch")
     }
 }
+val nvidiaPrimeEnvironment = mapOf(
+    "__NV_PRIME_RENDER_OFFLOAD" to "1",
+    "__VK_LAYER_NV_optimus" to "NVIDIA_only",
+    "__GLX_VENDOR_LIBRARY_NAME" to "nvidia"
+)
+val useNvidiaPrime = providers.gradleProperty("osmapviewer.nvidiaPrime")
+    .map { value ->
+        value.equals("true", ignoreCase = true)
+            || value.equals("yes", ignoreCase = true)
+            || value.equals("on", ignoreCase = true)
+            || value == "1"
+    }
+    .orElse(false)
 
 repositories {
     mavenCentral()
@@ -41,6 +54,13 @@ java {
 
 application {
     mainClass.set("com.xeon.App")
+}
+
+tasks.named<JavaExec>("run") {
+    if (useNvidiaPrime.get())
+    {
+        environment(nvidiaPrimeEnvironment)
+    }
 }
 
 val generatedResourcesDir = layout.buildDirectory.dir("generated/resources/main")

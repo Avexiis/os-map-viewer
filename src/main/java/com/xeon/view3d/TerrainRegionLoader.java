@@ -30,6 +30,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.Map;
 import net.runelite.cache.ObjectManager;
 import net.runelite.cache.OverlayManager;
 import net.runelite.cache.SpriteManager;
@@ -48,19 +50,23 @@ public final class TerrainRegionLoader
 
 	public TerrainMesh loadFullScene(Path cacheDirectory, int regionId) throws IOException
 	{
+		try (Session session = open(cacheDirectory))
+		{
+			return session.loadRegion(regionId);
+		}
+	}
+
+	public Session open(Path cacheDirectory) throws IOException
+	{
 		if (cacheDirectory == null)
 		{
 			throw new IOException("Cache directory is not set.");
 		}
-		if (regionId < 0)
-		{
-			throw new IOException("Region ID is not valid.");
-		}
 
-		try (Store store = new Store(cacheDirectory.toFile()))
+		Store store = new Store(cacheDirectory.toFile());
+		try
 		{
 			store.load();
-
 			UnderlayManager underlays = new UnderlayManager(store);
 			underlays.load();
 			OverlayManager overlays = new OverlayManager(store);
@@ -69,16 +75,10 @@ public final class TerrainRegionLoader
 			objects.load();
 			TextureResources textures = loadTextureResources(store);
 			TerrainFloorTextures floorTextures = TerrainFloorTextures.load(store);
-
 			RegionLoader regionLoader = new RegionLoader(store, loadKeyProvider());
-			Region region = regionLoader.loadRegionFromArchive(regionId);
-			if (region == null)
-			{
-				throw new IOException("Region " + regionId + " was not found in the cache.");
-			}
-
-			return TerrainMeshBuilder.build(
-				region,
+			return new Session(
+				store,
+				regionLoader,
 				underlays,
 				overlays,
 				objects,
@@ -87,6 +87,18 @@ public final class TerrainRegionLoader
 				floorTextures,
 				textures.textureSet()
 			);
+		}
+		catch (IOException | RuntimeException ex)
+		{
+			try
+			{
+				store.close();
+			}
+			catch (IOException closeEx)
+			{
+				ex.addSuppressed(closeEx);
+			}
+			throw ex;
 		}
 	}
 
@@ -137,5 +149,110 @@ public final class TerrainRegionLoader
 		SceneTextureSet textureSet
 	)
 	{
+	}
+
+	public static final class Session implements AutoCloseable
+	{
+		private final Store store;
+		private final RegionLoader regionLoader;
+		private final UnderlayManager underlays;
+		private final OverlayManager overlays;
+		private final ObjectManager objects;
+		private final ObjectModelProvider modelProvider;
+		private final RSTextureProvider textureProvider;
+		private final TerrainFloorTextures floorTextures;
+		private final SceneTextureSet textureSet;
+
+		private Session(
+			Store store,
+			RegionLoader regionLoader,
+			UnderlayManager underlays,
+			OverlayManager overlays,
+			ObjectManager objects,
+			ObjectModelProvider modelProvider,
+			RSTextureProvider textureProvider,
+			TerrainFloorTextures floorTextures,
+			SceneTextureSet textureSet
+		)
+		{
+			this.store = store;
+			this.regionLoader = regionLoader;
+			this.underlays = underlays;
+			this.overlays = overlays;
+			this.objects = objects;
+			this.modelProvider = modelProvider;
+			this.textureProvider = textureProvider;
+			this.floorTextures = floorTextures;
+			this.textureSet = textureSet;
+		}
+
+		public TerrainMesh loadRegion(int regionId) throws IOException
+		{
+			if (regionId < 0)
+			{
+				throw new IOException("Region ID is not valid.");
+			}
+
+			Region region = regionLoader.loadRegionFromArchive(regionId);
+			if (region == null)
+			{
+				throw new IOException("Region " + regionId + " was not found in the cache.");
+			}
+
+			Map<Integer, Region> regions = new HashMap<>();
+			regions.put(region.getRegionID(), region);
+			for (int dx = -1; dx <= 1; dx++)
+			{
+				for (int dy = -1; dy <= 1; dy++)
+				{
+					if (dx == 0 && dy == 0)
+					{
+						continue;
+					}
+					int neighborRegionId = TerrainScene.regionId(region.getRegionX() + dx, region.getRegionY() + dy);
+					Region neighbor = loadNeighborRegion(neighborRegionId);
+					if (neighbor != null)
+					{
+						regions.put(neighborRegionId, neighbor);
+					}
+				}
+			}
+
+			try
+			{
+				return TerrainMeshBuilder.build(
+					new TerrainRegionContext(region, regions),
+					underlays,
+					overlays,
+					objects,
+					modelProvider,
+					textureProvider,
+					floorTextures,
+					textureSet
+				);
+			}
+			finally
+			{
+				modelProvider.clearCache();
+			}
+		}
+
+		private Region loadNeighborRegion(int regionId)
+		{
+			try
+			{
+				return regionLoader.loadRegionFromArchive(regionId);
+			}
+			catch (IOException | RuntimeException ex)
+			{
+				return null;
+			}
+		}
+
+		@Override
+		public void close() throws IOException
+		{
+			store.close();
+		}
 	}
 }

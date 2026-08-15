@@ -34,14 +34,16 @@ public final class TerrainMesh
 	public static final int FLOATS_PER_VERTEX = 17;
 	private static final float PICK_STEP = 0.25f;
 	private static final float PICK_EPSILON = 0.08f;
-	private static final int HEIGHTS_PER_PLANE = Region.X * Region.Y;
+	private static final int HEIGHT_GRID_SIZE = Region.X + 1;
+	private static final int HEIGHTS_PER_PLANE = HEIGHT_GRID_SIZE * HEIGHT_GRID_SIZE;
+	private static final int RENDERABLE_TILES_PER_PLANE = Region.X * Region.Y;
 
 	private final int regionId;
 	private final int regionX;
 	private final int regionY;
 	private final int plane;
 	private final boolean allPlanes;
-	private final float[] vertexData;
+	private float[] vertexData;
 	private final int vertexCount;
 	private final SceneTextureSet textureSet;
 	private final int[] sceneHeights;
@@ -49,6 +51,25 @@ public final class TerrainMesh
 	private final float initialCameraX;
 	private final float initialCameraY;
 	private final float initialCameraZ;
+
+	static TerrainMesh empty(int regionId)
+	{
+		return new TerrainMesh(
+			regionId,
+			TerrainScene.regionX(regionId),
+			TerrainScene.regionY(regionId),
+			Region.Z - 1,
+			true,
+			new float[0],
+			0,
+			SceneTextureSet.empty(),
+			new int[Region.Z * HEIGHTS_PER_PLANE],
+			new boolean[Region.Z * Region.X * Region.Y],
+			0.0f,
+			22.0f,
+			0.0f
+		);
+	}
 
 	public TerrainMesh(
 		int regionId,
@@ -71,10 +92,10 @@ public final class TerrainMesh
 		this.regionY = regionY;
 		this.plane = plane;
 		this.allPlanes = allPlanes;
-		this.vertexData = Arrays.copyOf(vertexData, vertexData.length);
+		this.vertexData = vertexData == null ? new float[0] : vertexData;
 		this.vertexCount = vertexCount;
 		this.textureSet = textureSet == null ? SceneTextureSet.empty() : textureSet;
-		this.sceneHeights = Arrays.copyOf(sceneHeights, sceneHeights.length);
+		this.sceneHeights = sceneHeights == null ? new int[Region.Z * HEIGHTS_PER_PLANE] : sceneHeights;
 		this.renderableTiles = Arrays.copyOf(renderableTiles, renderableTiles.length);
 		this.initialCameraX = initialCameraX;
 		this.initialCameraY = initialCameraY;
@@ -109,6 +130,16 @@ public final class TerrainMesh
 	public float[] vertexData()
 	{
 		return Arrays.copyOf(vertexData, vertexData.length);
+	}
+
+	float[] rawVertexData()
+	{
+		return vertexData;
+	}
+
+	void releaseVertexData()
+	{
+		vertexData = new float[0];
 	}
 
 	public int vertexCount()
@@ -161,6 +192,7 @@ public final class TerrainMesh
 					|| (!Float.isNaN(previousDistance) && crossedSurface(previousDistance, heightDistance)))
 				{
 					return new HoveredTile(
+						regionId,
 						regionX * Region.X + tileX,
 						regionY * Region.Y + tileY,
 						samplePlane,
@@ -190,12 +222,12 @@ public final class TerrainMesh
 
 	private float sceneHeightAt(int samplePlane, float x, float y)
 	{
-		x = clamp(x, 0.0f, Region.X - 1.0f);
-		y = clamp(y, 0.0f, Region.Y - 1.0f);
-		int x0 = clamp((int) Math.floor(x), 0, Region.X - 1);
-		int y0 = clamp((int) Math.floor(y), 0, Region.Y - 1);
-		int x1 = clamp(x0 + 1, 0, Region.X - 1);
-		int y1 = clamp(y0 + 1, 0, Region.Y - 1);
+		x = clamp(x, 0.0f, Region.X);
+		y = clamp(y, 0.0f, Region.Y);
+		int x0 = clamp((int) Math.floor(x), 0, Region.X);
+		int y0 = clamp((int) Math.floor(y), 0, Region.Y);
+		int x1 = clamp(x0 + 1, 0, Region.X);
+		int y1 = clamp(y0 + 1, 0, Region.Y);
 		float tx = x1 == x0 ? 0.0f : x - x0;
 		float ty = y1 == y0 ? 0.0f : y - y0;
 		float h00 = rawSceneHeight(samplePlane, x0, y0);
@@ -210,17 +242,22 @@ public final class TerrainMesh
 	private int rawSceneHeight(int samplePlane, int x, int y)
 	{
 		samplePlane = clamp(samplePlane, 0, Region.Z - 1);
-		x = clamp(x, 0, Region.X - 1);
-		y = clamp(y, 0, Region.Y - 1);
-		return sceneHeights[samplePlane * HEIGHTS_PER_PLANE + x * Region.Y + y];
+		x = clamp(x, 0, Region.X);
+		y = clamp(y, 0, Region.Y);
+		return sceneHeights[samplePlane * HEIGHTS_PER_PLANE + x * HEIGHT_GRID_SIZE + y];
 	}
 
 	private boolean isRenderableTile(int samplePlane, int x, int y)
 	{
+		return renderableTileAt(samplePlane, x, y);
+	}
+
+	boolean renderableTileAt(int samplePlane, int x, int y)
+	{
 		samplePlane = clamp(samplePlane, 0, Region.Z - 1);
 		x = clamp(x, 0, Region.X - 1);
 		y = clamp(y, 0, Region.Y - 1);
-		return renderableTiles[samplePlane * HEIGHTS_PER_PLANE + x * Region.Y + y];
+		return renderableTiles[samplePlane * RENDERABLE_TILES_PER_PLANE + x * Region.Y + y];
 	}
 
 	private static boolean crossedSurface(float previousDistance, float heightDistance)

@@ -35,14 +35,14 @@ final class TerrainMeshBuilder
 {
 	private static final float NORMAL_SAMPLE_DISTANCE = 1.0f;
 	private static final float NORMAL_Y_SCALE = 2.0f;
-	private static final int MAX_TILE_TRIANGLES = 6;
+	private static final int INITIAL_TILE_TRIANGLES = 2;
 
 	private TerrainMeshBuilder()
 	{
 	}
 
 	static TerrainMesh build(
-		Region region,
+		TerrainRegionContext regionContext,
 		UnderlayManager underlays,
 		OverlayManager overlays,
 		ObjectManager objectManager,
@@ -53,9 +53,10 @@ final class TerrainMeshBuilder
 	)
 	{
 		SceneMeshBuffer data = new SceneMeshBuffer(
-			Region.X * Region.Y * MAX_TILE_TRIANGLES * 3 * TerrainMesh.FLOATS_PER_VERTEX * Region.Z
+			Region.X * Region.Y * INITIAL_TILE_TRIANGLES * 3 * TerrainMesh.FLOATS_PER_VERTEX * Region.Z
 		);
-		int[] sceneHeights = sceneHeights(region);
+		Region region = regionContext.center();
+		int[] sceneHeights = sceneHeights(regionContext);
 		boolean[] renderableTiles = new boolean[Region.Z * Region.X * Region.Y];
 		boolean[] renderedTiles = new boolean[Region.Z * Region.X * Region.Y];
 		TerrainColorizer[] colorizers = new TerrainColorizer[Region.Z];
@@ -66,7 +67,7 @@ final class TerrainMeshBuilder
 		for (int sourcePlane = 0; sourcePlane < Region.Z; sourcePlane++)
 		{
 			colorizers[sourcePlane] = new TerrainColorizer(
-				region,
+				regionContext,
 				underlays,
 				overlays,
 				textureProvider,
@@ -74,7 +75,7 @@ final class TerrainMeshBuilder
 				textureSet,
 				sourcePlane
 			);
-			heightMaps[sourcePlane] = new TerrainHeightMap(region, sourcePlane);
+			heightMaps[sourcePlane] = new TerrainHeightMap(regionContext, sourcePlane);
 			lightMaps[sourcePlane] = new TerrainLightMap(heightMaps[sourcePlane]);
 		}
 
@@ -127,7 +128,7 @@ final class TerrainMeshBuilder
 			renderableTiles,
 			0.0f,
 			Math.max(16.0f, maxHeight + 18.0f),
-			-76.0f
+			0.0f
 		);
 	}
 
@@ -387,16 +388,17 @@ final class TerrainMeshBuilder
 		return Math.max(Math.max(h00, h10), Math.max(h11, h01));
 	}
 
-	private static int[] sceneHeights(Region region)
+	private static int[] sceneHeights(TerrainRegionContext regionContext)
 	{
-		int[] heights = new int[Region.Z * Region.X * Region.Y];
+		int gridSize = Region.X + 1;
+		int[] heights = new int[Region.Z * gridSize * gridSize];
 		for (int plane = 0; plane < Region.Z; plane++)
 		{
-			for (int x = 0; x < Region.X; x++)
+			for (int x = 0; x <= Region.X; x++)
 			{
-				for (int y = 0; y < Region.Y; y++)
+				for (int y = 0; y <= Region.Y; y++)
 				{
-					heights[plane * Region.X * Region.Y + x * Region.Y + y] = region.getTileHeight(plane, x, y);
+					heights[plane * gridSize * gridSize + x * gridSize + y] = regionContext.tileHeight(plane, x, y);
 				}
 			}
 		}

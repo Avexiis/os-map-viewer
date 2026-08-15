@@ -25,13 +25,32 @@
  */
 package com.xeon.view3d;
 
-record HoveredTile(
-	int regionId,
-	int worldX,
-	int worldY,
-	int plane,
-	int localX,
-	int localY
+record TerrainRenderStats(
+	int drawCalls,
+	int visibleRegions,
+	int culledRegions,
+	int uploadedRegions,
+	int pendingUploads,
+	int verticesDrawn,
+	int textureLayers,
+	String glVendor,
+	String glRenderer,
+	String glVersion
 )
 {
+	static TerrainRenderStats unavailable()
+	{
+		return new TerrainRenderStats(
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			"Unavailable",
+			"Unavailable",
+			"Unavailable"
+		);
+	}
 }

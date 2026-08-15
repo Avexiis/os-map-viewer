@@ -35,7 +35,8 @@ final class FreeCamera
 	private static final Vector3f WORLD_UP = new Vector3f(0.0f, 1.0f, 0.0f);
 	private static final float MOVE_SPEED = 22.0f;
 	private static final float FAST_MOVE_MULTIPLIER = 2.0f;
-	private static final float MOUSE_SENSITIVITY = 0.12f;
+	private static final float MOUSE_SENSITIVITY = 0.055f;
+	private static final float MAX_MOUSE_DELTA = 48.0f;
 	private static final float KEY_ROTATION_SPEED = 95.0f;
 	private static final float SCROLL_ZOOM_DISTANCE = 6.0f;
 	private static final float MIN_PITCH = -88.0f;
@@ -134,6 +135,8 @@ final class FreeCamera
 
 	void rotate(float deltaX, float deltaY)
 	{
+		deltaX = clamp(deltaX, -MAX_MOUSE_DELTA, MAX_MOUSE_DELTA);
+		deltaY = clamp(deltaY, -MAX_MOUSE_DELTA, MAX_MOUSE_DELTA);
 		yaw -= deltaX * MOUSE_SENSITIVITY;
 		pitch -= deltaY * MOUSE_SENSITIVITY;
 		clampPitch();
@@ -184,6 +187,16 @@ final class FreeCamera
 	Vector3fc position()
 	{
 		return position;
+	}
+
+	Vector3f copyPosition(Vector3f destination)
+	{
+		return destination.set(position);
+	}
+
+	void setPosition(Vector3fc value)
+	{
+		position.set(value);
 	}
 
 	Vector3f direction(Vector3f destination)
@@ -252,4 +265,8 @@ final class FreeCamera
 		fast = value;
 	}
 
+	private static float clamp(float value, float min, float max)
+	{
+		return Math.max(min, Math.min(max, value));
+	}
 }

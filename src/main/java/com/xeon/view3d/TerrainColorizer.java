@@ -40,7 +40,7 @@ final class TerrainColorizer
 	private static final int TRANSPARENT_MAGENTA = 0xFF_00FF;
 	private static final int DEFAULT_TERRAIN_RGB = 0x2F3430;
 
-	private final Region region;
+	private final TerrainRegionContext regionContext;
 	private final UnderlayManager underlays;
 	private final OverlayManager overlays;
 	private final RSTextureProvider textureProvider;
@@ -49,7 +49,7 @@ final class TerrainColorizer
 	private final TerrainTilePaint[][] paints = new TerrainTilePaint[Region.X][Region.Y];
 
 	TerrainColorizer(
-		Region region,
+		TerrainRegionContext regionContext,
 		UnderlayManager underlays,
 		OverlayManager overlays,
 		RSTextureProvider textureProvider,
@@ -58,7 +58,7 @@ final class TerrainColorizer
 		int plane
 	)
 	{
-		this.region = region;
+		this.regionContext = regionContext;
 		this.underlays = underlays;
 		this.overlays = overlays;
 		this.textureProvider = textureProvider;
@@ -96,8 +96,8 @@ final class TerrainColorizer
 		{
 			for (int y = 0; y < Region.Y; y++)
 			{
-				int underlayId = region.getUnderlayId(plane, x, y);
-				int overlayId = region.getOverlayId(plane, x, y);
+				int underlayId = regionContext.underlayId(plane, x, y);
+				int overlayId = regionContext.overlayId(plane, x, y);
 				int underlayRgb = underlayId > 0 ? blendedUnderlayRgb(plane, x, y) : 0;
 				int overlayRgb = overlayId > 0 ? overlayRgb(overlayId - 1) : 0;
 				int underlayTextureLayer = underlayId > 0 ? textureLayerForUnderlay(underlayId - 1) : 0;
@@ -107,8 +107,8 @@ final class TerrainColorizer
 				paints[x][y] = new TerrainTilePaint(
 					underlayRgb,
 					overlayRgb,
-					region.getOverlayPath(plane, x, y),
-					region.getOverlayRotation(plane, x, y),
+					regionContext.overlayPath(plane, x, y),
+					regionContext.overlayRotation(plane, x, y),
 					underlayTextureLayer,
 					overlayTextureLayer,
 					hasUnderlay,
@@ -131,11 +131,7 @@ final class TerrainColorizer
 			{
 				int x = tileX + dx;
 				int y = tileY + dy;
-				if (x < 0 || y < 0 || x >= Region.X || y >= Region.Y)
-				{
-					continue;
-				}
-				int underlayId = region.getUnderlayId(plane, x, y);
+				int underlayId = regionContext.underlayId(plane, x, y);
 				if (underlayId <= 0)
 				{
 					continue;

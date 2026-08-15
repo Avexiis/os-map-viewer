@@ -72,6 +72,7 @@ public class MapViewerController
 {
 	private static final Color RAIL_BACKGROUND = new Color(0x1B1D22);
 	private static final Color WARNING_ORANGE = new Color(0xD98C20);
+	private static final int DEFAULT_3D_REGION_ID = 12850;
 	private static final String GITHUB_URL = "https://github.com/Avexiis/os-map-viewer";
 	private static final String EXPERIMENTAL_MAP_PRINT_DESCRIPTION =
 		"This option will load an internal copy of RuneLite's cache module and read the OSRS game cache "
@@ -84,14 +85,14 @@ public class MapViewerController
 			+ "on devices with at least 10GB of RAM not in use. If your PC cannot handle this, or if "
 			+ "the operation fails, please check the GitHub for the latest release version of OS Map Viewer.";
 	private static final String EXPERIMENTAL_3D_VIEWER_DESCRIPTION =
-		"This option reads a single region from the local OSRS cache and replaces the 2D map workspace "
-			+ "with an embedded LWJGL terrain viewer. It is intended for terrain inspection and early "
-			+ "renderer development, so plugins are cleared while it is active.";
+		"This option reads regions from the local OSRS cache and replaces the 2D map workspace "
+			+ "with an embedded LWJGL terrain viewer that streams nearby regions around the camera. "
+			+ "It is intended for terrain inspection and renderer development, so plugins are cleared while it is active.";
 	private static final String MAP_3D_NOTICE =
-		"NOTICE: The 3D viewer is experimental and currently loads only the region centered in the 2D map. "
+		"NOTICE: The 3D viewer is experimental and streams cache regions around the camera. "
 			+ "It reads terrain, overlay, underlay, texture, and height data from the local OSRS cache and "
 			+ "does not modify game files. The 2D map workspace and active plugins will be cleared until you "
-			+ "return to the normal map viewer.";
+			+ "return to the normal map viewer. If no map-centered region is available, it starts in Lumbridge.";
 	private static final double FULL_JUMP_ZOOM = Double.POSITIVE_INFINITY;
 	private static final MemoryPreset[] MEMORY_PRESETS = new MemoryPreset[]{
 		new MemoryPreset("512 MB", 512),
@@ -1106,8 +1107,7 @@ public class MapViewerController
 		}
 		if (regionId < 0)
 		{
-			Ui.warn("Center the 2D map on a region before opening the 3D viewer.");
-			return;
+			regionId = DEFAULT_3D_REGION_ID;
 		}
 
 		if (owner instanceof JDialog dialog)

@@ -29,12 +29,12 @@ import net.runelite.cache.region.Region;
 
 final class TerrainHeightMap
 {
-	private final Region region;
+	private final TerrainRegionContext regionContext;
 	private final int plane;
 
-	TerrainHeightMap(Region region, int plane)
+	TerrainHeightMap(TerrainRegionContext regionContext, int plane)
 	{
-		this.region = region;
+		this.regionContext = regionContext;
 		this.plane = plane;
 	}
 
@@ -45,14 +45,14 @@ final class TerrainHeightMap
 
 	float sceneHeightAt(float x, float y)
 	{
-		x = clamp(x, 0.0f, Region.X - 1.0f);
-		y = clamp(y, 0.0f, Region.Y - 1.0f);
-		int x0 = clamp((int) Math.floor(x), 0, Region.X - 1);
-		int y0 = clamp((int) Math.floor(y), 0, Region.Y - 1);
-		int x1 = clamp(x0 + 1, 0, Region.X - 1);
-		int y1 = clamp(y0 + 1, 0, Region.Y - 1);
-		float tx = x1 == x0 ? 0.0f : x - x0;
-		float ty = y1 == y0 ? 0.0f : y - y0;
+		x = clamp(x, -TerrainRegionContext.BORDER_TILES, Region.X + TerrainRegionContext.BORDER_TILES);
+		y = clamp(y, -TerrainRegionContext.BORDER_TILES, Region.Y + TerrainRegionContext.BORDER_TILES);
+		int x0 = (int) Math.floor(x);
+		int y0 = (int) Math.floor(y);
+		int x1 = x0 + 1;
+		int y1 = y0 + 1;
+		float tx = x - x0;
+		float ty = y - y0;
 		float h00 = rawSceneHeight(x0, y0);
 		float h10 = rawSceneHeight(x1, y0);
 		float h01 = rawSceneHeight(x0, y1);
@@ -64,7 +64,7 @@ final class TerrainHeightMap
 
 	int rawSceneHeight(int x, int y)
 	{
-		return region.getTileHeight(plane, clamp(x, 0, Region.X - 1), clamp(y, 0, Region.Y - 1));
+		return regionContext.tileHeight(plane, x, y);
 	}
 
 	int meanSceneHeight(int x, int y)
@@ -88,11 +88,6 @@ final class TerrainHeightMap
 	private static float lerp(float a, float b, float t)
 	{
 		return a + (b - a) * t;
-	}
-
-	private static int clamp(int value, int min, int max)
-	{
-		return Math.max(min, Math.min(max, value));
 	}
 
 	private static float clamp(float value, float min, float max)

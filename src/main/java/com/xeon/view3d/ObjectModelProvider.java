@@ -26,7 +26,7 @@
 package com.xeon.view3d;
 
 import java.io.IOException;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import net.runelite.cache.IndexType;
 import net.runelite.cache.definitions.ModelDefinition;
@@ -39,9 +39,18 @@ import net.runelite.cache.fs.Store;
 
 final class ObjectModelProvider
 {
+	private static final int MODEL_CACHE_LIMIT = 512;
+
 	private final Store store;
 	private final ModelLoader loader = new ModelLoader();
-	private final Map<Integer, ModelDefinition> models = new HashMap<>();
+	private final Map<Integer, ModelDefinition> models = new LinkedHashMap<>(MODEL_CACHE_LIMIT, 0.75f, true)
+	{
+		@Override
+		protected boolean removeEldestEntry(Map.Entry<Integer, ModelDefinition> eldest)
+		{
+			return size() > MODEL_CACHE_LIMIT;
+		}
+	};
 
 	ObjectModelProvider(Store store)
 	{
@@ -51,6 +60,11 @@ final class ObjectModelProvider
 	ModelDefinition load(int modelId)
 	{
 		return models.computeIfAbsent(modelId, this::loadUncached);
+	}
+
+	void clearCache()
+	{
+		models.clear();
 	}
 
 	private ModelDefinition loadUncached(int modelId)
