@@ -38,6 +38,7 @@ import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionAdapter;
+import java.awt.event.MouseWheelEvent;
 import java.awt.geom.AffineTransform;
 import java.nio.file.Path;
 import java.util.concurrent.CancellationException;
@@ -247,6 +248,7 @@ public final class Map3DPanel extends JPanel
 				handleMouseMovement(e);
 			}
 		});
+		canvas.addMouseWheelListener(this::handleMouseWheel);
 	}
 
 	private void setKey(int keyCode, boolean pressed)
@@ -257,8 +259,13 @@ public final class Map3DPanel extends JPanel
 			case KeyEvent.VK_S -> camera.setBackward(pressed);
 			case KeyEvent.VK_A -> camera.setLeft(pressed);
 			case KeyEvent.VK_D -> camera.setRight(pressed);
-			case KeyEvent.VK_SHIFT -> camera.setRaise(pressed);
-			case KeyEvent.VK_CONTROL -> camera.setLower(pressed);
+			case KeyEvent.VK_PAGE_UP, KeyEvent.VK_SPACE -> camera.setRaise(pressed);
+			case KeyEvent.VK_PAGE_DOWN, KeyEvent.VK_CONTROL -> camera.setLower(pressed);
+			case KeyEvent.VK_SHIFT -> camera.setFast(pressed);
+			case KeyEvent.VK_LEFT -> camera.setTurnLeft(pressed);
+			case KeyEvent.VK_RIGHT -> camera.setTurnRight(pressed);
+			case KeyEvent.VK_UP -> camera.setLookUp(pressed);
+			case KeyEvent.VK_DOWN -> camera.setLookDown(pressed);
 			case KeyEvent.VK_ESCAPE ->
 			{
 				if (pressed)
@@ -284,6 +291,16 @@ public final class Map3DPanel extends JPanel
 		}
 		updateHoveredTile(event);
 		lastMousePoint = point;
+	}
+
+	private void handleMouseWheel(MouseWheelEvent event)
+	{
+		canvas.requestFocusInWindow();
+		if (!cameraLocked)
+		{
+			camera.zoom((float) event.getPreciseWheelRotation());
+		}
+		updateHoveredTile(event);
 	}
 
 	private void updateHoveredTile(MouseEvent event)

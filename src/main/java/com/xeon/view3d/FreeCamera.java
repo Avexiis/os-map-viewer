@@ -34,7 +34,10 @@ final class FreeCamera
 {
 	private static final Vector3f WORLD_UP = new Vector3f(0.0f, 1.0f, 0.0f);
 	private static final float MOVE_SPEED = 22.0f;
+	private static final float FAST_MOVE_MULTIPLIER = 2.0f;
 	private static final float MOUSE_SENSITIVITY = 0.12f;
+	private static final float KEY_ROTATION_SPEED = 95.0f;
+	private static final float SCROLL_ZOOM_DISTANCE = 6.0f;
 	private static final float MIN_PITCH = -88.0f;
 	private static final float MAX_PITCH = 88.0f;
 
@@ -45,6 +48,11 @@ final class FreeCamera
 	private boolean right;
 	private boolean raise;
 	private boolean lower;
+	private boolean turnLeft;
+	private boolean turnRight;
+	private boolean lookUp;
+	private boolean lookDown;
+	private boolean fast;
 	private float yaw;
 	private float pitch;
 
@@ -64,11 +72,37 @@ final class FreeCamera
 		right = false;
 		raise = false;
 		lower = false;
+		turnLeft = false;
+		turnRight = false;
+		lookUp = false;
+		lookDown = false;
+		fast = false;
 	}
 
 	void update(float deltaSeconds)
 	{
-		float distance = MOVE_SPEED * deltaSeconds;
+		float speed = fast ? MOVE_SPEED * FAST_MOVE_MULTIPLIER : MOVE_SPEED;
+		float distance = speed * deltaSeconds;
+		float rotation = KEY_ROTATION_SPEED * deltaSeconds;
+
+		if (turnLeft)
+		{
+			yaw += rotation;
+		}
+		if (turnRight)
+		{
+			yaw -= rotation;
+		}
+		if (lookUp)
+		{
+			pitch += rotation;
+		}
+		if (lookDown)
+		{
+			pitch -= rotation;
+		}
+		clampPitch();
+
 		Vector3f direction = direction(new Vector3f());
 		Vector3f rightVector = direction.cross(WORLD_UP, new Vector3f()).normalize();
 
@@ -102,6 +136,18 @@ final class FreeCamera
 	{
 		yaw -= deltaX * MOUSE_SENSITIVITY;
 		pitch -= deltaY * MOUSE_SENSITIVITY;
+		clampPitch();
+	}
+
+	void zoom(float wheelRotation)
+	{
+		float multiplier = fast ? FAST_MOVE_MULTIPLIER : 1.0f;
+		float distance = -wheelRotation * SCROLL_ZOOM_DISTANCE * multiplier;
+		position.fma(distance, direction(new Vector3f()));
+	}
+
+	private void clampPitch()
+	{
 		if (pitch < MIN_PITCH)
 		{
 			pitch = MIN_PITCH;
@@ -179,6 +225,31 @@ final class FreeCamera
 	void setLower(boolean value)
 	{
 		lower = value;
+	}
+
+	void setTurnLeft(boolean value)
+	{
+		turnLeft = value;
+	}
+
+	void setTurnRight(boolean value)
+	{
+		turnRight = value;
+	}
+
+	void setLookUp(boolean value)
+	{
+		lookUp = value;
+	}
+
+	void setLookDown(boolean value)
+	{
+		lookDown = value;
+	}
+
+	void setFast(boolean value)
+	{
+		fast = value;
 	}
 
 }

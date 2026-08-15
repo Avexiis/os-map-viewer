@@ -69,7 +69,7 @@ final class TerrainRenderer
 			vAlpha = aAlpha;
 			vDistance = distance(aPosition, uCameraPosition);
 			vec2 animation = vec2(aTextureAnimU, aTextureAnimV);
-			vTexCoord = aTexCoord + mod(mod(uTimeSeconds, 128.0) * animation / 64.0, 1.0);
+			vTexCoord = aTexCoord + mod(uTimeSeconds * animation / 2.56, 1.0);
 			vTextureLayer = aTextureLayer;
 			vTextureAlphaCutoff = aTextureAlphaCutoff;
 			gl_Position = uMvp * worldPosition;
