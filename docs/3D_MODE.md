@@ -1,4 +1,5 @@
 # 3D Mode
+<img width="1915" height="1046" alt="image" src="https://github.com/user-attachments/assets/43e86b68-9ff2-4322-a66d-f8fb74250d5e" />
 
 3D Mode is an experimental viewer for looking at the OSRS game world with a free camera perspective.
 
