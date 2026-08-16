@@ -25,9 +25,12 @@
  */
 package com.xeon.view3d;
 
+import java.util.ArrayList;
+import java.util.List;
 import net.runelite.cache.ObjectManager;
 import net.runelite.cache.definitions.ModelDefinition;
 import net.runelite.cache.definitions.ObjectDefinition;
+import net.runelite.cache.definitions.SequenceDefinition;
 import net.runelite.cache.item.RSTextureProvider;
 import net.runelite.cache.models.JagexColor;
 import net.runelite.cache.region.Location;
@@ -49,6 +52,12 @@ final class ObjectMeshBuilder
 	private static final int HALF_DIAGONAL_TURN = 256;
 	private static final int DEFAULT_RGB = 0x8A8170;
 	private static final int SPECIAL_FACE_RGB = 0x808080;
+	private static final int MODEL_LIGHT_X = -50;
+	private static final int MODEL_LIGHT_Y = -10;
+	private static final int MODEL_LIGHT_Z = -50;
+	private static final int MODEL_BASE_AMBIENT = 64;
+	private static final int MODEL_BASE_CONTRAST = 768;
+	private static final int NORMAL_SCALE = 256;
 	private static final float MIN_VISIBLE_ALPHA = 1.0f / 255.0f;
 	private static final float FALLBACK_FACE_DEPTH_BIAS_STEP = 0.125f;
 	private static final int FALLBACK_FACE_DEPTH_BIAS_MASK = 3;
@@ -57,16 +66,18 @@ final class ObjectMeshBuilder
 	{
 	}
 
-	static void append(
+	static List<AnimatedObjectMesh> append(
 		SceneMeshBuffer data,
 		Region region,
 		TerrainHeightMap[] heightMaps,
 		ObjectManager objectManager,
 		ObjectModelProvider modelProvider,
+		ObjectAnimationProvider animationProvider,
 		RSTextureProvider textureProvider,
 		SceneTextureSet textureSet
 	)
 	{
+		List<AnimatedObjectMesh> animatedObjects = new ArrayList<>();
 		for (Location location : region.getLocations())
 		{
 			Position position = location.getPosition();
@@ -89,6 +100,23 @@ final class ObjectMeshBuilder
 				continue;
 			}
 
+			AnimatedObjectMesh animatedObject = animatedObject(
+				modelProvider,
+				animationProvider,
+				textureProvider,
+				textureSet,
+				definition,
+				heightMaps[sourcePlane],
+				localX,
+				localY,
+				location
+			);
+			if (animatedObject != null)
+			{
+				animatedObjects.add(animatedObject);
+				continue;
+			}
+
 			appendLocation(
 				data,
 				heightMaps[sourcePlane],
@@ -101,6 +129,7 @@ final class ObjectMeshBuilder
 				location
 			);
 		}
+		return animatedObjects;
 	}
 
 	private static void appendLocation(
@@ -137,6 +166,171 @@ final class ObjectMeshBuilder
 			modelUse.modelOrientation(),
 			placement.withYaw(modelUse.extraYaw())
 		);
+	}
+
+	private static AnimatedObjectMesh animatedObject(
+		ObjectModelProvider modelProvider,
+		ObjectAnimationProvider animationProvider,
+		RSTextureProvider textureProvider,
+		SceneTextureSet textureSet,
+		ObjectDefinition definition,
+		TerrainHeightMap heightMap,
+		int localX,
+		int localY,
+		Location location
+	)
+	{
+		if (animationProvider == null || definition.getAnimationID() < 0)
+		{
+			return null;
+		}
+
+		SequenceDefinition sequence = animationProvider.loadSequence(definition.getAnimationID());
+		int frameCount = animationProvider.frameCount(sequence);
+		if (frameCount <= 0)
+		{
+			return null;
+		}
+
+		AnimatedObjectMesh.Frame[] frames = new AnimatedObjectMesh.Frame[frameCount];
+		boolean hasGeometry = false;
+		for (int frame = 0; frame < frameCount; frame++)
+		{
+			SceneMeshBuffer frameData = new SceneMeshBuffer(256 * TerrainMesh.FLOATS_PER_VERTEX);
+			appendAnimatedLocation(
+				frameData,
+				heightMap,
+				modelProvider,
+				animationProvider,
+				textureProvider,
+				textureSet,
+				definition,
+				sequence,
+				frame,
+				localX,
+				localY,
+				location
+			);
+			frames[frame] = new AnimatedObjectMesh.Frame(
+				frameData.toArray(),
+				frameData.size() / TerrainMesh.FLOATS_PER_VERTEX
+			);
+			hasGeometry |= frames[frame].vertexCount() > 0;
+		}
+		if (!hasGeometry)
+		{
+			return null;
+		}
+
+		return new AnimatedObjectMesh(
+			definition.getAnimationID(),
+			animationProvider.frameLengths(sequence),
+			sequence.frameStep,
+			animationPhaseOffset(definition, location, sequence),
+			frames
+		);
+	}
+
+	private static void appendAnimatedLocation(
+		SceneMeshBuffer data,
+		TerrainHeightMap heightMap,
+		ObjectModelProvider modelProvider,
+		ObjectAnimationProvider animationProvider,
+		RSTextureProvider textureProvider,
+		SceneTextureSet textureSet,
+		ObjectDefinition definition,
+		SequenceDefinition sequence,
+		int frame,
+		int localX,
+		int localY,
+		Location location
+	)
+	{
+		int type = location.getType();
+		int orientation = location.getOrientation();
+		if (type == TYPE_WALL_CORNER)
+		{
+			Placement placement = singleTilePlacement(heightMap, localX, localY, 0, 0, 0);
+			appendAnimatedModel(
+				data,
+				modelProvider,
+				animationProvider,
+				textureProvider,
+				textureSet,
+				definition,
+				sequence,
+				frame,
+				type,
+				orientation + 4,
+				placement
+			);
+			appendAnimatedModel(
+				data,
+				modelProvider,
+				animationProvider,
+				textureProvider,
+				textureSet,
+				definition,
+				sequence,
+				frame,
+				type,
+				orientation + 1 & 3,
+				placement
+			);
+			return;
+		}
+
+		Placement placement = placementFor(heightMap, definition, localX, localY, type, orientation);
+		ModelUse modelUse = modelUseFor(type, orientation);
+		appendAnimatedModel(
+			data,
+			modelProvider,
+			animationProvider,
+			textureProvider,
+			textureSet,
+			definition,
+			sequence,
+			frame,
+			modelUse.modelType(),
+			modelUse.modelOrientation(),
+			placement.withYaw(modelUse.extraYaw())
+		);
+	}
+
+	private static void appendAnimatedModel(
+		SceneMeshBuffer data,
+		ObjectModelProvider modelProvider,
+		ObjectAnimationProvider animationProvider,
+		RSTextureProvider textureProvider,
+		SceneTextureSet textureSet,
+		ObjectDefinition definition,
+		SequenceDefinition sequence,
+		int frame,
+		int modelType,
+		int orientation,
+		Placement placement
+	)
+	{
+		int[] modelIds = modelIds(definition, modelType);
+		if (modelIds == null)
+		{
+			return;
+		}
+
+		for (int modelId : modelIds)
+		{
+			ModelDefinition baseModel = modelProvider.load(modelId);
+			if (baseModel == null || baseModel.vertexCount == 0 || baseModel.faceCount == 0)
+			{
+				continue;
+			}
+			ModelDefinition model = animationProvider.animate(baseModel, sequence, frame);
+			if (model == null)
+			{
+				continue;
+			}
+			appendModel(data, textureProvider, textureSet, definition, model, modelType, orientation, placement);
+		}
 	}
 
 	private static Placement placementFor(
@@ -313,7 +507,6 @@ final class ObjectMeshBuilder
 			}
 
 			TextureFace textureFace = textureFace(model, definition, textureSet, face);
-			int rgb = textureFace.textured() ? texturedFaceTint(model, definition, face) : faceRgb(model, definition, textureProvider, face);
 			Vertex va = transformed.vertex(a);
 			Vertex vb = transformed.vertex(b);
 			Vertex vc = transformed.vertex(c);
@@ -326,6 +519,9 @@ final class ObjectMeshBuilder
 				uvc = textureFace.vertex(0);
 			}
 			Normal normal = faceNormal(va, vb, vc);
+			int rgb = textureFace.textured()
+				? texturedFaceTint(definition, normal)
+				: faceRgb(model, definition, textureProvider, face, normal);
 			float depthBias = faceDepthBias(model, face);
 			putVertex(data, va, normal, rgb, alpha, depthBias, textureFace, uva);
 			putVertex(data, vb, normal, rgb, alpha, depthBias, textureFace, uvb);
@@ -389,20 +585,9 @@ final class ObjectMeshBuilder
 		return new TextureFace(layer, textureSet.materialForLayer(layer), a, b, c);
 	}
 
-	private static int texturedFaceTint(ModelDefinition model, ObjectDefinition definition, int face)
+	private static int texturedFaceTint(ObjectDefinition definition, Normal normal)
 	{
-		if (model.faceColors == null || face >= model.faceColors.length)
-		{
-			return 0xFF_FFFF;
-		}
-
-		short hsl = faceColor(model.faceColors[face], definition);
-		if (hsl < 0)
-		{
-			return 0xFF_FFFF;
-		}
-
-		int component = Math.max(24, Math.min(255, (hsl & 0x7F) * 255 / 127));
+		int component = clamp(clampLightness(modelLight(definition, normal)) * 255 / 127, 24, 255);
 		return component << 16 | component << 8 | component;
 	}
 
@@ -490,11 +675,6 @@ final class ObjectMeshBuilder
 		{
 			return 1.0f;
 		}
-		byte rawTransparency = model.faceTransparencies[face];
-		if (rawTransparency == -1 || rawTransparency == -2)
-		{
-			return 1.0f;
-		}
 		int transparency = model.faceTransparencies[face] & 0xFF;
 		return Math.max(0.0f, Math.min(1.0f, (255.0f - transparency) / 255.0f));
 	}
@@ -534,7 +714,8 @@ final class ObjectMeshBuilder
 		ModelDefinition model,
 		ObjectDefinition definition,
 		RSTextureProvider textureProvider,
-		int face
+		int face,
+		Normal normal
 	)
 	{
 		if (faceRenderType(model, face) == 3)
@@ -574,7 +755,32 @@ final class ObjectMeshBuilder
 		{
 			return DEFAULT_RGB;
 		}
-		return JagexColor.HSLtoRGB(hsl, JagexColor.BRIGHTNESS_MIN);
+		return JagexColor.HSLtoRGB(adjustLightness(hsl, modelLight(definition, normal)), JagexColor.BRIGHTNESS_MIN);
+	}
+
+	private static short adjustLightness(short hsl, int lightness)
+	{
+		int adjustedLightness = (hsl & 0x7F) * lightness >> 7;
+		return (short) ((hsl & 0xFF80) + clampLightness(adjustedLightness));
+	}
+
+	private static int clampLightness(int lightness)
+	{
+		return clamp(lightness, 2, 126);
+	}
+
+	private static int modelLight(ObjectDefinition definition, Normal normal)
+	{
+		int ambient = definition.getAmbient() + MODEL_BASE_AMBIENT;
+		int contrast = definition.getContrast() + MODEL_BASE_CONTRAST;
+		int magnitude = (int) Math.sqrt(MODEL_LIGHT_X * MODEL_LIGHT_X
+			+ MODEL_LIGHT_Y * MODEL_LIGHT_Y
+			+ MODEL_LIGHT_Z * MODEL_LIGHT_Z);
+		int intensity = Math.max(1, magnitude * contrast >> 8);
+		int normalX = Math.round(normal.x() * NORMAL_SCALE);
+		int normalY = Math.round(normal.y() * NORMAL_SCALE);
+		int normalZ = Math.round(normal.z() * NORMAL_SCALE);
+		return ambient + (MODEL_LIGHT_X * normalX + MODEL_LIGHT_Y * normalY + MODEL_LIGHT_Z * normalZ) / intensity;
 	}
 
 	private static short faceTexture(ModelDefinition model, ObjectDefinition definition, int face)
@@ -643,6 +849,41 @@ final class ObjectMeshBuilder
 	private static int signedShort(int value)
 	{
 		return value > 32767 ? value - 65536 : value;
+	}
+
+	private static int clamp(int value, int min, int max)
+	{
+		return Math.max(min, Math.min(max, value));
+	}
+
+	private static int animationPhaseOffset(ObjectDefinition definition, Location location, SequenceDefinition sequence)
+	{
+		if (!definition.isRandomizeAnimStart()
+			|| sequence.frameStep == -1
+			|| sequence.frameLengths == null
+			|| sequence.frameLengths.length == 0)
+		{
+			return 0;
+		}
+
+		int totalLength = 0;
+		for (int length : sequence.frameLengths)
+		{
+			totalLength += Math.max(1, length);
+		}
+		if (totalLength <= 0)
+		{
+			return 0;
+		}
+
+		Position position = location.getPosition();
+		int hash = definition.getId();
+		hash = hash * 31 + location.getType();
+		hash = hash * 31 + location.getOrientation();
+		hash = hash * 31 + position.getX();
+		hash = hash * 31 + position.getY();
+		hash = hash * 31 + position.getZ();
+		return Math.floorMod(hash, totalLength);
 	}
 
 	private record ModelUse(

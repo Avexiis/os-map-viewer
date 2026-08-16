@@ -56,14 +56,17 @@ import java.util.concurrent.Executors;
 import javax.swing.AbstractButton;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
+import javax.swing.JComboBox;
 import javax.swing.JLayeredPane;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JSlider;
 import javax.swing.JToggleButton;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import net.runelite.rlawt.AWTContext;
 import org.joml.Vector3f;
+import org.lwjgl.opengl.GL33C;
 
 public final class Map3DPanel extends JPanel
 {
@@ -76,6 +79,9 @@ public final class Map3DPanel extends JPanel
 	private static final int HIGH_VERTEX_COUNT = 1_500_000;
 	private static final String DEBUG_TEXT_COLOR = "#f2d84a";
 	private static final String DEBUG_WARNING_COLOR = "#ff5656";
+	private static final int DEFAULT_ANTIALIASING_SAMPLES = 4;
+	private static final int MIN_FOV_DEGREES = 35;
+	private static final int MAX_FOV_DEGREES = 100;
 
 	private final TerrainRegionLoader loader = new TerrainRegionLoader();
 	private final TerrainRenderer renderer = new TerrainRenderer();
@@ -99,10 +105,13 @@ public final class Map3DPanel extends JPanel
 	private final Set<Integer> failedRegionIds = new HashSet<>();
 	private final JToggleButton lockCameraButton = new JToggleButton("Lock Camera");
 	private final JToggleButton debugOverlayButton = new JToggleButton("Debug");
+	private final JComboBox<AntialiasingScale> antialiasingScale = new JComboBox<>(AntialiasingScale.values());
+	private final JSlider fovSlider = new JSlider(MIN_FOV_DEGREES, MAX_FOV_DEGREES, Math.round(camera.fovDegrees()));
 	private final JLabel title = new JLabel("3D Region Viewer");
 	private final JLabel detail = new JLabel("Loading terrain...");
 	private final JLabel compassHud = new JLabel("Heading --");
 	private final JLabel tileHud = new JLabel("Tile --");
+	private final JLabel fovHud = new JLabel();
 	private final JLabel debugOverlay = new JLabel();
 	private final Timer renderTimer;
 	private final Runnable exitAction;
@@ -126,6 +135,7 @@ public final class Map3DPanel extends JPanel
 	private double displayedFps;
 	private double lastFrameMillis;
 	private double lastRenderMillis;
+	private int antialiasingSamples = DEFAULT_ANTIALIASING_SAMPLES;
 
 	public Map3DPanel(Path cacheDirectory, int regionId, Runnable exitAction)
 	{
@@ -161,6 +171,7 @@ public final class Map3DPanel extends JPanel
 		renderTimer.stop();
 		regionLoaderExecutor.shutdownNow();
 		closeLoaderSession();
+		releaseLoadedMeshes();
 		try
 		{
 			if (renderer.isInitialized() && glContextReady && awtContext != null)
@@ -216,10 +227,29 @@ public final class Map3DPanel extends JPanel
 			}
 			sceneLayer.repaint();
 		});
+		JLabel aaLabel = toolbarLabel("AA");
+		antialiasingScale.setSelectedItem(AntialiasingScale.X4);
+		antialiasingScale.setFocusable(false);
+		antialiasingScale.addActionListener(e -> applyAntialiasingSelection());
+		JLabel fovLabel = toolbarLabel("FOV");
+		fovHud.setForeground(new Color(220, 220, 220));
+		fovSlider.setOpaque(false);
+		fovSlider.setFocusable(false);
+		fovSlider.setPreferredSize(new Dimension(120, 28));
+		fovSlider.addChangeListener(e -> {
+			camera.setFovDegrees(fovSlider.getValue());
+			updateFovHud();
+		});
+		updateFovHud();
 		JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
 		controls.setOpaque(false);
 		controls.add(lockCameraButton);
 		controls.add(debugOverlayButton);
+		controls.add(aaLabel);
+		controls.add(antialiasingScale);
+		controls.add(fovLabel);
+		controls.add(fovSlider);
+		controls.add(fovHud);
 		controls.add(compassHud);
 		controls.add(tileHud);
 		toolbar.add(controls, BorderLayout.CENTER);
@@ -453,6 +483,24 @@ public final class Map3DPanel extends JPanel
 		);
 	}
 
+	private void updateFovHud()
+	{
+		fovHud.setText(Math.round(camera.fovDegrees()) + " deg");
+	}
+
+	private void applyAntialiasingSelection()
+	{
+		Object selected = antialiasingScale.getSelectedItem();
+		if (!(selected instanceof AntialiasingScale scale) || scale.samples() == antialiasingSamples)
+		{
+			return;
+		}
+
+		antialiasingSamples = scale.samples();
+		renderer.setAntialiasingSamples(antialiasingSamples);
+		detail.setText("AA " + scale + " selected");
+	}
+
 	private static String cardinal(float degrees)
 	{
 		String[] names = new String[]{"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
@@ -647,7 +695,14 @@ public final class Map3DPanel extends JPanel
 		List<Integer> desiredRegions = desiredRegionIds(streamCenterRegionId);
 		Set<Integer> desiredRegionSet = Set.copyOf(desiredRegions);
 		desiredRegionIds = desiredRegionSet;
-		boolean sceneChanged = loadedMeshes.keySet().removeIf(region -> !desiredRegionSet.contains(region));
+		boolean sceneChanged = loadedMeshes.entrySet().removeIf(entry -> {
+			if (desiredRegionSet.contains(entry.getKey()))
+			{
+				return false;
+			}
+			entry.getValue().releaseVertexData();
+			return true;
+		});
 		loadedRegionIds.removeIf(region -> !desiredRegionSet.contains(region));
 		failedRegionIds.removeIf(region -> !desiredRegionSet.contains(region));
 		regionLoadQueue.removeIf(region -> !desiredRegionSet.contains(region));
@@ -732,6 +787,15 @@ public final class Map3DPanel extends JPanel
 		return message != null && message.contains("was not found in the cache");
 	}
 
+	private void releaseLoadedMeshes()
+	{
+		for (TerrainMesh mesh : loadedMeshes.values())
+		{
+			mesh.releaseVertexData();
+		}
+		loadedMeshes.clear();
+	}
+
 	private static int chebyshevDistance(int centerX, int centerY, int regionId)
 	{
 		return Math.max(
@@ -788,6 +852,7 @@ public final class Map3DPanel extends JPanel
 		try
 		{
 			awtContext.makeCurrent();
+			GL33C.glBindFramebuffer(GL33C.GL_FRAMEBUFFER, awtContext.getFramebuffer(false));
 			renderer.render(camera, renderWidth(), renderHeight());
 			awtContext.swapBuffers();
 			rendered = true;
@@ -970,6 +1035,7 @@ public final class Map3DPanel extends JPanel
 			awtContext.makeCurrent();
 			try
 			{
+				renderer.setAntialiasingSamples(antialiasingSamples);
 				renderer.init();
 				awtContext.setSwapInterval(1);
 			}
@@ -982,6 +1048,18 @@ public final class Map3DPanel extends JPanel
 		}
 		catch (Throwable ex)
 		{
+			if (antialiasingSamples > 0)
+			{
+				System.err.println(
+					"OpenGL context error with " + antialiasingSamples + "x AA: " + rootMessage(ex)
+						+ ". Retrying without antialiasing."
+				);
+				antialiasingSamples = 0;
+				antialiasingScale.setSelectedItem(AntialiasingScale.OFF);
+				destroyContext();
+				glContextFailed = false;
+				return ensureContext();
+			}
 			glContextFailed = true;
 			String message = rootMessage(ex);
 			detail.setText("OpenGL context error: " + message);
@@ -1030,6 +1108,39 @@ public final class Map3DPanel extends JPanel
 		}
 	}
 
+	private void resetOpenGLContext(String status)
+	{
+		if (!glContextReady || awtContext == null)
+		{
+			glContextFailed = false;
+			return;
+		}
+
+		try
+		{
+			awtContext.makeCurrent();
+			try
+			{
+				renderer.dispose();
+			}
+			finally
+			{
+				awtContext.detachCurrent();
+			}
+		}
+		catch (Throwable ex)
+		{
+			System.err.println("Failed to reset 3D renderer: " + rootMessage(ex));
+		}
+		finally
+		{
+			destroyContext();
+			glContextFailed = false;
+			renderer.setScene(currentScene);
+			detail.setText(status);
+		}
+	}
+
 	private static String rootMessage(Throwable throwable)
 	{
 		Throwable current = throwable;
@@ -1049,5 +1160,41 @@ public final class Map3DPanel extends JPanel
 			BorderFactory.createLineBorder(new Color(80, 80, 80)),
 			BorderFactory.createEmptyBorder(2, 4, 2, 4)
 		));
+	}
+
+	private static JLabel toolbarLabel(String text)
+	{
+		JLabel label = new JLabel(text);
+		label.setForeground(new Color(210, 210, 210));
+		return label;
+	}
+
+	private enum AntialiasingScale
+	{
+		OFF("Off", 0),
+		X2("2x", 2),
+		X4("4x", 4),
+		X8("8x", 8),
+		X16("16x", 16);
+
+		private final String label;
+		private final int samples;
+
+		AntialiasingScale(String label, int samples)
+		{
+			this.label = label;
+			this.samples = samples;
+		}
+
+		int samples()
+		{
+			return samples;
+		}
+
+		@Override
+		public String toString()
+		{
+			return label;
+		}
 	}
 }

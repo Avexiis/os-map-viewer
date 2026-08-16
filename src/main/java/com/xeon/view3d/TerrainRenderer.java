@@ -27,8 +27,10 @@ package com.xeon.view3d;
 
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.joml.FrustumIntersection;
@@ -158,7 +160,8 @@ final class TerrainRenderer
 	private static final int TEXTURE_ANIMATION_FLOATS = 1;
 	private static final int TEXTURE_ALPHA_CUTOFF_FLOATS = 1;
 	private static final int OUTLINE_VERTICES = 8;
-	private static final int MAX_REAL_REGION_UPLOADS_PER_FRAME = 1;
+	private static final int MAX_UPLOAD_BYTES_PER_FRAME = 4 * 1024 * 1024;
+	private static final int MAX_UPLOAD_FLOATS_PER_FRAME = MAX_UPLOAD_BYTES_PER_FRAME / Float.BYTES;
 	private static final float OUTLINE_HEIGHT_OFFSET = SceneScale.SCENE_TO_WORLD * 1.5f;
 	private static final float REGION_CULL_PADDING = 2.0f;
 
@@ -168,6 +171,7 @@ final class TerrainRenderer
 	private final FrustumIntersection frustum = new FrustumIntersection();
 	private final Map<Integer, UploadedRegion> uploadedRegions = new HashMap<>();
 	private final Map<Integer, TerrainMesh> pendingUploadRegions = new LinkedHashMap<>();
+	private RegionUploadTask activeUploadTask;
 	private TerrainScene pendingScene;
 	private TerrainScene currentScene;
 	private HoveredTile hoveredTile;
@@ -185,11 +189,18 @@ final class TerrainRenderer
 	private int uploadedTextureLayerCount;
 	private int outlineVao;
 	private int outlineVbo;
+	private int sceneFbo;
+	private int sceneColorRbo;
+	private int sceneDepthRbo;
+	private int sceneFboWidth = -1;
+	private int sceneFboHeight = -1;
+	private int sceneFboSamples = -1;
 	private String glVendor = "Unavailable";
 	private String glRenderer = "Unavailable";
 	private String glVersion = "Unavailable";
 	private TerrainRenderStats renderStats = TerrainRenderStats.unavailable();
 	private boolean initialized;
+	private int antialiasingSamples = 4;
 	private long startNanos;
 
 	void init()
@@ -205,7 +216,14 @@ final class TerrainRenderer
 		glVersion = glString(GL33C.GL_VERSION);
 		GL33C.glEnable(GL33C.GL_DEPTH_TEST);
 		GL33C.glDepthFunc(GL33C.GL_LEQUAL);
-		GL33C.glEnable(GL33C.GL_MULTISAMPLE);
+		if (antialiasingSamples > 0)
+		{
+			GL33C.glEnable(GL33C.GL_MULTISAMPLE);
+		}
+		else
+		{
+			GL33C.glDisable(GL33C.GL_MULTISAMPLE);
+		}
 		GL33C.glEnable(GL33C.GL_BLEND);
 		GL33C.glBlendFunc(GL33C.GL_SRC_ALPHA, GL33C.GL_ONE_MINUS_SRC_ALPHA);
 		GL33C.glClearColor(0.43f, 0.53f, 0.62f, 1.0f);
@@ -249,6 +267,12 @@ final class TerrainRenderer
 		return initialized;
 	}
 
+	void setAntialiasingSamples(int antialiasingSamples)
+	{
+		this.antialiasingSamples = Math.max(0, antialiasingSamples);
+		sceneFboSamples = -1;
+	}
+
 	void render(FreeCamera camera, int width, int height)
 	{
 		init();
@@ -260,6 +284,9 @@ final class TerrainRenderer
 
 		int safeWidth = Math.max(1, width);
 		int safeHeight = Math.max(1, height);
+		int defaultFramebuffer = GL33C.glGetInteger(GL33C.GL_DRAW_FRAMEBUFFER_BINDING);
+		int renderFramebuffer = prepareRenderTarget(safeWidth, safeHeight, defaultFramebuffer);
+		GL33C.glBindFramebuffer(GL33C.GL_FRAMEBUFFER, renderFramebuffer);
 		GL33C.glViewport(0, 0, safeWidth, safeHeight);
 		GL33C.glClear(GL33C.GL_COLOR_BUFFER_BIT | GL33C.GL_DEPTH_BUFFER_BIT);
 
@@ -277,6 +304,10 @@ final class TerrainRenderer
 			uploadPendingRegions();
 		}
 		updateRenderStats(renderCounts, outlineDrawCalls);
+		if (renderFramebuffer != defaultFramebuffer)
+		{
+			blitRenderTarget(defaultFramebuffer, safeWidth, safeHeight);
+		}
 	}
 
 	void dispose()
@@ -312,13 +343,14 @@ final class TerrainRenderer
 			GL33C.glDeleteProgram(outlineProgram);
 			outlineProgram = 0;
 		}
+		deleteSceneFbo();
 		initialized = false;
 	}
 
 	private void prepareMatrices(FreeCamera camera, float aspectRatio)
 	{
 		projection.identity().perspective(
-			SceneScale.CAMERA_FOV_RADIANS,
+			camera.fovRadians(),
 			aspectRatio,
 			SceneScale.CAMERA_NEAR_PLANE,
 			SceneScale.CAMERA_FAR_PLANE
@@ -338,7 +370,8 @@ final class TerrainRenderer
 			GL33C.glUniformMatrix4fv(terrainMvpLocation, false, mvp.get(matrixBuffer));
 		}
 		GL33C.glUniform3f(terrainCameraLocation, cameraPosition.x(), cameraPosition.y(), cameraPosition.z());
-		GL33C.glUniform1f(terrainTimeLocation, (System.nanoTime() - startNanos) / 1_000_000_000.0f);
+		float timeSeconds = (System.nanoTime() - startNanos) / 1_000_000_000.0f;
+		GL33C.glUniform1f(terrainTimeLocation, timeSeconds);
 		GL33C.glUniform1f(terrainTextureLayerCountLocation, uploadedTextureLayerCount);
 		GL33C.glActiveTexture(GL33C.GL_TEXTURE0);
 		GL33C.glBindTexture(GL33C.GL_TEXTURE_2D_ARRAY, terrainTextureArray);
@@ -349,7 +382,7 @@ final class TerrainRenderer
 		int verticesDrawn = 0;
 		for (UploadedRegion region : uploadedRegions.values())
 		{
-			if (region.vertexCount() <= 0)
+			if (region.vertexCount() <= 0 && region.animatedObjects().isEmpty())
 			{
 				continue;
 			}
@@ -359,9 +392,24 @@ final class TerrainRenderer
 				continue;
 			}
 			GL33C.glUniform3f(terrainRegionOffsetLocation, region.offsetX(), 0.0f, region.offsetZ());
-			GL33C.glBindVertexArray(region.vao());
-			GL33C.glDrawArrays(GL33C.GL_TRIANGLES, 0, region.vertexCount());
-			drawCalls++;
+			if (region.vertexCount() > 0)
+			{
+				GL33C.glBindVertexArray(region.vao());
+				GL33C.glDrawArrays(GL33C.GL_TRIANGLES, 0, region.vertexCount());
+				drawCalls++;
+			}
+			for (UploadedAnimatedObject animatedObject : region.animatedObjects())
+			{
+				UploadedAnimationFrame frame = animatedObject.frameAt(timeSeconds);
+				if (frame.vertexCount() <= 0)
+				{
+					continue;
+				}
+				GL33C.glBindVertexArray(frame.vao());
+				GL33C.glDrawArrays(GL33C.GL_TRIANGLES, 0, frame.vertexCount());
+				drawCalls++;
+				verticesDrawn += frame.vertexCount();
+			}
 			visibleRegions++;
 			verticesDrawn += region.vertexCount();
 		}
@@ -430,7 +478,7 @@ final class TerrainRenderer
 			renderCounts.visibleRegions(),
 			renderCounts.culledRegions(),
 			uploadedRegions.size(),
-			pendingUploadRegions.size(),
+			pendingUploadCount(),
 			renderCounts.verticesDrawn(),
 			uploadedTextureLayerCount,
 			glVendor,
@@ -442,6 +490,13 @@ final class TerrainRenderer
 	private void applyScene(TerrainScene scene)
 	{
 		Set<Integer> regionIds = scene.regionIds();
+		if (activeUploadTask != null
+			&& (!regionIds.contains(activeUploadTask.regionId())
+				|| scene.mesh(activeUploadTask.regionId()) != activeUploadTask.mesh()))
+		{
+			activeUploadTask.cancel(true);
+			activeUploadTask = null;
+		}
 		pendingUploadRegions.entrySet().removeIf(entry -> {
 			if (regionIds.contains(entry.getKey()))
 			{
@@ -474,7 +529,7 @@ final class TerrainRenderer
 		for (TerrainMesh mesh : scene.meshes())
 		{
 			UploadedRegion uploadedRegion = uploadedRegions.get(mesh.regionId());
-			if (mesh.vertexCount() == 0)
+			if (mesh.vertexCount() == 0 && mesh.animatedObjects().isEmpty())
 			{
 				if (uploadedRegion == null)
 				{
@@ -486,7 +541,8 @@ final class TerrainRenderer
 				continue;
 			}
 
-			if (uploadedRegion == null || uploadedRegion.vertexCount() == 0)
+			if (uploadedRegion == null
+				|| uploadedRegion.vertexCount() == 0 && uploadedRegion.animatedObjects().isEmpty())
 			{
 				pendingUploadRegions.putIfAbsent(mesh.regionId(), mesh);
 			}
@@ -496,13 +552,36 @@ final class TerrainRenderer
 
 	private void uploadPendingRegions()
 	{
-		if (currentScene == null || pendingUploadRegions.isEmpty())
+		if (currentScene == null)
 		{
 			return;
 		}
 
-		int uploads = 0;
-		while (uploads < MAX_REAL_REGION_UPLOADS_PER_FRAME && !pendingUploadRegions.isEmpty())
+		if (activeUploadTask == null)
+		{
+			startNextUploadTask();
+		}
+		if (activeUploadTask == null)
+		{
+			return;
+		}
+
+		UploadBudget budget = new UploadBudget(MAX_UPLOAD_FLOATS_PER_FRAME);
+		if (activeUploadTask.uploadChunk(budget))
+		{
+			UploadedRegion uploadedRegion = activeUploadTask.finish();
+			UploadedRegion previous = uploadedRegions.put(uploadedRegion.regionId(), uploadedRegion);
+			if (previous != null)
+			{
+				previous.delete();
+			}
+			activeUploadTask = null;
+		}
+	}
+
+	private void startNextUploadTask()
+	{
+		while (!pendingUploadRegions.isEmpty())
 		{
 			Map.Entry<Integer, TerrainMesh> entry = pendingUploadRegions.entrySet().iterator().next();
 			pendingUploadRegions.remove(entry.getKey());
@@ -513,65 +592,26 @@ final class TerrainRenderer
 				continue;
 			}
 
-			UploadedRegion previous = uploadedRegions.remove(entry.getKey());
-			if (previous != null)
-			{
-				previous.delete();
-			}
-			uploadedRegions.put(entry.getKey(), uploadRegion(currentScene, mesh));
-			uploads++;
+			activeUploadTask = new RegionUploadTask(currentScene, mesh);
+			return;
 		}
 	}
 
-	private UploadedRegion uploadRegion(TerrainScene scene, TerrainMesh mesh)
+	private UploadedRegion uploadedRegion(
+		TerrainScene scene,
+		TerrainMesh mesh,
+		int vao,
+		int vbo,
+		List<UploadedAnimatedObject> animatedObjects
+	)
 	{
 		float offsetX = scene.offsetX(mesh);
 		float offsetZ = scene.offsetZ(mesh);
-		if (mesh.vertexCount() == 0)
-		{
-			return UploadedRegion.empty(mesh.regionId(), offsetX, offsetZ);
-		}
-
-		float[] vertexData = mesh.rawVertexData();
-		if (vertexData.length == 0)
-		{
-			return UploadedRegion.empty(mesh.regionId(), offsetX, offsetZ);
-		}
-		FloatBuffer buffer = MemoryUtil.memAllocFloat(vertexData.length);
-		int vao = GL33C.glGenVertexArrays();
-		int vbo = GL33C.glGenBuffers();
-		try
-		{
-			buffer.put(vertexData).flip();
-			GL33C.glBindVertexArray(vao);
-			GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, vbo);
-			GL33C.glBufferData(GL33C.GL_ARRAY_BUFFER, buffer, GL33C.GL_STATIC_DRAW);
-			installTerrainAttributes();
-			GL33C.glBindVertexArray(0);
-		}
-		finally
-		{
-			MemoryUtil.memFree(buffer);
-		}
-
-		float minY = Float.POSITIVE_INFINITY;
-		float maxY = Float.NEGATIVE_INFINITY;
-		for (int i = 0; i < vertexData.length; i += TerrainMesh.FLOATS_PER_VERTEX)
-		{
-			minY = Math.min(minY, vertexData[i + 1]);
-			maxY = Math.max(maxY, vertexData[i + 1]);
-		}
-		if (!Float.isFinite(minY) || !Float.isFinite(maxY))
-		{
-			minY = -64.0f;
-			maxY = 64.0f;
-		}
-
 		float minX = offsetX - SceneScale.REGION_CENTER_TILES;
 		float maxX = offsetX + SceneScale.REGION_CENTER_TILES;
 		float minZ = offsetZ - SceneScale.REGION_CENTER_TILES;
 		float maxZ = offsetZ + SceneScale.REGION_CENTER_TILES;
-		UploadedRegion uploadedRegion = new UploadedRegion(
+		return new UploadedRegion(
 			mesh.regionId(),
 			vao,
 			vbo,
@@ -579,14 +619,13 @@ final class TerrainRenderer
 			offsetX,
 			offsetZ,
 			minX,
-			minY,
+			mesh.minY(),
 			minZ,
 			maxX,
-			maxY,
-			maxZ
+			mesh.maxY(),
+			maxZ,
+			animatedObjects
 		);
-		mesh.releaseVertexData();
-		return uploadedRegion;
 	}
 
 	private void installTerrainAttributes()
@@ -754,11 +793,120 @@ final class TerrainRenderer
 		}
 	}
 
+	private int prepareRenderTarget(int width, int height, int defaultFramebuffer)
+	{
+		int requestedSamples = Math.max(0, antialiasingSamples);
+		int maxSamples = Math.max(0, GL33C.glGetInteger(GL33C.GL_MAX_SAMPLES));
+		int samples = Math.min(requestedSamples, maxSamples);
+		if (samples <= 0)
+		{
+			deleteSceneFbo();
+			GL33C.glDisable(GL33C.GL_MULTISAMPLE);
+			return defaultFramebuffer;
+		}
+
+		GL33C.glEnable(GL33C.GL_MULTISAMPLE);
+		if (sceneFbo != 0 && sceneFboWidth == width && sceneFboHeight == height && sceneFboSamples == samples)
+		{
+			return sceneFbo;
+		}
+
+		deleteSceneFbo();
+		sceneFbo = GL33C.glGenFramebuffers();
+		sceneColorRbo = GL33C.glGenRenderbuffers();
+		sceneDepthRbo = GL33C.glGenRenderbuffers();
+
+		GL33C.glBindFramebuffer(GL33C.GL_FRAMEBUFFER, sceneFbo);
+		GL33C.glBindRenderbuffer(GL33C.GL_RENDERBUFFER, sceneColorRbo);
+		GL33C.glRenderbufferStorageMultisample(GL33C.GL_RENDERBUFFER, samples, GL33C.GL_RGBA8, width, height);
+		GL33C.glFramebufferRenderbuffer(
+			GL33C.GL_FRAMEBUFFER,
+			GL33C.GL_COLOR_ATTACHMENT0,
+			GL33C.GL_RENDERBUFFER,
+			sceneColorRbo
+		);
+
+		GL33C.glBindRenderbuffer(GL33C.GL_RENDERBUFFER, sceneDepthRbo);
+		GL33C.glRenderbufferStorageMultisample(
+			GL33C.GL_RENDERBUFFER,
+			samples,
+			GL33C.GL_DEPTH_COMPONENT24,
+			width,
+			height
+		);
+		GL33C.glFramebufferRenderbuffer(
+			GL33C.GL_FRAMEBUFFER,
+			GL33C.GL_DEPTH_ATTACHMENT,
+			GL33C.GL_RENDERBUFFER,
+			sceneDepthRbo
+		);
+		GL33C.glBindRenderbuffer(GL33C.GL_RENDERBUFFER, 0);
+
+		int status = GL33C.glCheckFramebufferStatus(GL33C.GL_FRAMEBUFFER);
+		if (status != GL33C.GL_FRAMEBUFFER_COMPLETE)
+		{
+			System.err.println("3D multisample framebuffer incomplete: " + status + ". Rendering without AA.");
+			deleteSceneFbo();
+			GL33C.glDisable(GL33C.GL_MULTISAMPLE);
+			antialiasingSamples = 0;
+			GL33C.glBindFramebuffer(GL33C.GL_FRAMEBUFFER, defaultFramebuffer);
+			return defaultFramebuffer;
+		}
+
+		sceneFboWidth = width;
+		sceneFboHeight = height;
+		sceneFboSamples = samples;
+		return sceneFbo;
+	}
+
+	private void blitRenderTarget(int defaultFramebuffer, int width, int height)
+	{
+		GL33C.glBindFramebuffer(GL33C.GL_READ_FRAMEBUFFER, sceneFbo);
+		GL33C.glBindFramebuffer(GL33C.GL_DRAW_FRAMEBUFFER, defaultFramebuffer);
+		GL33C.glBlitFramebuffer(
+			0,
+			0,
+			width,
+			height,
+			0,
+			0,
+			width,
+			height,
+			GL33C.GL_COLOR_BUFFER_BIT,
+			GL33C.GL_NEAREST
+		);
+		GL33C.glBindFramebuffer(GL33C.GL_READ_FRAMEBUFFER, defaultFramebuffer);
+		GL33C.glBindFramebuffer(GL33C.GL_FRAMEBUFFER, defaultFramebuffer);
+	}
+
+	private void deleteSceneFbo()
+	{
+		if (sceneFbo != 0)
+		{
+			GL33C.glDeleteFramebuffers(sceneFbo);
+			sceneFbo = 0;
+		}
+		if (sceneColorRbo != 0)
+		{
+			GL33C.glDeleteRenderbuffers(sceneColorRbo);
+			sceneColorRbo = 0;
+		}
+		if (sceneDepthRbo != 0)
+		{
+			GL33C.glDeleteRenderbuffers(sceneDepthRbo);
+			sceneDepthRbo = 0;
+		}
+		sceneFboWidth = -1;
+		sceneFboHeight = -1;
+		sceneFboSamples = -1;
+	}
+
 	private void deleteUploadedRegions()
 	{
-		for (TerrainMesh mesh : pendingUploadRegions.values())
+		if (activeUploadTask != null)
 		{
-			mesh.releaseVertexData();
+			activeUploadTask.cancel(false);
+			activeUploadTask = null;
 		}
 		pendingUploadRegions.clear();
 		for (UploadedRegion region : uploadedRegions.values())
@@ -766,6 +914,11 @@ final class TerrainRenderer
 			region.delete();
 		}
 		uploadedRegions.clear();
+	}
+
+	private int pendingUploadCount()
+	{
+		return pendingUploadRegions.size() + (activeUploadTask == null ? 0 : 1);
 	}
 
 	private boolean isVisible(UploadedRegion region)
@@ -883,7 +1036,8 @@ final class TerrainRenderer
 		float minZ,
 		float maxX,
 		float maxY,
-		float maxZ
+		float maxZ,
+		List<UploadedAnimatedObject> animatedObjects
 	)
 	{
 		private static UploadedRegion empty(int regionId, float offsetX, float offsetZ)
@@ -900,9 +1054,420 @@ final class TerrainRenderer
 				0.0f,
 				0.0f,
 				0.0f,
-				0.0f
+				0.0f,
+				List.of()
 			);
 		}
+
+		private void delete()
+		{
+			if (vbo != 0)
+			{
+				GL33C.glDeleteBuffers(vbo);
+			}
+			if (vao != 0)
+			{
+				GL33C.glDeleteVertexArrays(vao);
+			}
+			for (UploadedAnimatedObject animatedObject : animatedObjects)
+			{
+				animatedObject.delete();
+			}
+		}
+	}
+
+	private final class RegionUploadTask
+	{
+		private final TerrainScene scene;
+		private final TerrainMesh mesh;
+		private final float[] vertexData;
+		private final List<AnimatedObjectUploadTask> animatedTasks = new ArrayList<>();
+		private final int vao;
+		private final int vbo;
+		private int uploadedFloats;
+		private int animatedTaskIndex;
+		private boolean cancelled;
+
+		private RegionUploadTask(TerrainScene scene, TerrainMesh mesh)
+		{
+			this.scene = scene;
+			this.mesh = mesh;
+			this.vertexData = mesh.rawVertexData();
+			if (vertexData.length == 0)
+			{
+				vao = 0;
+				vbo = 0;
+			}
+			else
+			{
+				vao = GL33C.glGenVertexArrays();
+				vbo = GL33C.glGenBuffers();
+				GL33C.glBindVertexArray(vao);
+				GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, vbo);
+				GL33C.glBufferData(GL33C.GL_ARRAY_BUFFER, (long) vertexData.length * Float.BYTES, GL33C.GL_STATIC_DRAW);
+				installTerrainAttributes();
+				GL33C.glBindVertexArray(0);
+			}
+			for (AnimatedObjectMesh animatedObject : mesh.animatedObjects())
+			{
+				if (animatedObject.frameCount() > 0)
+				{
+					animatedTasks.add(new AnimatedObjectUploadTask(animatedObject));
+				}
+			}
+		}
+
+		private int regionId()
+		{
+			return mesh.regionId();
+		}
+
+		private TerrainMesh mesh()
+		{
+			return mesh;
+		}
+
+		private boolean uploadChunk(UploadBudget budget)
+		{
+			if (cancelled)
+			{
+				return false;
+			}
+			int remaining = vertexData.length - uploadedFloats;
+			if (remaining <= 0)
+			{
+				return uploadAnimationChunk(budget);
+			}
+
+			int floats = budget.take(remaining);
+			if (floats <= 0)
+			{
+				return false;
+			}
+			FloatBuffer buffer = MemoryUtil.memAllocFloat(floats);
+			try
+			{
+				buffer.put(vertexData, uploadedFloats, floats).flip();
+				GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, vbo);
+				GL33C.glBufferSubData(GL33C.GL_ARRAY_BUFFER, (long) uploadedFloats * Float.BYTES, buffer);
+			}
+			finally
+			{
+				MemoryUtil.memFree(buffer);
+			}
+			uploadedFloats += floats;
+			return uploadedFloats >= vertexData.length && uploadAnimationChunk(budget);
+		}
+
+		private UploadedRegion finish()
+		{
+			List<UploadedAnimatedObject> animatedObjects = new ArrayList<>(animatedTasks.size());
+			for (AnimatedObjectUploadTask task : animatedTasks)
+			{
+				animatedObjects.add(task.finish());
+			}
+			return uploadedRegion(scene, mesh, vao, vbo, List.copyOf(animatedObjects));
+		}
+
+		private void cancel(boolean releaseVertexData)
+		{
+			cancelled = true;
+			if (releaseVertexData)
+			{
+				mesh.releaseVertexData();
+			}
+			for (AnimatedObjectUploadTask task : animatedTasks)
+			{
+				task.cancel(releaseVertexData);
+			}
+			if (vbo != 0)
+			{
+				GL33C.glDeleteBuffers(vbo);
+			}
+			if (vao != 0)
+			{
+				GL33C.glDeleteVertexArrays(vao);
+			}
+		}
+
+		private boolean uploadAnimationChunk(UploadBudget budget)
+		{
+			while (animatedTaskIndex < animatedTasks.size())
+			{
+				if (!budget.hasRemaining())
+				{
+					return false;
+				}
+				AnimatedObjectUploadTask task = animatedTasks.get(animatedTaskIndex);
+				if (task.uploadChunk(budget))
+				{
+					animatedTaskIndex++;
+					continue;
+				}
+				return false;
+			}
+			return true;
+		}
+	}
+
+	private final class AnimatedObjectUploadTask
+	{
+		private final AnimatedObjectMesh mesh;
+		private final UploadedAnimationFrame[] uploadedFrames;
+		private AnimationFrameUploadTask activeFrameTask;
+		private int frameIndex;
+
+		private AnimatedObjectUploadTask(AnimatedObjectMesh mesh)
+		{
+			this.mesh = mesh;
+			this.uploadedFrames = new UploadedAnimationFrame[mesh.frameCount()];
+		}
+
+		private boolean uploadChunk(UploadBudget budget)
+		{
+			while (frameIndex < uploadedFrames.length)
+			{
+				if (activeFrameTask == null)
+				{
+					AnimatedObjectMesh.Frame frame = mesh.frames()[frameIndex];
+					if (frame.vertexCount() > 0 && !budget.hasRemaining())
+					{
+						return false;
+					}
+					activeFrameTask = new AnimationFrameUploadTask(frame);
+				}
+				if (activeFrameTask.uploadChunk(budget))
+				{
+					uploadedFrames[frameIndex] = activeFrameTask.finish();
+					activeFrameTask = null;
+					frameIndex++;
+					continue;
+				}
+				return false;
+			}
+			return true;
+		}
+
+		private UploadedAnimatedObject finish()
+		{
+			return new UploadedAnimatedObject(
+				mesh.sequenceId(),
+				mesh.frameLengths(),
+				mesh.frameStep(),
+				mesh.phaseOffset(),
+				uploadedFrames
+			);
+		}
+
+		private void cancel(boolean releaseVertexData)
+		{
+			if (activeFrameTask != null)
+			{
+				activeFrameTask.cancel(releaseVertexData);
+				activeFrameTask = null;
+			}
+			for (UploadedAnimationFrame frame : uploadedFrames)
+			{
+				if (frame != null)
+				{
+					frame.delete();
+				}
+			}
+		}
+	}
+
+	private final class AnimationFrameUploadTask
+	{
+		private final AnimatedObjectMesh.Frame frame;
+		private final float[] vertexData;
+		private final int vao;
+		private final int vbo;
+		private int uploadedFloats;
+
+		private AnimationFrameUploadTask(AnimatedObjectMesh.Frame frame)
+		{
+			this.frame = frame;
+			this.vertexData = frame.rawVertexData();
+			if (frame.vertexCount() <= 0 || vertexData.length == 0)
+			{
+				vao = 0;
+				vbo = 0;
+				return;
+			}
+
+			vao = GL33C.glGenVertexArrays();
+			vbo = GL33C.glGenBuffers();
+			GL33C.glBindVertexArray(vao);
+			GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, vbo);
+			GL33C.glBufferData(GL33C.GL_ARRAY_BUFFER, (long) vertexData.length * Float.BYTES, GL33C.GL_STATIC_DRAW);
+			installTerrainAttributes();
+			GL33C.glBindVertexArray(0);
+		}
+
+		private boolean uploadChunk(UploadBudget budget)
+		{
+			int remaining = vertexData.length - uploadedFloats;
+			if (remaining <= 0)
+			{
+				return true;
+			}
+
+			int floats = budget.take(remaining);
+			if (floats <= 0)
+			{
+				return false;
+			}
+			FloatBuffer buffer = MemoryUtil.memAllocFloat(floats);
+			try
+			{
+				buffer.put(vertexData, uploadedFloats, floats).flip();
+				GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, vbo);
+				GL33C.glBufferSubData(GL33C.GL_ARRAY_BUFFER, (long) uploadedFloats * Float.BYTES, buffer);
+			}
+			finally
+			{
+				MemoryUtil.memFree(buffer);
+			}
+			uploadedFloats += floats;
+			return uploadedFloats >= vertexData.length;
+		}
+
+		private UploadedAnimationFrame finish()
+		{
+			return new UploadedAnimationFrame(vao, vbo, frame.vertexCount());
+		}
+
+		private void cancel(boolean releaseVertexData)
+		{
+			if (releaseVertexData)
+			{
+				frame.releaseVertexData();
+			}
+			if (vbo != 0)
+			{
+				GL33C.glDeleteBuffers(vbo);
+			}
+			if (vao != 0)
+			{
+				GL33C.glDeleteVertexArrays(vao);
+			}
+		}
+	}
+
+	private static final class UploadBudget
+	{
+		private int remainingFloats;
+
+		private UploadBudget(int remainingFloats)
+		{
+			this.remainingFloats = remainingFloats;
+		}
+
+		private int take(int requestedFloats)
+		{
+			int floats = Math.min(requestedFloats, remainingFloats);
+			remainingFloats -= floats;
+			return floats;
+		}
+
+		private boolean hasRemaining()
+		{
+			return remainingFloats > 0;
+		}
+	}
+
+	private record UploadedAnimatedObject(
+		int sequenceId,
+		int[] frameLengths,
+		int frameStep,
+		int phaseOffset,
+		UploadedAnimationFrame[] frames
+	)
+	{
+		private UploadedAnimatedObject
+		{
+			frameLengths = frameLengths == null ? new int[0] : frameLengths.clone();
+			frames = frames == null ? new UploadedAnimationFrame[0] : frames.clone();
+		}
+
+		private UploadedAnimationFrame frameAt(float timeSeconds)
+		{
+			if (frames.length == 0)
+			{
+				return UploadedAnimationFrame.EMPTY;
+			}
+			int cycle = Math.max(0, (int) (timeSeconds / 0.02f) + phaseOffset);
+			int totalLength = totalLength(0, frames.length);
+			if (cycle < totalLength || frameStep <= 0 || frameStep > frames.length)
+			{
+				return frameForCycle(cycle < totalLength ? cycle : 0, 0, frames.length);
+			}
+
+			int loopStart = frames.length - frameStep;
+			int loopLength = totalLength(loopStart, frames.length);
+			if (loopLength <= 0)
+			{
+				return frameForCycle(0, 0, frames.length);
+			}
+
+			int loopStartCycle = totalLength(0, loopStart);
+			int loopCycle = Math.floorMod(cycle - loopStartCycle, loopLength);
+			return frameForCycle(loopCycle, loopStart, frames.length);
+		}
+
+		private int totalLength(int startFrame, int endFrame)
+		{
+			int totalLength = 0;
+			for (int i = startFrame; i < endFrame; i++)
+			{
+				totalLength += frameLength(i);
+			}
+			return totalLength;
+		}
+
+		private UploadedAnimationFrame frameForCycle(int cycle, int startFrame, int endFrame)
+		{
+			for (int i = startFrame; i < endFrame; i++)
+			{
+				cycle -= frameLength(i);
+				if (cycle < 0)
+				{
+					return frame(i);
+				}
+			}
+			return frame(startFrame);
+		}
+
+		private int frameLength(int frame)
+		{
+			int length = frameLengths.length > frame ? frameLengths[frame] : 1;
+			return Math.max(1, length);
+		}
+
+		private UploadedAnimationFrame frame(int frame)
+		{
+			return frames[frame] == null ? UploadedAnimationFrame.EMPTY : frames[frame];
+		}
+
+		private void delete()
+		{
+			for (UploadedAnimationFrame frame : frames)
+			{
+				if (frame != null)
+				{
+					frame.delete();
+				}
+			}
+		}
+	}
+
+	private record UploadedAnimationFrame(
+		int vao,
+		int vbo,
+		int vertexCount
+	)
+	{
+		private static final UploadedAnimationFrame EMPTY = new UploadedAnimationFrame(0, 0, 0);
 
 		private void delete()
 		{

@@ -36,6 +36,8 @@ The viewer starts near the region you were looking at on the 2D map. If it for s
 
 - `Lock Camera`: freezes camera movement and rotation. Tile hover still works.
 - `Debug`: shows rendering and performance details in the top-right corner.
+- `AA`: changes multisample antialiasing. The default is `4x`; if the GPU/context rejects the selected level, the viewer retries with `Off`.
+- `FOV`: adjusts the camera field of view.
 - `Return to 2D Map`: closes the 3D viewer and returns to the normal map.
 
 ## Notes

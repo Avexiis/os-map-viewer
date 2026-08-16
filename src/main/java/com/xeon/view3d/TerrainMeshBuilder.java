@@ -25,6 +25,7 @@
  */
 package com.xeon.view3d;
 
+import java.util.List;
 import net.runelite.cache.ObjectManager;
 import net.runelite.cache.OverlayManager;
 import net.runelite.cache.UnderlayManager;
@@ -47,6 +48,7 @@ final class TerrainMeshBuilder
 		OverlayManager overlays,
 		ObjectManager objectManager,
 		ObjectModelProvider modelProvider,
+		ObjectAnimationProvider animationProvider,
 		RSTextureProvider textureProvider,
 		TerrainFloorTextures floorTextures,
 		SceneTextureSet textureSet
@@ -102,14 +104,16 @@ final class TerrainMeshBuilder
 				}
 			}
 		}
+		List<AnimatedObjectMesh> animatedObjects = List.of();
 		if (objectManager != null && modelProvider != null)
 		{
-			ObjectMeshBuilder.append(
+			animatedObjects = ObjectMeshBuilder.append(
 				data,
 				region,
 				heightMaps,
 				objectManager,
 				modelProvider,
+				animationProvider,
 				textureProvider,
 				textureSet
 			);
@@ -123,6 +127,7 @@ final class TerrainMeshBuilder
 			true,
 			data.toArray(),
 			data.size() / TerrainMesh.FLOATS_PER_VERTEX,
+			animatedObjects,
 			textureSet,
 			sceneHeights,
 			renderableTiles,

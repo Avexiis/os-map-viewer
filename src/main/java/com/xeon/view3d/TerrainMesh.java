@@ -26,6 +26,7 @@
 package com.xeon.view3d;
 
 import java.util.Arrays;
+import java.util.List;
 import net.runelite.cache.region.Region;
 import org.joml.Vector3fc;
 
@@ -45,6 +46,9 @@ public final class TerrainMesh
 	private final boolean allPlanes;
 	private float[] vertexData;
 	private final int vertexCount;
+	private final float minY;
+	private final float maxY;
+	private final List<AnimatedObjectMesh> animatedObjects;
 	private final SceneTextureSet textureSet;
 	private final int[] sceneHeights;
 	private final boolean[] renderableTiles;
@@ -62,6 +66,7 @@ public final class TerrainMesh
 			true,
 			new float[0],
 			0,
+			List.of(),
 			SceneTextureSet.empty(),
 			new int[Region.Z * HEIGHTS_PER_PLANE],
 			new boolean[Region.Z * Region.X * Region.Y],
@@ -79,6 +84,7 @@ public final class TerrainMesh
 		boolean allPlanes,
 		float[] vertexData,
 		int vertexCount,
+		List<AnimatedObjectMesh> animatedObjects,
 		SceneTextureSet textureSet,
 		int[] sceneHeights,
 		boolean[] renderableTiles,
@@ -94,6 +100,10 @@ public final class TerrainMesh
 		this.allPlanes = allPlanes;
 		this.vertexData = vertexData == null ? new float[0] : vertexData;
 		this.vertexCount = vertexCount;
+		this.animatedObjects = animatedObjects == null ? List.of() : List.copyOf(animatedObjects);
+		float[] bounds = heightBounds(this.vertexData, this.animatedObjects);
+		this.minY = bounds[0];
+		this.maxY = bounds[1];
 		this.textureSet = textureSet == null ? SceneTextureSet.empty() : textureSet;
 		this.sceneHeights = sceneHeights == null ? new int[Region.Z * HEIGHTS_PER_PLANE] : sceneHeights;
 		this.renderableTiles = Arrays.copyOf(renderableTiles, renderableTiles.length);
@@ -140,6 +150,10 @@ public final class TerrainMesh
 	void releaseVertexData()
 	{
 		vertexData = new float[0];
+		for (AnimatedObjectMesh animatedObject : animatedObjects)
+		{
+			animatedObject.releaseVertexData();
+		}
 	}
 
 	public int vertexCount()
@@ -147,9 +161,24 @@ public final class TerrainMesh
 		return vertexCount;
 	}
 
+	float minY()
+	{
+		return minY;
+	}
+
+	float maxY()
+	{
+		return maxY;
+	}
+
 	SceneTextureSet textureSet()
 	{
 		return textureSet;
+	}
+
+	List<AnimatedObjectMesh> animatedObjects()
+	{
+		return animatedObjects;
 	}
 
 	float worldHeightAt(int samplePlane, float x, float y)
@@ -279,5 +308,42 @@ public final class TerrainMesh
 	private static float clamp(float value, float min, float max)
 	{
 		return Math.max(min, Math.min(max, value));
+	}
+
+	private static float[] heightBounds(float[] vertexData, List<AnimatedObjectMesh> animatedObjects)
+	{
+		float minY = Float.POSITIVE_INFINITY;
+		float maxY = Float.NEGATIVE_INFINITY;
+		float[] bounds = heightBounds(vertexData, minY, maxY);
+		minY = bounds[0];
+		maxY = bounds[1];
+		for (AnimatedObjectMesh animatedObject : animatedObjects)
+		{
+			for (AnimatedObjectMesh.Frame frame : animatedObject.frames())
+			{
+				if (frame == null)
+				{
+					continue;
+				}
+				bounds = heightBounds(frame.rawVertexData(), minY, maxY);
+				minY = bounds[0];
+				maxY = bounds[1];
+			}
+		}
+		if (!Float.isFinite(minY) || !Float.isFinite(maxY))
+		{
+			return new float[]{-64.0f, 64.0f};
+		}
+		return new float[]{minY, maxY};
+	}
+
+	private static float[] heightBounds(float[] vertexData, float minY, float maxY)
+	{
+		for (int i = 0; i + 1 < vertexData.length; i += FLOATS_PER_VERTEX)
+		{
+			minY = Math.min(minY, vertexData[i + 1]);
+			maxY = Math.max(maxY, vertexData[i + 1]);
+		}
+		return new float[]{minY, maxY};
 	}
 }

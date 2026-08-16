@@ -39,6 +39,9 @@ final class FreeCamera
 	private static final float MAX_MOUSE_DELTA = 48.0f;
 	private static final float KEY_ROTATION_SPEED = 95.0f;
 	private static final float SCROLL_ZOOM_DISTANCE = 6.0f;
+	private static final float DEFAULT_FOV_DEGREES = 68.0f;
+	private static final float MIN_FOV_DEGREES = 35.0f;
+	private static final float MAX_FOV_DEGREES = 100.0f;
 	private static final float MIN_PITCH = -88.0f;
 	private static final float MAX_PITCH = 88.0f;
 
@@ -56,6 +59,7 @@ final class FreeCamera
 	private boolean fast;
 	private float yaw;
 	private float pitch;
+	private float fovDegrees = DEFAULT_FOV_DEGREES;
 
 	FreeCamera()
 	{
@@ -174,7 +178,7 @@ final class FreeCamera
 		float ndcX = screenX * 2.0f / safeWidth - 1.0f;
 		float ndcY = 1.0f - screenY * 2.0f / safeHeight;
 		Matrix4f inverseViewProjection = new Matrix4f()
-			.perspective(SceneScale.CAMERA_FOV_RADIANS, safeWidth / safeHeight, SceneScale.CAMERA_NEAR_PLANE, SceneScale.CAMERA_FAR_PLANE)
+			.perspective(fovRadians(), safeWidth / safeHeight, SceneScale.CAMERA_NEAR_PLANE, SceneScale.CAMERA_FAR_PLANE)
 			.mul(viewMatrix(new Matrix4f()))
 			.invert();
 		Vector4f near = inverseViewProjection.transform(new Vector4f(ndcX, ndcY, -1.0f, 1.0f));
@@ -208,6 +212,21 @@ final class FreeCamera
 		destination.y = (float) Math.sin(pitchRadians);
 		destination.z = (float) Math.cos(yawRadians) * pitchCos;
 		return destination.normalize();
+	}
+
+	float fovDegrees()
+	{
+		return fovDegrees;
+	}
+
+	float fovRadians()
+	{
+		return (float) Math.toRadians(fovDegrees);
+	}
+
+	void setFovDegrees(float fovDegrees)
+	{
+		this.fovDegrees = clamp(fovDegrees, MIN_FOV_DEGREES, MAX_FOV_DEGREES);
 	}
 
 	void setForward(boolean value)

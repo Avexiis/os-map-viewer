@@ -25,51 +25,62 @@
  */
 package com.xeon.view3d;
 
-final class SceneScale
+import java.util.Arrays;
+
+record AnimatedObjectMesh(
+	int sequenceId,
+	int[] frameLengths,
+	int frameStep,
+	int phaseOffset,
+	Frame[] frames
+)
 {
-	static final int SCENE_UNITS_PER_TILE = 128;
-	static final float REGION_CENTER_TILES = 32.0f;
-	static final float SCENE_TO_WORLD = 1.0f / SCENE_UNITS_PER_TILE;
-	static final float CAMERA_NEAR_PLANE = 0.5f;
-	static final float CAMERA_FAR_PLANE = 260.0f;
-	static final boolean MIRRORS_WORLD_Z = true;
-
-	private SceneScale()
+	AnimatedObjectMesh
 	{
+		frameLengths = frameLengths == null ? new int[0] : Arrays.copyOf(frameLengths, frameLengths.length);
+		frames = frames == null ? new Frame[0] : Arrays.copyOf(frames, frames.length);
 	}
 
-	static float worldXFromTile(float tileX)
+	int frameCount()
 	{
-		return tileX - REGION_CENTER_TILES;
+		return frames.length;
 	}
 
-	static float worldZFromTile(float tileY)
+	void releaseVertexData()
 	{
-		return REGION_CENTER_TILES - tileY;
+		for (Frame frame : frames)
+		{
+			if (frame != null)
+			{
+				frame.releaseVertexData();
+			}
+		}
 	}
 
-	static float worldXFromScene(float sceneX)
+	static final class Frame
 	{
-		return worldXFromTile(sceneX * SCENE_TO_WORLD);
-	}
+		private float[] vertexData;
+		private final int vertexCount;
 
-	static float worldYFromSceneHeight(float sceneHeight)
-	{
-		return -sceneHeight * SCENE_TO_WORLD;
-	}
+		Frame(float[] vertexData, int vertexCount)
+		{
+			this.vertexData = vertexData == null ? new float[0] : vertexData;
+			this.vertexCount = vertexCount;
+		}
 
-	static float worldZFromScene(float sceneY)
-	{
-		return worldZFromTile(sceneY * SCENE_TO_WORLD);
-	}
+		float[] rawVertexData()
+		{
+			return vertexData;
+		}
 
-	static float tileXFromWorld(float worldX)
-	{
-		return worldX + REGION_CENTER_TILES;
-	}
+		int vertexCount()
+		{
+			return vertexCount;
+		}
 
-	static float tileYFromWorld(float worldZ)
-	{
-		return REGION_CENTER_TILES - worldZ;
+		void releaseVertexData()
+		{
+			vertexData = new float[0];
+		}
 	}
 }

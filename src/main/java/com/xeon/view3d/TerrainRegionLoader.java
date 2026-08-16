@@ -83,6 +83,7 @@ public final class TerrainRegionLoader
 				overlays,
 				objects,
 				new ObjectModelProvider(store),
+				new ObjectAnimationProvider(store),
 				textures.textureProvider(),
 				floorTextures,
 				textures.textureSet()
@@ -159,6 +160,7 @@ public final class TerrainRegionLoader
 		private final OverlayManager overlays;
 		private final ObjectManager objects;
 		private final ObjectModelProvider modelProvider;
+		private final ObjectAnimationProvider animationProvider;
 		private final RSTextureProvider textureProvider;
 		private final TerrainFloorTextures floorTextures;
 		private final SceneTextureSet textureSet;
@@ -170,6 +172,7 @@ public final class TerrainRegionLoader
 			OverlayManager overlays,
 			ObjectManager objects,
 			ObjectModelProvider modelProvider,
+			ObjectAnimationProvider animationProvider,
 			RSTextureProvider textureProvider,
 			TerrainFloorTextures floorTextures,
 			SceneTextureSet textureSet
@@ -181,6 +184,7 @@ public final class TerrainRegionLoader
 			this.overlays = overlays;
 			this.objects = objects;
 			this.modelProvider = modelProvider;
+			this.animationProvider = animationProvider;
 			this.textureProvider = textureProvider;
 			this.floorTextures = floorTextures;
 			this.textureSet = textureSet;
@@ -226,6 +230,7 @@ public final class TerrainRegionLoader
 					overlays,
 					objects,
 					modelProvider,
+					animationProvider,
 					textureProvider,
 					floorTextures,
 					textureSet
@@ -234,6 +239,7 @@ public final class TerrainRegionLoader
 			finally
 			{
 				modelProvider.clearCache();
+				animationProvider.clearCache();
 			}
 		}
 
