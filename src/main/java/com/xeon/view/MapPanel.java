@@ -935,24 +935,35 @@ public class MapPanel extends JComponent implements MapView
 	public void paintMapSnapshot(Graphics2D g0, Rectangle target, Tile centerTile,
 	                             double pixelsPerTile, boolean includeIcons, boolean includeLabels)
 	{
+		Tile tile = centerTile == null
+			? new Tile((Paths.MIN_RX + Paths.MAX_RX + 1) * REGION_TILES / 2,
+				(Paths.MIN_RY + Paths.MAX_RY + 1) * REGION_TILES / 2, currentPlane)
+			: centerTile;
+		paintMapSnapshot(g0, target, tile.x + 0.5, tile.y + 0.5, tile.z,
+			pixelsPerTile, includeIcons, includeLabels);
+	}
+
+	public void paintMapSnapshot(Graphics2D g0, Rectangle target, double centerWorldTileX, double centerWorldTileY,
+	                             int plane, double pixelsPerTile, boolean includeIcons, boolean includeLabels)
+	{
 		if (g0 == null || target == null || target.width <= 0 || target.height <= 0 || pixelsPerTile <= 0.0)
 		{
 			return;
 		}
 
-		Tile tile = centerTile == null
-			? new Tile((Paths.MIN_RX + Paths.MAX_RX + 1) * REGION_TILES / 2,
-				(Paths.MIN_RY + Paths.MAX_RY + 1) * REGION_TILES / 2, currentPlane)
-			: centerTile;
-		int snapshotPlane = Math.max(0, Math.min(maxPlanes - 1, tile.z));
-		Rectangle centerRect = tileToRect(new Tile(tile.x, tile.y, snapshotPlane));
-		double centerX = centerRect.getCenterX();
-		double centerY = centerRect.getCenterY();
+		if (!Double.isFinite(centerWorldTileX) || !Double.isFinite(centerWorldTileY))
+		{
+			centerWorldTileX = (Paths.MIN_RX + Paths.MAX_RX + 1) * REGION_TILES / 2.0;
+			centerWorldTileY = (Paths.MIN_RY + Paths.MAX_RY + 1) * REGION_TILES / 2.0;
+		}
+		int snapshotPlane = Math.max(0, Math.min(maxPlanes - 1, plane));
+		double centerX = logicalXForWorldTile(centerWorldTileX);
+		double centerY = logicalYForWorldTile(centerWorldTileY);
 		double scale = Math.max(0.05, pixelsPerTile);
 		double snapshotZoom = scale * HI_PX_PER_TILE;
 		LOD lodNow = LOD.forZoom(snapshotZoom);
-		int originX = (int) Math.round(target.getCenterX() - centerX * scale);
-		int originY = (int) Math.round(target.getCenterY() - centerY * scale);
+		double originX = target.getCenterX() - centerX * scale;
+		double originY = target.getCenterY() - centerY * scale;
 		Rectangle visibleMap = visibleMapPixelRect(target, originX, originY, scale, 2);
 
 		Graphics2D g = (Graphics2D) g0.create();
@@ -1326,7 +1337,7 @@ public class MapPanel extends JComponent implements MapView
 	}
 
 	private void drawTilesLODProgressive(Graphics2D g, LOD targetLod, Rectangle visibleMap, AtlasLayerType layerKind,
-	                                     Rectangle view, int originX, int originY, double scale, double zoomUi)
+	                                     Rectangle view, double originX, double originY, double scale, double zoomUi)
 	{
 		if (g == null || targetLod == null || visibleMap == null || visibleMap.isEmpty()
 			|| view == null || view.width <= 0 || view.height <= 0 || scale <= 0.0)
@@ -1483,16 +1494,16 @@ public class MapPanel extends JComponent implements MapView
 	private void drawImageMapped(Graphics2D g, BufferedImage img,
 	                             int sx, int sy, int sw, int sh,
 	                             int dx1, int dy1, int dx2, int dy2,
-	                             int originX, int originY, double scale)
+	                             double originX, double originY, double scale)
 	{
 		if (img == null || sw <= 0 || sh <= 0)
 		{
 			return;
 		}
-		int ddx1 = originX + (int) Math.round(dx1 * scale);
-		int ddy1 = originY + (int) Math.round(dy1 * scale);
-		int ddx2 = originX + (int) Math.round(dx2 * scale);
-		int ddy2 = originY + (int) Math.round(dy2 * scale);
+		int ddx1 = (int) Math.round(originX + dx1 * scale);
+		int ddy1 = (int) Math.round(originY + dy1 * scale);
+		int ddx2 = (int) Math.round(originX + dx2 * scale);
+		int ddy2 = (int) Math.round(originY + dy2 * scale);
 		if (ddx2 <= ddx1)
 		{
 			ddx2 = ddx1 + 1;
@@ -1887,7 +1898,7 @@ public class MapPanel extends JComponent implements MapView
 		return visibleMapPixelRect(viewport.getViewRect(), contentOriginX(), contentOriginY(), effZoom(), 2);
 	}
 
-	private Rectangle visibleMapPixelRect(Rectangle view, int originX, int originY, double scale, int pad)
+	private Rectangle visibleMapPixelRect(Rectangle view, double originX, double originY, double scale, int pad)
 	{
 		if (view == null || view.width <= 0 || view.height <= 0 || scale <= 0.0)
 		{
@@ -1920,6 +1931,22 @@ public class MapPanel extends JComponent implements MapView
 		return totalH / (double) (Paths.MAX_RY - Paths.MIN_RY + 1);
 	}
 
+	private double logicalXForWorldTile(double worldTileX)
+	{
+		double minWorldX = Paths.MIN_RX * (double) REGION_TILES;
+		double maxWorldX = (Paths.MAX_RX + 1) * (double) REGION_TILES;
+		double clamped = clamp(worldTileX, minWorldX, maxWorldX);
+		return (clamped - minWorldX) * (regionW() / REGION_TILES);
+	}
+
+	private double logicalYForWorldTile(double worldTileY)
+	{
+		double minWorldY = Paths.MIN_RY * (double) REGION_TILES;
+		double maxWorldY = (Paths.MAX_RY + 1) * (double) REGION_TILES;
+		double clamped = clamp(worldTileY, minWorldY, maxWorldY);
+		return (maxWorldY - clamped) * (regionH() / REGION_TILES);
+	}
+
 	private Rectangle scaleRect(Rectangle r, double factor)
 	{
 		return new Rectangle(
@@ -1928,6 +1955,11 @@ public class MapPanel extends JComponent implements MapView
 			Math.max(1, (int) Math.round(r.width * factor)),
 			Math.max(1, (int) Math.round(r.height * factor))
 		);
+	}
+
+	private static double clamp(double value, double min, double max)
+	{
+		return Math.max(min, Math.min(max, value));
 	}
 
 	private void repaintLogicalRect(Rectangle logicalRect, int devicePadPx)

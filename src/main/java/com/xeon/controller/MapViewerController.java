@@ -31,6 +31,7 @@ import com.xeon.atlas.MapAtlasPrinter;
 import com.xeon.atlas.RuneLiteCacheLocator;
 import com.xeon.config.ConfigManager;
 import com.xeon.config.PluginConfig;
+import com.xeon.io.Viewer3DState;
 import com.xeon.io.ViewerSettings;
 import com.xeon.model.Tile;
 import com.xeon.plugin.MapViewerPlugin;
@@ -92,7 +93,7 @@ public class MapViewerController
 		"NOTICE: The 3D viewer is experimental and streams cache regions around the camera. "
 			+ "It reads terrain, overlay, underlay, texture, and height data from the local OSRS cache and "
 			+ "does not modify game files. The 2D map workspace and active plugins will be cleared until you "
-			+ "return to the normal map viewer. If no map-centered region is available, it starts in Lumbridge.";
+			+ "return to the normal map viewer. If no saved 3D view is available, it starts in Lumbridge.";
 	private static final double FULL_JUMP_ZOOM = Double.POSITIVE_INFINITY;
 	private static final MemoryPreset[] MEMORY_PRESETS = new MemoryPreset[]{
 		new MemoryPreset("512 MB", 512),
@@ -1100,15 +1101,8 @@ public class MapViewerController
 			return;
 		}
 
-		int regionId = mapPanel == null ? settings.lastRegionId() : mapPanel.getCenterRegionId();
-		if (regionId < 0)
-		{
-			regionId = settings.lastRegionId();
-		}
-		if (regionId < 0)
-		{
-			regionId = DEFAULT_3D_REGION_ID;
-		}
+		Viewer3DState saved3DState = settings.viewer3DState();
+		int regionId = saved3DState == null ? DEFAULT_3D_REGION_ID : saved3DState.regionId();
 
 		if (owner instanceof JDialog dialog)
 		{
@@ -1159,7 +1153,7 @@ public class MapViewerController
 		mapScrollHorizontalPolicy = mapScrollPane.getHorizontalScrollBarPolicy();
 		mapScrollVerticalPolicy = mapScrollPane.getVerticalScrollBarPolicy();
 		map3DPanel = new Map3DPanel(cacheDirectory, regionId, atlasPath,
-			memoryBudgetBytes(selectedMemoryBudgetMb()), this::exit3DViewer);
+			memoryBudgetBytes(selectedMemoryBudgetMb()), settings, this::exit3DViewer);
 		mapScrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
 		mapScrollPane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER);
 		mapScrollPane.setViewportView(map3DPanel);

@@ -153,6 +153,62 @@ final class TerrainScene
 		return localX >= 0.0f && localY >= 0.0f && localX < REGION_SIZE && localY < REGION_SIZE;
 	}
 
+	boolean renderableTileAtWorld(int plane, float worldX, float worldZ)
+	{
+		TerrainMesh mesh = meshes.get(regionIdForWorld(worldX, worldZ));
+		if (mesh == null)
+		{
+			return false;
+		}
+
+		float localX = localTileX(mesh, worldX);
+		float localY = localTileY(mesh, worldZ);
+		if (localX < 0.0f || localY < 0.0f || localX >= REGION_SIZE || localY >= REGION_SIZE)
+		{
+			return false;
+		}
+		int tileX = clamp((int) Math.floor(localX), 0, REGION_SIZE - 1);
+		int tileY = clamp((int) Math.floor(localY), 0, REGION_SIZE - 1);
+		return mesh.renderableTileAt(plane, tileX, tileY);
+	}
+
+	float worldHeightAt(int plane, float worldX, float worldZ, float fallback)
+	{
+		TerrainMesh mesh = meshes.get(regionIdForWorld(worldX, worldZ));
+		if (mesh == null)
+		{
+			return fallback;
+		}
+
+		float localX = localTileX(mesh, worldX);
+		float localY = localTileY(mesh, worldZ);
+		if (localX < 0.0f || localY < 0.0f || localX >= REGION_SIZE || localY >= REGION_SIZE)
+		{
+			return fallback;
+		}
+		return mesh.worldHeightAt(plane, localX, localY);
+	}
+
+	int cameraPlaneFor(float worldX, float worldY, float worldZ)
+	{
+		int selectedPlane = 0;
+		float selectedHeight = Float.NEGATIVE_INFINITY;
+		for (int plane = 0; plane < Region.Z; plane++)
+		{
+			if (!renderableTileAtWorld(plane, worldX, worldZ))
+			{
+				continue;
+			}
+			float height = worldHeightAt(plane, worldX, worldZ, Float.NEGATIVE_INFINITY);
+			if (height <= worldY + 2.0f && height >= selectedHeight)
+			{
+				selectedHeight = height;
+				selectedPlane = plane;
+			}
+		}
+		return selectedPlane;
+	}
+
 	Vector3f clampMovement(Vector3fc previous, Vector3fc attempted, Vector3f destination)
 	{
 		if (isEmpty() || containsWorldPosition(attempted))

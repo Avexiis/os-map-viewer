@@ -203,6 +203,23 @@ final class FreeCamera
 		position.set(value);
 	}
 
+	float yawDegrees()
+	{
+		return yaw;
+	}
+
+	float pitchDegrees()
+	{
+		return pitch;
+	}
+
+	void setOrientation(float yawDegrees, float pitchDegrees)
+	{
+		yaw = yawDegrees;
+		pitch = pitchDegrees;
+		clampPitch();
+	}
+
 	Vector3f direction(Vector3f destination)
 	{
 		float yawRadians = (float) Math.toRadians(yaw);

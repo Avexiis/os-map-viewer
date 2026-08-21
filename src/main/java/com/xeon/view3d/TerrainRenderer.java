@@ -275,6 +275,11 @@ final class TerrainRenderer
 		sceneFboSamples = -1;
 	}
 
+	float animationTimeSeconds()
+	{
+		return (System.nanoTime() - startNanos) / 1_000_000_000.0f;
+	}
+
 	void render(FreeCamera camera, int width, int height)
 	{
 		init();
@@ -372,7 +377,7 @@ final class TerrainRenderer
 			GL33C.glUniformMatrix4fv(terrainMvpLocation, false, mvp.get(matrixBuffer));
 		}
 		GL33C.glUniform3f(terrainCameraLocation, cameraPosition.x(), cameraPosition.y(), cameraPosition.z());
-		float timeSeconds = (System.nanoTime() - startNanos) / 1_000_000_000.0f;
+		float timeSeconds = animationTimeSeconds();
 		GL33C.glUniform1f(terrainTimeLocation, timeSeconds);
 		GL33C.glUniform1f(terrainTextureLayerCountLocation, uploadedTextureLayerCount);
 		GL33C.glActiveTexture(GL33C.GL_TEXTURE0);
@@ -1398,54 +1403,7 @@ final class TerrainRenderer
 			{
 				return UploadedAnimationFrame.EMPTY;
 			}
-			int cycle = Math.max(0, (int) (timeSeconds / 0.02f) + phaseOffset);
-			int totalLength = totalLength(0, frames.length);
-			if (cycle > totalLength)
-			{
-				int restartFrame = frames.length - frameStep;
-				if (restartFrame < 0 || restartFrame >= frames.length)
-				{
-					restartFrame = 0;
-				}
-
-				int restartCycle = totalLength(0, restartFrame);
-				int loopLength = totalLength(restartFrame, frames.length);
-				cycle = loopLength <= 0
-					? 0
-					: restartCycle + Math.floorMod(cycle - restartCycle, loopLength);
-			}
-
-			int frame = 0;
-			while (cycle > frameLength(frame))
-			{
-				cycle -= frameLength(frame);
-				frame++;
-				if (frame >= frames.length)
-				{
-					frame -= frameStep;
-					if (frame < 0 || frame >= frames.length)
-					{
-						frame = 0;
-					}
-				}
-			}
-			return frame(frame);
-		}
-
-		private int totalLength(int startFrame, int endFrame)
-		{
-			int totalLength = 0;
-			for (int i = startFrame; i < endFrame; i++)
-			{
-				totalLength += frameLength(i);
-			}
-			return totalLength;
-		}
-
-		private int frameLength(int frame)
-		{
-			int length = frameLengths.length > frame ? frameLengths[frame] : 1;
-			return Math.max(1, length);
+			return frame(AnimatedObjectMesh.frameIndexAt(frames.length, frameLengths, frameStep, phaseOffset, timeSeconds));
 		}
 
 		private UploadedAnimationFrame frame(int frame)

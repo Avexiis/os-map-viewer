@@ -346,4 +346,5 @@ public final class TerrainMesh
 		}
 		return new float[]{minY, maxY};
 	}
+
 }

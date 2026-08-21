@@ -25,6 +25,8 @@
  */
 package com.xeon.io;
 
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.xeon.config.ConfigManager;
 
 import java.awt.Color;
@@ -43,6 +45,24 @@ public final class ViewerSettings
 	private static final String KEY_LAST_PLANE = "map.last.plane";
 	private static final String KEY_LAST_ZOOM = "map.last.zoom";
 	private static final String KEY_MEMORY_BUDGET_MB = "map.memoryBudgetMb";
+	private static final String KEY_3D_STATE = "viewer3d.state";
+	private static final String KEY_3D_STATE_VALID = "viewer3d.state.valid";
+	private static final String KEY_3D_WORLD_TILE_X = "viewer3d.state.worldTileX";
+	private static final String KEY_3D_WORLD_TILE_Y = "viewer3d.state.worldTileY";
+	private static final String KEY_3D_CAMERA_Y = "viewer3d.state.cameraY";
+	private static final String KEY_3D_PLANE = "viewer3d.state.plane";
+	private static final String KEY_3D_YAW = "viewer3d.state.yawDegrees";
+	private static final String KEY_3D_PITCH = "viewer3d.state.pitchDegrees";
+	private static final String KEY_3D_FOV = "viewer3d.state.fovDegrees";
+	private static final String KEY_3D_AA_SAMPLES = "viewer3d.state.antialiasingSamples";
+	private static final String FIELD_WORLD_TILE_X = "worldTileX";
+	private static final String FIELD_WORLD_TILE_Y = "worldTileY";
+	private static final String FIELD_CAMERA_Y = "cameraY";
+	private static final String FIELD_PLANE = "plane";
+	private static final String FIELD_YAW = "yawDegrees";
+	private static final String FIELD_PITCH = "pitchDegrees";
+	private static final String FIELD_FOV = "fovDegrees";
+	private static final String FIELD_AA_SAMPLES = "antialiasingSamples";
 	private static final String DEFAULT_BACKGROUND = "#000000";
 	private static final int DEFAULT_MEMORY_BUDGET_MB = 512;
 
@@ -162,6 +182,113 @@ public final class ViewerSettings
 	{
 		configManager.setInt(CORE, KEY_MEMORY_BUDGET_MB,
 			value == MEMORY_BUDGET_UNLIMITED_MB ? MEMORY_BUDGET_UNLIMITED_MB : Math.max(DEFAULT_MEMORY_BUDGET_MB, value));
+	}
+
+	public Viewer3DState viewer3DState()
+	{
+		Viewer3DState objectState = viewer3DStateObject();
+		if (objectState != null)
+		{
+			return objectState;
+		}
+
+		if (!configManager.getBoolean(CORE, KEY_3D_STATE_VALID, false))
+		{
+			return null;
+		}
+
+		Viewer3DState state = new Viewer3DState(
+			configManager.getDouble(CORE, KEY_3D_WORLD_TILE_X, Double.NaN),
+			configManager.getDouble(CORE, KEY_3D_WORLD_TILE_Y, Double.NaN),
+			configManager.getDouble(CORE, KEY_3D_CAMERA_Y, Double.NaN),
+			configManager.getInt(CORE, KEY_3D_PLANE, 0),
+			(float) configManager.getDouble(CORE, KEY_3D_YAW, 0.0),
+			(float) configManager.getDouble(CORE, KEY_3D_PITCH, -12.0),
+			(float) configManager.getDouble(CORE, KEY_3D_FOV, 68.0),
+			configManager.getInt(CORE, KEY_3D_AA_SAMPLES, 4)
+		);
+		return state.isValid() ? state : null;
+	}
+
+	public void setViewer3DState(Viewer3DState state)
+	{
+		if (state == null || !state.isValid())
+		{
+			configManager.remove(CORE, KEY_3D_STATE);
+			configManager.setBoolean(CORE, KEY_3D_STATE_VALID, false);
+			return;
+		}
+
+		if (configManager.getBoolean(CORE, KEY_3D_STATE_VALID, false))
+		{
+			configManager.setBoolean(CORE, KEY_3D_STATE_VALID, false);
+		}
+		JsonObject object = new JsonObject();
+		object.addProperty(FIELD_WORLD_TILE_X, state.worldTileX());
+		object.addProperty(FIELD_WORLD_TILE_Y, state.worldTileY());
+		object.addProperty(FIELD_CAMERA_Y, state.cameraY());
+		object.addProperty(FIELD_PLANE, Math.max(0, Math.min(3, state.plane())));
+		object.addProperty(FIELD_YAW, state.yawDegrees());
+		object.addProperty(FIELD_PITCH, state.pitchDegrees());
+		object.addProperty(FIELD_FOV, state.fovDegrees());
+		object.addProperty(FIELD_AA_SAMPLES, Math.max(0, state.antialiasingSamples()));
+		configManager.setElement(CORE, KEY_3D_STATE, object);
+	}
+
+	private Viewer3DState viewer3DStateObject()
+	{
+		JsonElement element = configManager.getElement(CORE, KEY_3D_STATE);
+		if (element == null || !element.isJsonObject())
+		{
+			return null;
+		}
+
+		JsonObject object = element.getAsJsonObject();
+		Viewer3DState state = new Viewer3DState(
+			jsonDouble(object, FIELD_WORLD_TILE_X, Double.NaN),
+			jsonDouble(object, FIELD_WORLD_TILE_Y, Double.NaN),
+			jsonDouble(object, FIELD_CAMERA_Y, Double.NaN),
+			jsonInt(object, FIELD_PLANE, 0),
+			(float) jsonDouble(object, FIELD_YAW, 0.0),
+			(float) jsonDouble(object, FIELD_PITCH, -12.0),
+			(float) jsonDouble(object, FIELD_FOV, 68.0),
+			jsonInt(object, FIELD_AA_SAMPLES, 4)
+		);
+		return state.isValid() ? state : null;
+	}
+
+	private static double jsonDouble(JsonObject object, String key, double defaultValue)
+	{
+		JsonElement element = object.get(key);
+		if (element == null || !element.isJsonPrimitive())
+		{
+			return defaultValue;
+		}
+		try
+		{
+			return element.getAsDouble();
+		}
+		catch (RuntimeException ex)
+		{
+			return defaultValue;
+		}
+	}
+
+	private static int jsonInt(JsonObject object, String key, int defaultValue)
+	{
+		JsonElement element = object.get(key);
+		if (element == null || !element.isJsonPrimitive())
+		{
+			return defaultValue;
+		}
+		try
+		{
+			return element.getAsInt();
+		}
+		catch (RuntimeException ex)
+		{
+			return defaultValue;
+		}
 	}
 
 	private static String colorToHex(Color color)

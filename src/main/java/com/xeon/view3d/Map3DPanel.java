@@ -27,6 +27,8 @@ package com.xeon.view3d;
 
 import com.xeon.atlas.AtlasStorage;
 import com.xeon.io.Paths;
+import com.xeon.io.Viewer3DState;
+import com.xeon.io.ViewerSettings;
 import com.xeon.model.Tile;
 import com.xeon.view.MapPanel;
 
@@ -73,6 +75,7 @@ import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import net.runelite.rlawt.AWTContext;
 import org.joml.Vector3f;
+import org.joml.Vector3fc;
 import org.lwjgl.opengl.GL33C;
 
 public final class Map3DPanel extends JPanel
@@ -92,6 +95,7 @@ public final class Map3DPanel extends JPanel
 	private static final long DEFAULT_MAP_CACHE_BUDGET_BYTES = 512L * 1024L * 1024L;
 	private static final long MINIMAP_CACHE_BUDGET_BYTES = 128L * 1024L * 1024L;
 	private static final float WARP_CAMERA_HEIGHT_TILES = 22.0f;
+	private static final long STATE_SAVE_INTERVAL_NANOS = 1_500_000_000L;
 
 	private final TerrainRegionLoader loader = new TerrainRegionLoader();
 	private final TerrainRenderer renderer = new TerrainRenderer();
@@ -101,6 +105,8 @@ public final class Map3DPanel extends JPanel
 	private final Path cacheDirectory;
 	private final Path atlasPath;
 	private final long mapCacheBudgetBytes;
+	private final ViewerSettings settings;
+	private final Viewer3DState initialState;
 	private final int regionId;
 	private final int originRegionX;
 	private final int originRegionY;
@@ -117,6 +123,7 @@ public final class Map3DPanel extends JPanel
 	private final Set<Integer> failedRegionIds = new HashSet<>();
 	private final JToggleButton lockCameraButton = new JToggleButton("Lock Camera");
 	private final JToggleButton debugOverlayButton = new JToggleButton("Debug");
+	private final JToggleButton viewControlsButton = new JToggleButton("View Controls");
 	private final JComboBox<AntialiasingScale> antialiasingScale = new JComboBox<>(AntialiasingScale.values());
 	private final JSlider fovSlider = new JSlider(MIN_FOV_DEGREES, MAX_FOV_DEGREES, Math.round(camera.fovDegrees()));
 	private final JLabel title = new JLabel("3D Region Viewer");
@@ -126,6 +133,7 @@ public final class Map3DPanel extends JPanel
 	private final JLabel fovHud = new JLabel();
 	private final JLabel debugOverlay = new JLabel();
 	private final Map3DMinimapOverlay minimapOverlay;
+	private final Map3DControlsOverlay controlsOverlay = new Map3DControlsOverlay();
 	private final Timer renderTimer;
 	private final Runnable exitAction;
 	private volatile TerrainRegionLoader.Session loaderSession;
@@ -149,19 +157,26 @@ public final class Map3DPanel extends JPanel
 	private double lastFrameMillis;
 	private double lastRenderMillis;
 	private int antialiasingSamples = DEFAULT_ANTIALIASING_SAMPLES;
+	private boolean stateSavePending;
+	private long lastStateSaveNanos;
+	private Viewer3DState lastSavedState;
 	private Map3DWorldMapDock worldMapDock;
 
 	public Map3DPanel(Path cacheDirectory, int regionId, Runnable exitAction)
 	{
-		this(cacheDirectory, regionId, installedAtlasPath(), DEFAULT_MAP_CACHE_BUDGET_BYTES, exitAction);
+		this(cacheDirectory, regionId, installedAtlasPath(), DEFAULT_MAP_CACHE_BUDGET_BYTES, null, exitAction);
 	}
 
-	public Map3DPanel(Path cacheDirectory, int regionId, Path atlasPath, long mapCacheBudgetBytes, Runnable exitAction)
+	public Map3DPanel(Path cacheDirectory, int regionId, Path atlasPath, long mapCacheBudgetBytes,
+	                  ViewerSettings settings, Runnable exitAction)
 	{
 		super(new BorderLayout());
 		this.cacheDirectory = cacheDirectory;
 		this.atlasPath = atlasPath;
 		this.mapCacheBudgetBytes = mapCacheBudgetBytes <= 0L ? DEFAULT_MAP_CACHE_BUDGET_BYTES : mapCacheBudgetBytes;
+		this.settings = settings;
+		this.initialState = settings == null ? null : settings.viewer3DState();
+		this.lastSavedState = initialState;
 		this.regionId = regionId;
 		this.originRegionX = TerrainScene.regionX(regionId);
 		this.originRegionY = TerrainScene.regionY(regionId);
@@ -170,6 +185,7 @@ public final class Map3DPanel extends JPanel
 		this.exitAction = exitAction;
 		setOpaque(true);
 		setBackground(Color.BLACK);
+		applyInitialPreferences();
 
 		canvas = new Canvas();
 		canvas.setBackground(Color.BLACK);
@@ -190,6 +206,7 @@ public final class Map3DPanel extends JPanel
 	public void dispose()
 	{
 		disposed = true;
+		saveViewerStateNow();
 		renderTimer.stop();
 		regionLoaderExecutor.shutdownNow();
 		closeLoaderSession();
@@ -259,7 +276,6 @@ public final class Map3DPanel extends JPanel
 			sceneLayer.repaint();
 		});
 		JLabel aaLabel = toolbarLabel("AA");
-		antialiasingScale.setSelectedItem(AntialiasingScale.X4);
 		antialiasingScale.setFocusable(false);
 		antialiasingScale.addActionListener(e -> applyAntialiasingSelection());
 		JLabel fovLabel = toolbarLabel("FOV");
@@ -270,6 +286,7 @@ public final class Map3DPanel extends JPanel
 		fovSlider.addChangeListener(e -> {
 			camera.setFovDegrees(fovSlider.getValue());
 			updateFovHud();
+			scheduleStateSave();
 		});
 		updateFovHud();
 		JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
@@ -285,6 +302,13 @@ public final class Map3DPanel extends JPanel
 		controls.add(tileHud);
 		toolbar.add(controls, BorderLayout.CENTER);
 
+		styleToolbarButton(viewControlsButton);
+		viewControlsButton.addActionListener(e -> {
+			controlsOverlay.setVisible(viewControlsButton.isSelected());
+			sceneLayer.revalidate();
+			sceneLayer.doLayout();
+			sceneLayer.repaint();
+		});
 		JButton exit = new JButton("Return to 2D Map");
 		styleToolbarButton(exit);
 		exit.addActionListener(e -> {
@@ -293,8 +317,9 @@ public final class Map3DPanel extends JPanel
 				exitAction.run();
 			}
 		});
-		JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 2));
+		JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 2));
 		actions.setOpaque(false);
+		actions.add(viewControlsButton);
 		actions.add(exit);
 		toolbar.add(actions, BorderLayout.EAST);
 		return toolbar;
@@ -316,12 +341,20 @@ public final class Map3DPanel extends JPanel
 				Dimension size = getSize();
 				canvas.setBounds(0, 0, size.width, size.height);
 				int debugTop = 10;
+				int rightAnchor = size.width - 12;
 				if (minimapOverlay != null)
 				{
 					Dimension minimapSize = minimapOverlay.getPreferredSize();
-					int minimapX = Math.max(8, size.width - minimapSize.width - 12);
+					int minimapX = Math.max(8, rightAnchor - minimapSize.width);
 					minimapOverlay.setBounds(minimapX, 12, minimapSize.width, minimapSize.height);
 					debugTop = minimapOverlay.getY() + minimapOverlay.getHeight() + 8;
+				}
+				if (controlsOverlay.isVisible())
+				{
+					Dimension controlsSize = controlsOverlay.getPreferredSize();
+					int controlsX = Math.max(8, rightAnchor - controlsSize.width);
+					controlsOverlay.setBounds(controlsX, debugTop, controlsSize.width, controlsSize.height);
+					debugTop = controlsOverlay.getY() + controlsOverlay.getHeight() + 8;
 				}
 				Dimension preferredSize = debugOverlay.getPreferredSize();
 				int x = Math.max(8, size.width - preferredSize.width - 10);
@@ -335,6 +368,8 @@ public final class Map3DPanel extends JPanel
 		{
 			layeredPane.add(minimapOverlay, JLayeredPane.PALETTE_LAYER);
 		}
+		controlsOverlay.setVisible(false);
+		layeredPane.add(controlsOverlay, JLayeredPane.PALETTE_LAYER);
 		layeredPane.add(debugOverlay, JLayeredPane.PALETTE_LAYER);
 		return layeredPane;
 	}
@@ -349,13 +384,31 @@ public final class Map3DPanel extends JPanel
 		{
 			MapPanel minimapPanel = new MapPanel(atlasPath, minimapBudgetBytes(mapCacheBudgetBytes));
 			minimapPanel.setShowMapFeatureTooltips(false);
-			return new Map3DMinimapOverlay(minimapPanel, this::cameraTile, this::cameraHeadingRadians, this::openWorldMapDock);
+			return new Map3DMinimapOverlay(minimapPanel, this::cameraMinimapCenter,
+				this::cameraHeadingRadians, this::openWorldMapDock);
 		}
 		catch (RuntimeException ex)
 		{
 			System.err.println("Failed to initialize 3D minimap: " + rootMessage(ex));
 			return null;
 		}
+	}
+
+	private void applyInitialPreferences()
+	{
+		Viewer3DState state = initialState;
+		if (state != null)
+		{
+			camera.setFovDegrees(state.fovDegrees());
+			fovSlider.setValue(Math.round(camera.fovDegrees()));
+			AntialiasingScale scale = AntialiasingScale.forSamples(state.antialiasingSamples());
+			antialiasingSamples = scale.samples();
+			antialiasingScale.setSelectedItem(scale);
+			return;
+		}
+		AntialiasingScale scale = AntialiasingScale.forSamples(DEFAULT_ANTIALIASING_SAMPLES);
+		antialiasingSamples = scale.samples();
+		antialiasingScale.setSelectedItem(scale);
 	}
 
 	private void openWorldMapDock()
@@ -392,6 +445,21 @@ public final class Map3DPanel extends JPanel
 		}
 	}
 
+	private Map3DMinimapOverlay.Center cameraMinimapCenter()
+	{
+		if (!cameraInitialized)
+		{
+			return new Map3DMinimapOverlay.Center(
+				originRegionX * (double) TerrainScene.REGION_SIZE + SceneScale.REGION_CENTER_TILES,
+				originRegionY * (double) TerrainScene.REGION_SIZE + SceneScale.REGION_CENTER_TILES
+			);
+		}
+		return new Map3DMinimapOverlay.Center(
+			absoluteTileX(camera.position().x()),
+			absoluteTileY(camera.position().z())
+		);
+	}
+
 	private Tile cameraTile()
 	{
 		if (!cameraInitialized)
@@ -408,7 +476,7 @@ public final class Map3DPanel extends JPanel
 		int worldY = (int) Math.floor(
 			originRegionY * TerrainScene.REGION_SIZE + SceneScale.REGION_CENTER_TILES - camera.position().z()
 		);
-		return new Tile(worldX, worldY, 0);
+		return new Tile(worldX, worldY, currentCameraPlane(camera.position()));
 	}
 
 	private double cameraHeadingRadians()
@@ -440,6 +508,7 @@ public final class Map3DPanel extends JPanel
 		updateStreamedRegions();
 		updateCompassHud();
 		detail.setText("Warped to tile " + tile.x + "," + tile.y + "," + tile.z);
+		saveViewerStateNow();
 		if (minimapOverlay != null)
 		{
 			minimapOverlay.repaint();
@@ -459,6 +528,122 @@ public final class Map3DPanel extends JPanel
 		float localY = Math.floorMod(tile.y, TerrainScene.REGION_SIZE) + 0.5f;
 		int plane = Math.max(0, Math.min(3, tile.z));
 		return mesh.worldHeightAt(plane, localX, localY) + WARP_CAMERA_HEIGHT_TILES;
+	}
+
+	private void initializeCamera(TerrainMesh mesh)
+	{
+		if (initialState != null)
+		{
+			camera.setPosition(new Vector3f(
+				sceneWorldXFromAbsoluteTile(initialState.worldTileX()),
+				(float) initialState.cameraY(),
+				sceneWorldZFromAbsoluteTile(initialState.worldTileY())
+			));
+			camera.setOrientation(initialState.yawDegrees(), initialState.pitchDegrees());
+			camera.setFovDegrees(initialState.fovDegrees());
+			fovSlider.setValue(Math.round(camera.fovDegrees()));
+		}
+		else
+		{
+			camera.reset(mesh.initialCameraX(), mesh.initialCameraY(), mesh.initialCameraZ());
+		}
+
+		cameraInitialized = true;
+		title.setText("3D Region Stream");
+		saveViewerStateNow();
+		canvas.requestFocusInWindow();
+	}
+
+	private Vector3f applyMovementConstraints(Vector3fc previous, Vector3fc attempted)
+	{
+		return currentScene.clampMovement(previous, attempted, new Vector3f());
+	}
+
+	private int currentCameraPlane(Vector3fc position)
+	{
+		if (currentScene.isEmpty())
+		{
+			return initialState == null ? 0 : Math.max(0, Math.min(3, initialState.plane()));
+		}
+		return currentScene.cameraPlaneFor(position.x(), position.y(), position.z());
+	}
+
+	private void maybeSaveViewerState(long now)
+	{
+		if (settings == null || !cameraInitialized || !stateSavePending)
+		{
+			return;
+		}
+		if (lastStateSaveNanos == 0L || now - lastStateSaveNanos >= STATE_SAVE_INTERVAL_NANOS)
+		{
+			saveViewerStateNow();
+		}
+	}
+
+	private void scheduleStateSave()
+	{
+		if (settings != null)
+		{
+			stateSavePending = true;
+		}
+	}
+
+	private void saveViewerStateNow()
+	{
+		if (settings == null || !cameraInitialized)
+		{
+			return;
+		}
+		Viewer3DState state = new Viewer3DState(
+			absoluteTileX(camera.position().x()),
+			absoluteTileY(camera.position().z()),
+			camera.position().y(),
+			currentCameraPlane(camera.position()),
+			camera.yawDegrees(),
+			camera.pitchDegrees(),
+			camera.fovDegrees(),
+			antialiasingSamples
+		);
+		if (!state.equals(lastSavedState))
+		{
+			settings.setViewer3DState(state);
+			lastSavedState = state;
+		}
+		stateSavePending = false;
+		lastStateSaveNanos = System.nanoTime();
+	}
+
+	private boolean cameraPositionChanged(Vector3fc previousPosition)
+	{
+		return Float.compare(previousPosition.x(), camera.position().x()) != 0
+			|| Float.compare(previousPosition.y(), camera.position().y()) != 0
+			|| Float.compare(previousPosition.z(), camera.position().z()) != 0;
+	}
+
+	private boolean cameraOrientationChanged(float previousYaw, float previousPitch)
+	{
+		return Float.compare(previousYaw, camera.yawDegrees()) != 0
+			|| Float.compare(previousPitch, camera.pitchDegrees()) != 0;
+	}
+
+	private double absoluteTileX(float sceneWorldX)
+	{
+		return sceneWorldX + originRegionX * TerrainScene.REGION_SIZE + SceneScale.REGION_CENTER_TILES;
+	}
+
+	private double absoluteTileY(float sceneWorldZ)
+	{
+		return originRegionY * TerrainScene.REGION_SIZE + SceneScale.REGION_CENTER_TILES - sceneWorldZ;
+	}
+
+	private float sceneWorldXFromAbsoluteTile(double worldTileX)
+	{
+		return (float) (worldTileX - originRegionX * TerrainScene.REGION_SIZE - SceneScale.REGION_CENTER_TILES);
+	}
+
+	private float sceneWorldZFromAbsoluteTile(double worldTileY)
+	{
+		return (float) (originRegionY * TerrainScene.REGION_SIZE + SceneScale.REGION_CENTER_TILES - worldTileY);
 	}
 
 	private static boolean isValidWorldTile(Tile tile)
@@ -607,7 +792,13 @@ public final class Map3DPanel extends JPanel
 		Point point = event.getPoint();
 		if (middleMouseLook && !cameraLocked && lastMousePoint != null)
 		{
+			float previousYaw = camera.yawDegrees();
+			float previousPitch = camera.pitchDegrees();
 			camera.rotate(point.x - lastMousePoint.x, point.y - lastMousePoint.y);
+			if (cameraOrientationChanged(previousYaw, previousPitch))
+			{
+				scheduleStateSave();
+			}
 		}
 		updateHoveredTile(event);
 		lastMousePoint = point;
@@ -622,8 +813,9 @@ public final class Map3DPanel extends JPanel
 			camera.zoom((float) event.getPreciseWheelRotation());
 			if (!currentScene.isEmpty())
 			{
-				camera.setPosition(currentScene.clampMovement(previousPosition, camera.position(), new Vector3f()));
+				camera.setPosition(applyMovementConstraints(previousPosition, camera.position()));
 			}
+			scheduleStateSave();
 			updateStreamedRegions();
 		}
 		updateHoveredTile(event);
@@ -706,6 +898,7 @@ public final class Map3DPanel extends JPanel
 		antialiasingSamples = scale.samples();
 		renderer.setAntialiasingSamples(antialiasingSamples);
 		detail.setText("AA " + scale + " selected");
+		saveViewerStateNow();
 	}
 
 	private static String cardinal(float degrees)
@@ -791,6 +984,10 @@ public final class Map3DPanel extends JPanel
 			{
 				failure = ex;
 			}
+			catch (OutOfMemoryError ex)
+			{
+				failure = ex;
+			}
 
 			TerrainMesh loadedMesh = mesh;
 			Throwable loadFailure = failure;
@@ -858,10 +1055,7 @@ public final class Map3DPanel extends JPanel
 		loadedRegionIds.add(requestedRegionId);
 		if (!cameraInitialized && requestedRegionId == regionId)
 		{
-			camera.reset(mesh.initialCameraX(), mesh.initialCameraY(), mesh.initialCameraZ());
-			cameraInitialized = true;
-			title.setText("3D Region Stream");
-			canvas.requestFocusInWindow();
+			initializeCamera(mesh);
 		}
 		rebuildScene();
 		updateStreamedRegions();
@@ -1039,16 +1233,23 @@ public final class Map3DPanel extends JPanel
 		lastFrameNanos = now;
 		updateFrameTiming(now, elapsedFrameNanos);
 		Vector3f previousPosition = camera.copyPosition(new Vector3f());
+		float previousYaw = camera.yawDegrees();
+		float previousPitch = camera.pitchDegrees();
 		if (!cameraLocked)
 		{
 			camera.update(deltaSeconds);
 			if (!currentScene.isEmpty())
 			{
-				camera.setPosition(currentScene.clampMovement(previousPosition, camera.position(), new Vector3f()));
+				camera.setPosition(applyMovementConstraints(previousPosition, camera.position()));
+			}
+			if (cameraPositionChanged(previousPosition) || cameraOrientationChanged(previousYaw, previousPitch))
+			{
+				scheduleStateSave();
 			}
 		}
 		updateStreamedRegions();
 		updateCompassHud();
+		maybeSaveViewerState(now);
 		if (minimapOverlay != null)
 		{
 			minimapOverlay.repaint();
@@ -1400,6 +1601,18 @@ public final class Map3DPanel extends JPanel
 		int samples()
 		{
 			return samples;
+		}
+
+		static AntialiasingScale forSamples(int samples)
+		{
+			for (AntialiasingScale scale : values())
+			{
+				if (scale.samples == samples)
+				{
+					return scale;
+				}
+			}
+			return X4;
 		}
 
 		@Override

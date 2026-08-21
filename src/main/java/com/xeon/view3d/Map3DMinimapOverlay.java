@@ -24,7 +24,6 @@
  */
 package com.xeon.view3d;
 
-import com.xeon.model.Tile;
 import com.xeon.view.MapPanel;
 
 import java.awt.BasicStroke;
@@ -50,17 +49,18 @@ final class Map3DMinimapOverlay extends JPanel
 	private static final int BUTTON_HEIGHT = 30;
 	private static final int PAD = 8;
 	private static final double FULL_ZOOM_PIXELS_PER_TILE = 4.0;
+	private static final int MINIMAP_PLANE = 0;
 
 	private final MapPanel mapPanel;
-	private final Supplier<Tile> centerTileSupplier;
+	private final Supplier<Center> centerSupplier;
 	private final DoubleSupplier headingRadiansSupplier;
 
-	Map3DMinimapOverlay(MapPanel mapPanel, Supplier<Tile> centerTileSupplier,
+	Map3DMinimapOverlay(MapPanel mapPanel, Supplier<Center> centerSupplier,
 	                    DoubleSupplier headingRadiansSupplier, Runnable openWorldMap)
 	{
 		super(new BorderLayout(0, 6));
 		this.mapPanel = mapPanel;
-		this.centerTileSupplier = centerTileSupplier;
+		this.centerSupplier = centerSupplier;
 		this.headingRadiansSupplier = headingRadiansSupplier;
 		setOpaque(false);
 		setBorder(BorderFactory.createEmptyBorder(PAD, PAD, PAD, PAD));
@@ -134,7 +134,7 @@ final class Map3DMinimapOverlay extends JPanel
 				g.setColor(Color.BLACK);
 				g.fillRect(mapBounds.x, mapBounds.y, mapBounds.width, mapBounds.height);
 
-				Tile center = centerTileSupplier.get();
+				Center center = centerSupplier.get();
 				if (center != null)
 				{
 					Shape oldClip = g.getClip();
@@ -152,7 +152,8 @@ final class Map3DMinimapOverlay extends JPanel
 							snapshotSize,
 							snapshotSize
 						);
-						mapPanel.paintMapSnapshot(mapGraphics, target, center, FULL_ZOOM_PIXELS_PER_TILE, true, false);
+						mapPanel.paintMapSnapshot(mapGraphics, target, center.worldTileX(), center.worldTileY(),
+							MINIMAP_PLANE, FULL_ZOOM_PIXELS_PER_TILE, true, false);
 					}
 					finally
 					{
@@ -186,5 +187,9 @@ final class Map3DMinimapOverlay extends JPanel
 			g.drawLine(cx - 8, cy, cx + 8, cy);
 			g.drawLine(cx, cy - 8, cx, cy + 8);
 		}
+	}
+
+	record Center(double worldTileX, double worldTileY)
+	{
 	}
 }

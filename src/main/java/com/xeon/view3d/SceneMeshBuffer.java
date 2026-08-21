@@ -29,6 +29,8 @@ import java.util.Arrays;
 
 final class SceneMeshBuffer
 {
+	private static final int MAX_ARRAY_SIZE = Integer.MAX_VALUE - 8;
+
 	private float[] values;
 	private int size;
 
@@ -113,7 +115,13 @@ final class SceneMeshBuffer
 	{
 		if (size == values.length)
 		{
-			values = Arrays.copyOf(values, values.length * 2);
+			if (values.length >= MAX_ARRAY_SIZE)
+			{
+				throw new OutOfMemoryError("3D mesh buffer exceeded maximum Java array size");
+			}
+			long doubled = (long) values.length * 2L;
+			int nextLength = (int) Math.min(MAX_ARRAY_SIZE, Math.max(doubled, (long) size + 1L));
+			values = Arrays.copyOf(values, nextLength);
 		}
 		values[size++] = value;
 	}

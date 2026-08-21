@@ -57,8 +57,66 @@ record AnimatedObjectMesh(
 		}
 	}
 
+	static int frameIndexAt(int frameCount, int[] frameLengths, int frameStep, int phaseOffset, float timeSeconds)
+	{
+		if (frameCount <= 0)
+		{
+			return -1;
+		}
+		int cycle = Math.max(0, (int) (timeSeconds / 0.02f) + phaseOffset);
+		int totalLength = totalLength(frameLengths, 0, frameCount);
+		if (cycle > totalLength)
+		{
+			int restartFrame = frameCount - frameStep;
+			if (restartFrame < 0 || restartFrame >= frameCount)
+			{
+				restartFrame = 0;
+			}
+
+			int restartCycle = totalLength(frameLengths, 0, restartFrame);
+			int loopLength = totalLength(frameLengths, restartFrame, frameCount);
+			cycle = loopLength <= 0
+				? 0
+				: restartCycle + Math.floorMod(cycle - restartCycle, loopLength);
+		}
+
+		int frame = 0;
+		while (cycle > frameLength(frameLengths, frame))
+		{
+			cycle -= frameLength(frameLengths, frame);
+			frame++;
+			if (frame >= frameCount)
+			{
+				frame -= frameStep;
+				if (frame < 0 || frame >= frameCount)
+				{
+					frame = 0;
+				}
+			}
+		}
+		return frame;
+	}
+
+	private static int totalLength(int[] frameLengths, int startFrame, int endFrame)
+	{
+		int totalLength = 0;
+		for (int i = startFrame; i < endFrame; i++)
+		{
+			totalLength += frameLength(frameLengths, i);
+		}
+		return totalLength;
+	}
+
+	private static int frameLength(int[] frameLengths, int frame)
+	{
+		int length = frameLengths.length > frame ? frameLengths[frame] : 1;
+		return Math.max(1, length);
+	}
+
 	static final class Frame
 	{
+		private static final Frame EMPTY = new Frame(new float[0], 0);
+
 		private float[] vertexData;
 		private final int vertexCount;
 
