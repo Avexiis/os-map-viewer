@@ -24,6 +24,8 @@
  */
 package com.xeon.view3d;
 
+import com.xeon.plugin.MapViewerPlugin;
+import com.xeon.view.MapLayer;
 import com.xeon.view.MapPanel;
 
 import java.awt.BasicStroke;
@@ -54,6 +56,7 @@ final class Map3DMinimapOverlay extends JPanel
 	private final MapPanel mapPanel;
 	private final Supplier<Center> centerSupplier;
 	private final DoubleSupplier headingRadiansSupplier;
+	private MapViewerPlugin activePlugin;
 
 	Map3DMinimapOverlay(MapPanel mapPanel, Supplier<Center> centerSupplier,
 	                    DoubleSupplier headingRadiansSupplier, Runnable openWorldMap)
@@ -84,6 +87,20 @@ final class Map3DMinimapOverlay extends JPanel
 	void dispose()
 	{
 		mapPanel.dispose();
+	}
+
+	void setPlugin(MapViewerPlugin plugin)
+	{
+		if (activePlugin instanceof MapLayer layer)
+		{
+			mapPanel.removeLayer(layer);
+		}
+		activePlugin = plugin;
+		if (activePlugin instanceof MapLayer layer)
+		{
+			mapPanel.addLayer(layer);
+		}
+		repaint();
 	}
 
 	@Override

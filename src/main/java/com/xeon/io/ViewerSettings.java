@@ -55,6 +55,8 @@ public final class ViewerSettings
 	private static final String KEY_3D_PITCH = "viewer3d.state.pitchDegrees";
 	private static final String KEY_3D_FOV = "viewer3d.state.fovDegrees";
 	private static final String KEY_3D_AA_SAMPLES = "viewer3d.state.antialiasingSamples";
+	private static final String KEY_3D_VIEW_DISTANCE_REGIONS = "viewer3d.state.viewDistanceRegions";
+	private static final String KEY_3D_PLUGIN_OVERLAYS_ON_TOP = "viewer3d.state.pluginOverlaysOnTop";
 	private static final String FIELD_WORLD_TILE_X = "worldTileX";
 	private static final String FIELD_WORLD_TILE_Y = "worldTileY";
 	private static final String FIELD_CAMERA_Y = "cameraY";
@@ -63,6 +65,8 @@ public final class ViewerSettings
 	private static final String FIELD_PITCH = "pitchDegrees";
 	private static final String FIELD_FOV = "fovDegrees";
 	private static final String FIELD_AA_SAMPLES = "antialiasingSamples";
+	private static final String FIELD_VIEW_DISTANCE_REGIONS = "viewDistanceRegions";
+	private static final String FIELD_PLUGIN_OVERLAYS_ON_TOP = "pluginOverlaysOnTop";
 	private static final String DEFAULT_BACKGROUND = "#000000";
 	private static final int DEFAULT_MEMORY_BUDGET_MB = 512;
 
@@ -205,7 +209,9 @@ public final class ViewerSettings
 			(float) configManager.getDouble(CORE, KEY_3D_YAW, 0.0),
 			(float) configManager.getDouble(CORE, KEY_3D_PITCH, -12.0),
 			(float) configManager.getDouble(CORE, KEY_3D_FOV, 68.0),
-			configManager.getInt(CORE, KEY_3D_AA_SAMPLES, 4)
+			configManager.getInt(CORE, KEY_3D_AA_SAMPLES, 4),
+			configManager.getInt(CORE, KEY_3D_VIEW_DISTANCE_REGIONS, Viewer3DState.DEFAULT_VIEW_DISTANCE_REGIONS),
+			configManager.getBoolean(CORE, KEY_3D_PLUGIN_OVERLAYS_ON_TOP, false)
 		);
 		return state.isValid() ? state : null;
 	}
@@ -232,6 +238,9 @@ public final class ViewerSettings
 		object.addProperty(FIELD_PITCH, state.pitchDegrees());
 		object.addProperty(FIELD_FOV, state.fovDegrees());
 		object.addProperty(FIELD_AA_SAMPLES, Math.max(0, state.antialiasingSamples()));
+		object.addProperty(FIELD_VIEW_DISTANCE_REGIONS,
+			Viewer3DState.clampViewDistanceRegions(state.viewDistanceRegions()));
+		object.addProperty(FIELD_PLUGIN_OVERLAYS_ON_TOP, state.pluginOverlaysOnTop());
 		configManager.setElement(CORE, KEY_3D_STATE, object);
 	}
 
@@ -252,7 +261,9 @@ public final class ViewerSettings
 			(float) jsonDouble(object, FIELD_YAW, 0.0),
 			(float) jsonDouble(object, FIELD_PITCH, -12.0),
 			(float) jsonDouble(object, FIELD_FOV, 68.0),
-			jsonInt(object, FIELD_AA_SAMPLES, 4)
+			jsonInt(object, FIELD_AA_SAMPLES, 4),
+			jsonInt(object, FIELD_VIEW_DISTANCE_REGIONS, Viewer3DState.DEFAULT_VIEW_DISTANCE_REGIONS),
+			jsonBoolean(object, FIELD_PLUGIN_OVERLAYS_ON_TOP, false)
 		);
 		return state.isValid() ? state : null;
 	}
@@ -284,6 +295,23 @@ public final class ViewerSettings
 		try
 		{
 			return element.getAsInt();
+		}
+		catch (RuntimeException ex)
+		{
+			return defaultValue;
+		}
+	}
+
+	private static boolean jsonBoolean(JsonObject object, String key, boolean defaultValue)
+	{
+		JsonElement element = object.get(key);
+		if (element == null || !element.isJsonPrimitive())
+		{
+			return defaultValue;
+		}
+		try
+		{
+			return element.getAsBoolean();
 		}
 		catch (RuntimeException ex)
 		{

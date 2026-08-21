@@ -32,16 +32,63 @@ public record Viewer3DState(
 	float yawDegrees,
 	float pitchDegrees,
 	float fovDegrees,
-	int antialiasingSamples
+	int antialiasingSamples,
+	int viewDistanceRegions,
+	boolean pluginOverlaysOnTop
 )
 {
+	public static final int DEFAULT_VIEW_DISTANCE_REGIONS = 3;
+	public static final int MIN_VIEW_DISTANCE_REGIONS = 2;
+	public static final int MAX_VIEW_DISTANCE_REGIONS = 5;
+
+	public Viewer3DState
+	{
+		viewDistanceRegions = clampViewDistanceRegions(viewDistanceRegions);
+	}
+
+	public Viewer3DState(
+		double worldTileX,
+		double worldTileY,
+		double cameraY,
+		int plane,
+		float yawDegrees,
+		float pitchDegrees,
+		float fovDegrees,
+		int antialiasingSamples
+	)
+	{
+		this(
+			worldTileX,
+			worldTileY,
+			cameraY,
+			plane,
+			yawDegrees,
+			pitchDegrees,
+			fovDegrees,
+			antialiasingSamples,
+			DEFAULT_VIEW_DISTANCE_REGIONS,
+			false
+		);
+	}
+
 	public boolean isValid()
 	{
 		return finite(worldTileX) && finite(worldTileY) && finite(cameraY)
 			&& finite(yawDegrees) && finite(pitchDegrees) && finite(fovDegrees)
 			&& plane >= 0 && plane <= 3
 			&& antialiasingSamples >= 0
+			&& viewDistanceRegions >= MIN_VIEW_DISTANCE_REGIONS
+			&& viewDistanceRegions <= MAX_VIEW_DISTANCE_REGIONS
 			&& isWorldTileInAtlas();
+	}
+
+	public static int clampViewDistanceRegions(int value)
+	{
+		if (value <= 0)
+		{
+			return DEFAULT_VIEW_DISTANCE_REGIONS;
+		}
+		return Math.max(MIN_VIEW_DISTANCE_REGIONS, Math.min(MAX_VIEW_DISTANCE_REGIONS, value));
 	}
 
 	public int regionId()

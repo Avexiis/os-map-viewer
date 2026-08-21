@@ -37,6 +37,7 @@ import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -106,6 +107,8 @@ final class TerrainRenderer
 
 		uniform sampler2DArray uTextures;
 		uniform float uTextureLayerCount;
+		uniform float uFogStart;
+		uniform float uFogEnd;
 
 		out vec4 fragColor;
 
@@ -130,7 +133,7 @@ final class TerrainRenderer
 				alpha *= textureColor.a;
 			}
 			vec3 sky = vec3(0.43, 0.53, 0.62);
-			float fog = smoothstep(82.0, 138.0, vDistance);
+			float fog = smoothstep(uFogStart, uFogEnd, vDistance);
 			vec3 color = mix(baseColor * shade, sky, fog);
 			if (alpha <= 0.01)
 			{
@@ -213,15 +216,19 @@ final class TerrainRenderer
 	private static final float OVERLAY_PATH_HEIGHT_OFFSET = 0.28f;
 	private static final float OVERLAY_MARKER_HEIGHT_OFFSET = 0.42f;
 	private static final float OVERLAY_LABEL_HEIGHT_OFFSET = 1.15f;
-	private static final float OVERLAY_DASH_LENGTH = 0.55f;
-	private static final float OVERLAY_DASH_GAP = 0.34f;
+	private static final float OVERLAY_LABEL_STACK_SPACING = 0.62f;
+	private static final double OVERLAY_TRANSPORT_ARROW_LENGTH_TILES = 1.35;
+	private static final double OVERLAY_TRANSPORT_ARROW_HEAD_LENGTH_TILES = 0.42;
+	private static final double OVERLAY_TRANSPORT_ARROW_HEAD_WIDTH_TILES = 0.30;
 	private static final float OVERLAY_LABEL_STEM_HEIGHT = 0.58f;
 	private static final float OVERLAY_LABEL_FLAG_WIDTH = 0.38f;
-	private static final float OVERLAY_TEXT_WORLD_HEIGHT = 0.48f;
+	private static final float OVERLAY_TEXT_WORLD_HEIGHT = 0.54f;
 	private static final int OVERLAY_TEXT_PADDING_X = 5;
 	private static final int OVERLAY_TEXT_PADDING_Y = 3;
 	private static final int OVERLAY_TEXT_ATLAS_MAX_WIDTH = 2048;
 	private static final int OVERLAY_TRANSPORT_ICON_RGB = 0xFF2E3D;
+	private static final int MAX_OVERLAY_PATH_INTERVAL_SAMPLES = 384;
+	private static final int MAX_OVERLAY_LINE_VERTICES_PER_BATCH = 120_000;
 	private static final float REGION_CULL_PADDING = 2.0f;
 
 	private final Matrix4f projection = new Matrix4f();
@@ -241,6 +248,8 @@ final class TerrainRenderer
 	private int terrainTimeLocation;
 	private int terrainTextureLocation;
 	private int terrainTextureLayerCountLocation;
+	private int terrainFogStartLocation;
+	private int terrainFogEndLocation;
 	private int outlineProgram;
 	private int outlineMvpLocation;
 	private int outlineColorLocation;
@@ -272,8 +281,10 @@ final class TerrainRenderer
 	private List<OverlayTextLabel> overlayTextLabels = List.of();
 	private boolean initialized;
 	private int antialiasingSamples = 4;
+	private int viewDistanceRegions = 3;
 	private long startNanos;
 	private boolean pluginOverlayDirty = true;
+	private boolean pluginOverlayOnTop;
 
 	void init()
 	{
@@ -307,6 +318,8 @@ final class TerrainRenderer
 		terrainTimeLocation = GL33C.glGetUniformLocation(terrainProgram, "uTimeSeconds");
 		terrainTextureLocation = GL33C.glGetUniformLocation(terrainProgram, "uTextures");
 		terrainTextureLayerCountLocation = GL33C.glGetUniformLocation(terrainProgram, "uTextureLayerCount");
+		terrainFogStartLocation = GL33C.glGetUniformLocation(terrainProgram, "uFogStart");
+		terrainFogEndLocation = GL33C.glGetUniformLocation(terrainProgram, "uFogEnd");
 		outlineProgram = createProgram(OUTLINE_VERTEX_SHADER, OUTLINE_FRAGMENT_SHADER);
 		outlineMvpLocation = GL33C.glGetUniformLocation(outlineProgram, "uMvp");
 		outlineColorLocation = GL33C.glGetUniformLocation(outlineProgram, "uColor");
@@ -343,6 +356,16 @@ final class TerrainRenderer
 		pluginOverlayDirty = true;
 	}
 
+	void setPluginOverlayOnTop(boolean pluginOverlayOnTop)
+	{
+		this.pluginOverlayOnTop = pluginOverlayOnTop;
+	}
+
+	void invalidatePluginOverlayGeometry()
+	{
+		pluginOverlayDirty = true;
+	}
+
 	boolean isInitialized()
 	{
 		return initialized;
@@ -352,6 +375,11 @@ final class TerrainRenderer
 	{
 		this.antialiasingSamples = Math.max(0, antialiasingSamples);
 		sceneFboSamples = -1;
+	}
+
+	void setViewDistanceRegions(int viewDistanceRegions)
+	{
+		this.viewDistanceRegions = Math.max(2, Math.min(5, viewDistanceRegions));
 	}
 
 	float animationTimeSeconds()
@@ -384,8 +412,7 @@ final class TerrainRenderer
 			uploadPendingRegions();
 			prepareMatrices(camera, safeWidth / (float) safeHeight);
 			renderCounts = renderTerrain(camera);
-			outlineDrawCalls = renderHoveredTile();
-			overlayDrawCalls = renderPluginOverlay(camera);
+			overlayDrawCalls = renderSceneOverlays(camera);
 		}
 		else
 		{
@@ -487,6 +514,9 @@ final class TerrainRenderer
 		float timeSeconds = animationTimeSeconds();
 		GL33C.glUniform1f(terrainTimeLocation, timeSeconds);
 		GL33C.glUniform1f(terrainTextureLayerCountLocation, uploadedTextureLayerCount);
+		float fogEnd = fogEndDistance();
+		GL33C.glUniform1f(terrainFogStartLocation, Math.max(18.0f, fogEnd - 56.0f));
+		GL33C.glUniform1f(terrainFogEndLocation, fogEnd);
 		GL33C.glActiveTexture(GL33C.GL_TEXTURE0);
 		GL33C.glBindTexture(GL33C.GL_TEXTURE_2D_ARRAY, terrainTextureArray);
 		GL33C.glUniform1i(terrainTextureLocation, 0);
@@ -585,12 +615,32 @@ final class TerrainRenderer
 		return 2;
 	}
 
-	private int renderPluginOverlay(FreeCamera camera)
+	private int renderSceneOverlays(FreeCamera camera)
 	{
 		if (currentScene == null)
 		{
 			return 0;
 		}
+		boolean depthEnabled = GL33C.glIsEnabled(GL33C.GL_DEPTH_TEST);
+		if (pluginOverlayOnTop)
+		{
+			GL33C.glDisable(GL33C.GL_DEPTH_TEST);
+		}
+		try
+		{
+			return renderHoveredTile() + renderPluginOverlay(camera);
+		}
+		finally
+		{
+			if (pluginOverlayOnTop && depthEnabled)
+			{
+				GL33C.glEnable(GL33C.GL_DEPTH_TEST);
+			}
+		}
+	}
+
+	private int renderPluginOverlay(FreeCamera camera)
+	{
 		if (pluginOverlayDirty)
 		{
 			rebuildPluginOverlayLines();
@@ -653,21 +703,8 @@ final class TerrainRenderer
 			{
 				continue;
 			}
-			Vector3f start = tileWorldPosition(segment.start(), OVERLAY_PATH_HEIGHT_OFFSET);
-			Vector3f end = tileWorldPosition(segment.end(), OVERLAY_PATH_HEIGHT_OFFSET);
-			if (start == null || end == null)
-			{
-				continue;
-			}
 			OverlayLineBatch batch = overlayBatch(batches, segment.color());
-			if (segment.dashed())
-			{
-				addDashedLine(batch, start, end);
-			}
-			else
-			{
-				batch.addLine(start, end);
-			}
+			addPathSegmentLine(batch, segment);
 		}
 		for (Map3DMarker marker : pluginOverlay.markers())
 		{
@@ -676,11 +713,12 @@ final class TerrainRenderer
 				addTileHighlightLines(batches, marker.tile(), marker.color());
 			}
 		}
+		Set<Long> labelFlagTiles = new HashSet<>();
 		for (Map3DLabel label : pluginOverlay.labels())
 		{
-			if (label != null)
+			if (label != null && label.tile() != null && labelFlagTiles.add(labelStackKey(label.tile())))
 			{
-				addLabelAnchorLines(batches, label.tile());
+				addLabelAnchorLines(batches, label.tile(), 0);
 			}
 		}
 
@@ -738,7 +776,7 @@ final class TerrainRenderer
 			return;
 		}
 
-		Font font = new Font(Font.SANS_SERIF, Font.BOLD, 19);
+		Font font = new Font(Font.SANS_SERIF, Font.BOLD, 21);
 		BufferedImage probe = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
 		Graphics2D probeGraphics = probe.createGraphics();
 		FontMetrics metrics;
@@ -856,13 +894,18 @@ final class TerrainRenderer
 	private List<OverlayTextCandidate> overlayTextCandidates()
 	{
 		List<OverlayTextCandidate> candidates = new ArrayList<>();
+		Map<Long, Integer> labelStacks = new HashMap<>();
 		for (Map3DLabel label : pluginOverlay.labels())
 		{
 			if (label == null || label.text().isBlank())
 			{
 				continue;
 			}
-			Vector3f position = tileWorldPosition(label.tile(), OVERLAY_LABEL_HEIGHT_OFFSET + OVERLAY_LABEL_STEM_HEIGHT);
+			int stackIndex = labelStackIndex(labelStacks, label.tile());
+			float heightOffset = OVERLAY_LABEL_HEIGHT_OFFSET
+				+ OVERLAY_LABEL_STEM_HEIGHT
+				+ stackIndex * OVERLAY_LABEL_STACK_SPACING;
+			Vector3f position = tileWorldPosition(label.tile(), heightOffset);
 			if (position != null)
 			{
 				candidates.add(new OverlayTextCandidate(position, label.text()));
@@ -1033,24 +1076,142 @@ final class TerrainRenderer
 		return batches.computeIfAbsent(argb, OverlayLineBatch::new);
 	}
 
-	private void addDashedLine(OverlayLineBatch batch, Vector3f start, Vector3f end)
+	private void addPathSegmentLine(OverlayLineBatch batch, Map3DPathSegment segment)
 	{
-		Vector3f delta = new Vector3f(end).sub(start);
-		float length = delta.length();
-		if (length <= 0.0001f)
+		Tile start = segment.start();
+		Tile end = segment.end();
+		if (start == null || end == null)
 		{
 			return;
 		}
-		Vector3f direction = delta.div(length);
-		float cursor = 0.0f;
-		while (cursor < length)
+		double startX = start.x + 0.5;
+		double startY = start.y + 0.5;
+		double deltaX = end.x - start.x;
+		double deltaY = end.y - start.y;
+		double tileLength = Math.hypot(deltaX, deltaY);
+		if (tileLength <= 0.0001)
 		{
-			float dashEnd = Math.min(length, cursor + OVERLAY_DASH_LENGTH);
-			Vector3f dashStart = new Vector3f(start).fma(cursor, direction);
-			Vector3f dashStop = new Vector3f(start).fma(dashEnd, direction);
-			batch.addLine(dashStart, dashStop);
-			cursor += OVERLAY_DASH_LENGTH + OVERLAY_DASH_GAP;
+			return;
 		}
+		if (segment.dashed())
+		{
+			addTransportDirectionArrow(batch, start, end, startX, startY, deltaX, deltaY, tileLength);
+			return;
+		}
+		addSolidPathInterval(batch, start, end, startX, startY, deltaX, deltaY, new LineInterval(0.0, 1.0));
+	}
+
+	private void addTransportDirectionArrow(OverlayLineBatch batch, Tile start, Tile end,
+	                                        double startX, double startY, double deltaX, double deltaY,
+	                                        double tileLength)
+	{
+		double arrowT = Math.min(1.0, OVERLAY_TRANSPORT_ARROW_LENGTH_TILES / tileLength);
+		if (arrowT <= 0.0001)
+		{
+			return;
+		}
+		if (tileWorldPosition(start, OVERLAY_PATH_HEIGHT_OFFSET) != null
+			&& addTransportDirectionArrow(batch, startX, startY, deltaX, deltaY, tileLength, start.z, 0.0, arrowT))
+		{
+			return;
+		}
+		if (tileWorldPosition(end, OVERLAY_PATH_HEIGHT_OFFSET) != null)
+		{
+			addTransportDirectionArrow(batch, startX, startY, deltaX, deltaY, tileLength, end.z, 1.0 - arrowT, 1.0);
+		}
+	}
+
+	private boolean addTransportDirectionArrow(OverlayLineBatch batch,
+	                                           double startX, double startY,
+	                                           double deltaX, double deltaY,
+	                                           double tileLength,
+	                                           int plane,
+	                                           double tailT,
+	                                           double tipT)
+	{
+		Vector3f tail = pathSampleOnPlane(startX, startY, deltaX, deltaY, tailT, plane);
+		Vector3f tip = pathSampleOnPlane(startX, startY, deltaX, deltaY, tipT, plane);
+		if (tail == null || tip == null)
+		{
+			return false;
+		}
+
+		batch.addLine(tail, tip);
+		double directionX = deltaX / tileLength;
+		double directionY = deltaY / tileLength;
+		double perpendicularX = -directionY;
+		double perpendicularY = directionX;
+		double tipX = startX + deltaX * tipT;
+		double tipY = startY + deltaY * tipT;
+		double wingCenterX = tipX - directionX * OVERLAY_TRANSPORT_ARROW_HEAD_LENGTH_TILES;
+		double wingCenterY = tipY - directionY * OVERLAY_TRANSPORT_ARROW_HEAD_LENGTH_TILES;
+		Vector3f leftWing = worldPositionForWorldTile(
+			wingCenterX + perpendicularX * OVERLAY_TRANSPORT_ARROW_HEAD_WIDTH_TILES,
+			wingCenterY + perpendicularY * OVERLAY_TRANSPORT_ARROW_HEAD_WIDTH_TILES,
+			plane,
+			OVERLAY_PATH_HEIGHT_OFFSET
+		);
+		Vector3f rightWing = worldPositionForWorldTile(
+			wingCenterX - perpendicularX * OVERLAY_TRANSPORT_ARROW_HEAD_WIDTH_TILES,
+			wingCenterY - perpendicularY * OVERLAY_TRANSPORT_ARROW_HEAD_WIDTH_TILES,
+			plane,
+			OVERLAY_PATH_HEIGHT_OFFSET
+		);
+		if (leftWing != null)
+		{
+			batch.addLine(tip, leftWing);
+		}
+		if (rightWing != null)
+		{
+			batch.addLine(tip, rightWing);
+		}
+		return true;
+	}
+
+	private void addSolidPathInterval(OverlayLineBatch batch, Tile start, Tile end,
+	                                  double startX, double startY, double deltaX, double deltaY,
+	                                  LineInterval interval)
+	{
+		int steps = pathIntervalSamples(deltaX, deltaY, interval);
+		Vector3f previous = null;
+		for (int i = 0; i <= steps; i++)
+		{
+			double t = interpolate(interval.start(), interval.end(), i / (double) steps);
+			Vector3f point = pathSample(start, end, startX, startY, deltaX, deltaY, t);
+			if (previous != null && point != null)
+			{
+				batch.addLine(previous, point);
+			}
+			previous = point;
+		}
+	}
+
+	private Vector3f pathSample(Tile start, Tile end, double startX, double startY,
+	                            double deltaX, double deltaY, double t)
+	{
+		int plane = t >= 1.0 ? end.z : start.z;
+		return pathSampleOnPlane(startX, startY, deltaX, deltaY, t, plane);
+	}
+
+	private Vector3f pathSampleOnPlane(double startX, double startY, double deltaX, double deltaY, double t, int plane)
+	{
+		return worldPositionForWorldTile(
+			startX + deltaX * t,
+			startY + deltaY * t,
+			plane,
+			OVERLAY_PATH_HEIGHT_OFFSET
+		);
+	}
+
+	private int pathIntervalSamples(double deltaX, double deltaY, LineInterval interval)
+	{
+		double tileDistance = Math.hypot(deltaX, deltaY) * Math.max(0.0, interval.end() - interval.start());
+		return Math.max(1, Math.min(MAX_OVERLAY_PATH_INTERVAL_SAMPLES, (int) Math.ceil(tileDistance)));
+	}
+
+	private static double interpolate(double start, double end, double amount)
+	{
+		return start + (end - start) * amount;
 	}
 
 	private void addTileHighlightLines(Map<Integer, OverlayLineBatch> batches, Tile tile, Color color)
@@ -1067,9 +1228,9 @@ final class TerrainRenderer
 		batch.addLine(geometry.southWest(), geometry.northWest());
 	}
 
-	private void addLabelAnchorLines(Map<Integer, OverlayLineBatch> batches, Tile tile)
+	private void addLabelAnchorLines(Map<Integer, OverlayLineBatch> batches, Tile tile, int stackIndex)
 	{
-		Vector3f base = tileWorldPosition(tile, OVERLAY_LABEL_HEIGHT_OFFSET);
+		Vector3f base = tileWorldPosition(tile, OVERLAY_LABEL_HEIGHT_OFFSET + stackIndex * OVERLAY_LABEL_STACK_SPACING);
 		if (base == null)
 		{
 			return;
@@ -1084,24 +1245,55 @@ final class TerrainRenderer
 		batch.addLine(flagB, top);
 	}
 
+	private static int labelStackIndex(Map<Long, Integer> labelStacks, Tile tile)
+	{
+		if (tile == null)
+		{
+			return 0;
+		}
+		long key = labelStackKey(tile);
+		int index = labelStacks.getOrDefault(key, 0);
+		labelStacks.put(key, index + 1);
+		return index;
+	}
+
+	private static long labelStackKey(Tile tile)
+	{
+		long x = tile.x & 0x1FFFFFL;
+		long y = tile.y & 0x1FFFFFL;
+		long z = tile.z & 0x3L;
+		return z << 42 | x << 21 | y;
+	}
+
 	private Vector3f tileWorldPosition(Tile tile, float heightOffset)
 	{
 		if (tile == null || currentScene == null)
 		{
 			return null;
 		}
-		int regionId = TerrainScene.regionId(
-			Math.floorDiv(tile.x, TerrainScene.REGION_SIZE),
-			Math.floorDiv(tile.y, TerrainScene.REGION_SIZE)
-		);
-		TerrainMesh mesh = currentScene.mesh(regionId);
-		if (mesh == null)
+		return worldPositionForWorldTile(tile.x + 0.5, tile.y + 0.5, tile.z, heightOffset);
+	}
+
+	private Vector3f worldPositionForWorldTile(double worldTileX, double worldTileY, int plane, float heightOffset)
+	{
+		if (currentScene == null)
 		{
 			return null;
 		}
-		float localX = Math.floorMod(tile.x, TerrainScene.REGION_SIZE) + 0.5f;
-		float localY = Math.floorMod(tile.y, TerrainScene.REGION_SIZE) + 0.5f;
-		return worldPosition(mesh, tile.z, localX, localY, heightOffset);
+		int tileX = (int) Math.floor(worldTileX);
+		int tileY = (int) Math.floor(worldTileY);
+		int regionId = TerrainScene.regionId(
+			Math.floorDiv(tileX, TerrainScene.REGION_SIZE),
+			Math.floorDiv(tileY, TerrainScene.REGION_SIZE)
+		);
+		TerrainMesh mesh = currentScene.mesh(regionId);
+		if (mesh == null || !isUploadedRenderableRegionVisible(regionId))
+		{
+			return null;
+		}
+		float localX = Math.floorMod(tileX, TerrainScene.REGION_SIZE) + (float) (worldTileX - tileX);
+		float localY = Math.floorMod(tileY, TerrainScene.REGION_SIZE) + (float) (worldTileY - tileY);
+		return worldPosition(mesh, plane, localX, localY, heightOffset);
 	}
 
 	private TileGeometry tileGeometry(Tile tile, float heightOffset)
@@ -1115,7 +1307,7 @@ final class TerrainRenderer
 			Math.floorDiv(tile.y, TerrainScene.REGION_SIZE)
 		);
 		TerrainMesh mesh = currentScene.mesh(regionId);
-		if (mesh == null)
+		if (mesh == null || !isUploadedRenderableRegionVisible(regionId))
 		{
 			return null;
 		}
@@ -1139,9 +1331,22 @@ final class TerrainRenderer
 		return new Vector3f(x, y, z);
 	}
 
+	private boolean isUploadedRenderableRegionVisible(int regionId)
+	{
+		UploadedRegion region = uploadedRegions.get(regionId);
+		return region != null
+			&& (region.vertexCount() > 0 || !region.animatedObjects().isEmpty())
+			&& isVisible(region);
+	}
+
 	private static float channel(int argb, int shift)
 	{
 		return (argb >> shift & 0xFF) / 255.0f;
+	}
+
+	private float fogEndDistance()
+	{
+		return Math.min(SceneScale.CAMERA_FAR_PLANE - 12.0f, 74.0f + viewDistanceRegions * 22.0f);
 	}
 
 	private void updateRenderStats(RenderCounts renderCounts, int outlineDrawCalls)
@@ -1249,6 +1454,7 @@ final class TerrainRenderer
 			{
 				previous.delete();
 			}
+			pluginOverlayDirty = true;
 			activeUploadTask = null;
 		}
 	}
@@ -1669,6 +1875,10 @@ final class TerrainRenderer
 
 		private void addLine(Vector3f start, Vector3f end)
 		{
+			if (vertexCount() + 2 > MAX_OVERLAY_LINE_VERTICES_PER_BATCH)
+			{
+				return;
+			}
 			vertices.add(start.x).add(start.y).add(start.z);
 			vertices.add(end.x).add(end.y).add(end.z);
 		}
@@ -1729,6 +1939,13 @@ final class TerrainRenderer
 		float green,
 		float blue,
 		float alpha
+	)
+	{
+	}
+
+	private record LineInterval(
+		double start,
+		double end
 	)
 	{
 	}

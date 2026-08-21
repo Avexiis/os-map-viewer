@@ -74,6 +74,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.EnumSet;
 import java.util.LinkedHashSet;
@@ -113,6 +114,9 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 	private static final Color DEFAULT_TARGET_MARKER_COLOR = new Color(0xFFFFC857, true);
 	private static final Color DEFAULT_COLLISION_COLOR = new Color(0x99FFDD40, true);
 	private static final int ROUTE_POINT_HIT_RADIUS_TILES = 2;
+	private static final int MAX_3D_ALL_TRANSPORT_LABELS = 120;
+	private static final int MAX_3D_DESTINATION_LABEL_LINES = 6;
+	private static final int TRANSPORT_LABEL_GROUP_RADIUS_TILES = 10;
 	private static final Gson ROUTE_GSON = new GsonBuilder()
 		.disableHtmlEscaping()
 		.setPrettyPrinting()
@@ -375,13 +379,13 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 		if (show3DAllTransportLabels && pathfinderConfig != null)
 		{
 			Set<String> seen = new HashSet<>();
-			for (Transport transport : pathfinderConfig.visibleTransports())
+			for (Map3DLabel label : labels)
 			{
-				RouteTransportLabel label = transportLabel(transport, visibleRegions);
-				if (label == null)
-				{
-					continue;
-				}
+				seen.add(tileText(label.tile()) + ":" + label.text());
+			}
+			List<RouteTransportLabel> extraLabels = currentAllTransportLabels(visibleRegions, context == null ? null : context.cameraTile());
+			for (RouteTransportLabel label : extraLabels)
+			{
 				String key = tileText(label.tile()) + ":" + label.text();
 				if (seen.add(key))
 				{
@@ -512,10 +516,73 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 			Tile labelTile = transportLabelTile(transport, source, destination);
 			if (labelTile != null && isVisible(labelTile, visibleRegions))
 			{
-				labels.add(new RouteTransportLabel(labelTile, destination, transportDisplayLabel(transport)));
+				labels.add(new RouteTransportLabel(labelTile, destination, routeTransportDisplayLabel(transport)));
 			}
 		}
 		return List.copyOf(labels);
+	}
+
+	private List<RouteTransportLabel> currentAllTransportLabels(Set<Integer> visibleRegions, Tile cameraTile)
+	{
+		if (pathfinderConfig == null)
+		{
+			return List.of();
+		}
+		List<TransportLabelGroup> groups = new ArrayList<>();
+		List<RouteTransportLabel> directLabels = new ArrayList<>();
+		for (Transport transport : pathfinderConfig.visibleTransports())
+		{
+			if (!has3DTransportMarker(transport))
+			{
+				continue;
+			}
+			Tile origin = validPacked(transport.getOrigin()) ? tile(transport.getOrigin()) : null;
+			Tile destination = validPacked(transport.getDestination()) ? tile(transport.getDestination()) : null;
+			Tile labelTile = transportLabelTile(transport, origin, destination);
+			if (labelTile == null || !isVisible(labelTile, visibleRegions))
+			{
+				continue;
+			}
+			if (isGrouped3DTransport(transport))
+			{
+				TransportLabelGroup group = findTransportLabelGroup(groups, transport.getType(), labelTile);
+				if (group == null)
+				{
+					group = new TransportLabelGroup(transport.getType(), destination);
+					groups.add(group);
+				}
+				group.add(labelTile, transport, destination);
+				continue;
+			}
+			directLabels.add(new RouteTransportLabel(
+				labelTile,
+				destination,
+				routeTransportDisplayLabel(transport)
+			));
+		}
+
+		List<RouteTransportLabel> labels = new ArrayList<>(directLabels);
+		for (TransportLabelGroup group : groups)
+		{
+			labels.addAll(group.labels());
+		}
+		labels.sort(Comparator
+			.comparingInt((RouteTransportLabel label) -> tileDistance(cameraTile, label.tile()))
+			.thenComparing(RouteTransportLabel::text, String.CASE_INSENSITIVE_ORDER)
+			.thenComparing(label -> tileText(label.tile())));
+		return List.copyOf(labels.subList(0, Math.min(MAX_3D_ALL_TRANSPORT_LABELS, labels.size())));
+	}
+
+	private static TransportLabelGroup findTransportLabelGroup(List<TransportLabelGroup> groups, TransportType type, Tile tile)
+	{
+		for (TransportLabelGroup group : groups)
+		{
+			if (group.type() == type && tileDistance(group.tile(), tile) <= TRANSPORT_LABEL_GROUP_RADIUS_TILES)
+			{
+				return group;
+			}
+		}
+		return null;
 	}
 
 	private RouteTransportLabel transportLabel(Transport transport, Set<Integer> visibleRegions)
@@ -531,7 +598,7 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 		{
 			return null;
 		}
-		return new RouteTransportLabel(labelTile, destination, transportDisplayLabel(transport));
+		return new RouteTransportLabel(labelTile, destination, routeTransportDisplayLabel(transport));
 	}
 
 	private static boolean has3DTransportMarker(Transport transport)
@@ -562,21 +629,53 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 		return source != null ? copy(source) : copy(destination);
 	}
 
-	private static String transportDisplayLabel(Transport transport)
+	private static String routeTransportDisplayLabel(Transport transport)
 	{
 		if (transport == null)
 		{
 			return "Transport";
 		}
+		if (transport.getType() == TransportType.FAIRY_RING)
+		{
+			return "Fairy Ring";
+		}
 		if (transport.getDisplayInfo() != null && !transport.getDisplayInfo().isBlank())
 		{
-			return transport.getDisplayInfo();
+			String destination = destinationDisplayLabel(transport);
+			if (isGrouped3DTransport(transport) && !destination.isBlank())
+			{
+				return transportTypeLabel(transport.getType()) + ": " + destination;
+			}
+			return destination;
 		}
 		if (transport.getType() == null)
 		{
 			return "Transport";
 		}
-		return titleCase(transport.getType().name());
+		return transportTypeLabel(transport.getType());
+	}
+
+	private static boolean isGrouped3DTransport(Transport transport)
+	{
+		TransportType type = transport == null ? null : transport.getType();
+		return type != null && !type.isTeleport() && type.getRadiusThreshold() > 0;
+	}
+
+	private static String destinationDisplayLabel(Transport transport)
+	{
+		if (transport == null || transport.getDisplayInfo() == null)
+		{
+			return "";
+		}
+		String label = transport.getDisplayInfo().trim();
+		return label
+			.replaceFirst("^[0-9A-Za-z]+\\s*[:.)-]\\s*", "")
+			.trim();
+	}
+
+	private static String transportTypeLabel(TransportType type)
+	{
+		return type == null ? "Transport" : titleCase(type.name());
 	}
 
 	private static boolean isVisible(Tile tile, Set<Integer> visibleRegions)
@@ -588,6 +687,16 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 	{
 		return a != null && b != null && a.z == b.z
 			&& Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)) <= ROUTE_POINT_HIT_RADIUS_TILES;
+	}
+
+	private static int tileDistance(Tile a, Tile b)
+	{
+		if (a == null || b == null)
+		{
+			return Integer.MAX_VALUE;
+		}
+		int planePenalty = a.z == b.z ? 0 : 512;
+		return planePenalty + Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
 	}
 
 	private static int regionId(Tile tile)
@@ -2245,6 +2354,98 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 
 	private record RouteTransportLabel(Tile tile, Tile warpTarget, String text)
 	{
+	}
+
+	private static final class TransportLabelGroup
+	{
+		private final TransportType type;
+		private final LinkedHashSet<String> destinations = new LinkedHashSet<>();
+		private Tile warpTarget;
+		private int sumX;
+		private int sumY;
+		private int plane;
+		private int count;
+
+		private TransportLabelGroup(TransportType type, Tile warpTarget)
+		{
+			this.type = type;
+			this.warpTarget = copy(warpTarget);
+		}
+
+		private TransportType type()
+		{
+			return type;
+		}
+
+		private Tile tile()
+		{
+			if (count <= 0)
+			{
+				return null;
+			}
+			return new Tile(Math.round(sumX / (float) count), Math.round(sumY / (float) count), plane);
+		}
+
+		private void add(Tile tile, Transport transport, Tile destination)
+		{
+			addTile(tile);
+			if (warpTarget == null)
+			{
+				warpTarget = copy(destination);
+			}
+			if (type == TransportType.FAIRY_RING)
+			{
+				return;
+			}
+			String destinationLabel = destinationDisplayLabel(transport);
+			if (!destinationLabel.isBlank())
+			{
+				destinations.add(destinationLabel);
+			}
+		}
+
+		private List<RouteTransportLabel> labels()
+		{
+			Tile tile = tile();
+			if (tile == null)
+			{
+				return List.of();
+			}
+			if (type == TransportType.FAIRY_RING)
+			{
+				return List.of(new RouteTransportLabel(tile, warpTarget, "Fairy Ring"));
+			}
+			List<RouteTransportLabel> labels = new ArrayList<>();
+			labels.add(new RouteTransportLabel(tile, warpTarget, transportTypeLabel(type)));
+			int shown = 0;
+			for (String destination : destinations)
+			{
+				if (shown >= MAX_3D_DESTINATION_LABEL_LINES)
+				{
+					break;
+				}
+				labels.add(new RouteTransportLabel(tile, warpTarget, destination));
+				shown++;
+			}
+			int remaining = destinations.size() - shown;
+			if (remaining > 0)
+			{
+				labels.add(new RouteTransportLabel(tile, warpTarget, "+" + remaining + " more"));
+			}
+			return List.copyOf(labels);
+		}
+
+		private void addTile(Tile tile)
+		{
+			if (tile == null)
+			{
+				return;
+			}
+			sumX += tile.x;
+			sumY += tile.y;
+			plane = tile.z;
+			count++;
+		}
 	}
 
 	private record RouteData(Tile start, List<Tile> steps, Tile target)

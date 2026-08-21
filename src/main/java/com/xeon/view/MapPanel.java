@@ -968,6 +968,7 @@ public class MapPanel extends JComponent implements MapView
 
 		Graphics2D g = (Graphics2D) g0.create();
 		int previousPlane = currentPlane;
+		double previousZoom = zoom;
 		int previousBudget = paintLoadBudgetRemaining;
 		try
 		{
@@ -991,11 +992,30 @@ public class MapPanel extends JComponent implements MapView
 			{
 				drawTilesLODProgressive(g, lodNow, visibleMap, AtlasLayerType.LABELS, target, originX, originY, scale, snapshotZoom);
 			}
+			if (!layers.isEmpty())
+			{
+				AffineTransform oldTransform = g.getTransform();
+				try
+				{
+					zoom = snapshotZoom;
+					g.translate(originX, originY);
+					g.scale(scale, scale);
+					for (MapLayer layer : layers)
+					{
+						layer.paint(renderContext, g, visibleMap);
+					}
+				}
+				finally
+				{
+					g.setTransform(oldTransform);
+				}
+			}
 			g.setClip(previousClip);
 		}
 		finally
 		{
 			currentPlane = previousPlane;
+			zoom = previousZoom;
 			paintLoadBudgetRemaining = previousBudget;
 			g.dispose();
 		}

@@ -29,8 +29,10 @@ import com.xeon.atlas.AtlasStorage;
 import com.xeon.io.Paths;
 import com.xeon.io.Viewer3DState;
 import com.xeon.io.ViewerSettings;
+import com.xeon.model.MapArea;
 import com.xeon.model.Tile;
 import com.xeon.plugin.MapViewerPlugin;
+import com.xeon.view.MapAreaSearchPanel;
 import com.xeon.view.MapPanel;
 
 import java.awt.BorderLayout;
@@ -87,7 +89,6 @@ public final class Map3DPanel extends JPanel
 {
 	private static final int FRAME_DELAY_MS = 16;
 	private static final int TOOLBAR_HEIGHT = 40;
-	private static final int STREAM_RADIUS_REGIONS = 2;
 	private static final double SLOW_FRAME_MILLIS = 33.4;
 	private static final double SLOW_RENDER_MILLIS = 20.0;
 	private static final int HIGH_DRAW_CALLS = 128;
@@ -132,7 +133,10 @@ public final class Map3DPanel extends JPanel
 	private final JToggleButton lockCameraButton = new JToggleButton("Lock Camera");
 	private final JToggleButton debugOverlayButton = new JToggleButton("Debug");
 	private final JToggleButton viewControlsButton = new JToggleButton("View Controls");
+	private final JToggleButton minimapButton = new JToggleButton("Hide Minimap");
+	private final JToggleButton overlayPriorityButton = new JToggleButton();
 	private final JComboBox<AntialiasingScale> antialiasingScale = new JComboBox<>(AntialiasingScale.values());
+	private final JComboBox<ViewDistanceOption> viewDistanceSelect = new JComboBox<>(ViewDistanceOption.values());
 	private final JSlider fovSlider = new JSlider(MIN_FOV_DEGREES, MAX_FOV_DEGREES, Math.round(camera.fovDegrees()));
 	private final JLabel title = new JLabel("3D Region Viewer");
 	private final JLabel detail = new JLabel("Loading terrain...");
@@ -141,6 +145,8 @@ public final class Map3DPanel extends JPanel
 	private final JLabel fovHud = new JLabel();
 	private final JLabel debugOverlay = new JLabel();
 	private final Map3DMinimapOverlay minimapOverlay;
+	private final MapPanel areaSearchMapPanel;
+	private final MapAreaSearchPanel areaSearchPanel;
 	private final Map3DControlsOverlay controlsOverlay = new Map3DControlsOverlay();
 	private final Timer renderTimer;
 	private final Runnable exitAction;
@@ -158,6 +164,8 @@ public final class Map3DPanel extends JPanel
 	private boolean cameraInitialized;
 	private boolean hoverPickErrorLogged;
 	private int streamCenterRegionId;
+	private int streamGridSize = Viewer3DState.DEFAULT_VIEW_DISTANCE_REGIONS;
+	private boolean pluginOverlaysOnTop;
 	private long lastFrameNanos;
 	private long fpsWindowStartNanos;
 	private int fpsWindowFrames;
@@ -170,6 +178,8 @@ public final class Map3DPanel extends JPanel
 	private Viewer3DState lastSavedState;
 	private Map3DWorldMapDock worldMapDock;
 	private boolean pluginPopupHandledDuringPressRelease;
+	private Tile lastPluginOverlayCameraTile;
+	private Set<Integer> lastPluginOverlayRegionIds = Set.of();
 	private volatile boolean pluginOverlayDirty = true;
 
 	public Map3DPanel(Path cacheDirectory, int regionId, Runnable exitAction)
@@ -187,7 +197,6 @@ public final class Map3DPanel extends JPanel
 		this.settings = settings;
 		this.initialState = settings == null ? null : settings.viewer3DState();
 		this.lastSavedState = initialState;
-		setActivePlugin(activePlugin);
 		this.regionId = regionId;
 		this.originRegionX = TerrainScene.regionX(regionId);
 		this.originRegionY = TerrainScene.regionY(regionId);
@@ -203,10 +212,19 @@ public final class Map3DPanel extends JPanel
 		canvas.setFocusable(true);
 		canvas.setIgnoreRepaint(true);
 		minimapOverlay = createMinimapOverlay();
+		AreaSearch areaSearch = createAreaSearch();
+		areaSearchMapPanel = areaSearch.mapPanel();
+		areaSearchPanel = areaSearch.searchPanel();
 		sceneLayer = buildSceneLayer();
+		setActivePlugin(activePlugin);
 
 		add(buildToolbar(), BorderLayout.NORTH);
 		add(sceneLayer, BorderLayout.CENTER);
+		JPanel footer = buildFooterPanel();
+		if (footer != null)
+		{
+			add(footer, BorderLayout.SOUTH);
+		}
 		installInputHandlers();
 
 		renderTimer = new Timer(FRAME_DELAY_MS, e -> renderFrame());
@@ -230,6 +248,10 @@ public final class Map3DPanel extends JPanel
 		if (minimapOverlay != null)
 		{
 			minimapOverlay.dispose();
+		}
+		if (areaSearchMapPanel != null)
+		{
+			areaSearchMapPanel.dispose();
 		}
 		try
 		{
@@ -269,6 +291,10 @@ public final class Map3DPanel extends JPanel
 		{
 			worldMapDock.setPlugin(plugin);
 		}
+		if (minimapOverlay != null)
+		{
+			minimapOverlay.setPlugin(plugin);
+		}
 	}
 
 	public void focusTile(Tile tile)
@@ -293,6 +319,17 @@ public final class Map3DPanel extends JPanel
 			else
 			{
 				SwingUtilities.invokeLater(worldMapDock::repaintMap);
+			}
+		}
+		if (minimapOverlay != null)
+		{
+			if (SwingUtilities.isEventDispatchThread())
+			{
+				minimapOverlay.repaint();
+			}
+			else
+			{
+				SwingUtilities.invokeLater(minimapOverlay::repaint);
 			}
 		}
 	}
@@ -321,7 +358,6 @@ public final class Map3DPanel extends JPanel
 		JPanel labels = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 6));
 		labels.setOpaque(false);
 		labels.add(title);
-		labels.add(detail);
 		toolbar.add(labels, BorderLayout.WEST);
 
 		styleToolbarButton(lockCameraButton);
@@ -338,6 +374,12 @@ public final class Map3DPanel extends JPanel
 		JLabel aaLabel = toolbarLabel("AA");
 		antialiasingScale.setFocusable(false);
 		antialiasingScale.addActionListener(e -> applyAntialiasingSelection());
+		JLabel viewDistanceLabel = toolbarLabel("View");
+		viewDistanceSelect.setFocusable(false);
+		viewDistanceSelect.addActionListener(e -> applyViewDistanceSelection());
+		styleToolbarButton(overlayPriorityButton);
+		updateOverlayPriorityButtonText();
+		overlayPriorityButton.addActionListener(e -> applyOverlayPrioritySelection());
 		JLabel fovLabel = toolbarLabel("FOV");
 		fovHud.setForeground(new Color(220, 220, 220));
 		fovSlider.setOpaque(false);
@@ -355,6 +397,9 @@ public final class Map3DPanel extends JPanel
 		controls.add(debugOverlayButton);
 		controls.add(aaLabel);
 		controls.add(antialiasingScale);
+		controls.add(viewDistanceLabel);
+		controls.add(viewDistanceSelect);
+		controls.add(overlayPriorityButton);
 		controls.add(fovLabel);
 		controls.add(fovSlider);
 		controls.add(fovHud);
@@ -369,6 +414,9 @@ public final class Map3DPanel extends JPanel
 			sceneLayer.doLayout();
 			sceneLayer.repaint();
 		});
+		styleToolbarButton(minimapButton);
+		minimapButton.setEnabled(minimapOverlay != null);
+		minimapButton.addActionListener(e -> applyMinimapVisibilitySelection());
 		JButton exit = new JButton("Return to 2D Map");
 		styleToolbarButton(exit);
 		exit.addActionListener(e -> {
@@ -380,9 +428,21 @@ public final class Map3DPanel extends JPanel
 		JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 2));
 		actions.setOpaque(false);
 		actions.add(viewControlsButton);
+		actions.add(minimapButton);
 		actions.add(exit);
 		toolbar.add(actions, BorderLayout.EAST);
 		return toolbar;
+	}
+
+	private JPanel buildFooterPanel()
+	{
+		if (areaSearchPanel == null)
+		{
+			return null;
+		}
+		JPanel searchHost = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
+		searchHost.add(areaSearchPanel);
+		return searchHost;
 	}
 
 	private JLayeredPane buildSceneLayer()
@@ -402,7 +462,7 @@ public final class Map3DPanel extends JPanel
 				canvas.setBounds(0, 0, size.width, size.height);
 				int debugTop = 10;
 				int rightAnchor = size.width - 12;
-				if (minimapOverlay != null)
+				if (minimapOverlay != null && minimapOverlay.isVisible())
 				{
 					Dimension minimapSize = minimapOverlay.getPreferredSize();
 					int minimapX = Math.max(8, rightAnchor - minimapSize.width);
@@ -432,6 +492,38 @@ public final class Map3DPanel extends JPanel
 		layeredPane.add(controlsOverlay, JLayeredPane.PALETTE_LAYER);
 		layeredPane.add(debugOverlay, JLayeredPane.PALETTE_LAYER);
 		return layeredPane;
+	}
+
+	private AreaSearch createAreaSearch()
+	{
+		if (atlasPath == null)
+		{
+			return new AreaSearch(null, null);
+		}
+		try
+		{
+			MapPanel mapPanel = new MapPanel(atlasPath, minimapBudgetBytes(mapCacheBudgetBytes));
+			MapAreaSearchPanel searchPanel = new MapAreaSearchPanel();
+			searchPanel.setSearchProvider(mapPanel::searchMapAreas);
+			searchPanel.onAreaSelected().addListener(this::warpCameraToArea);
+			return new AreaSearch(mapPanel, searchPanel);
+		}
+		catch (RuntimeException ex)
+		{
+			System.err.println("Failed to initialize 3D area search: " + rootMessage(ex));
+			return new AreaSearch(null, null);
+		}
+	}
+
+	private void warpCameraToArea(MapArea area)
+	{
+		if (area == null)
+		{
+			return;
+		}
+		Tile tile = area.tile();
+		warpCameraToTile(tile);
+		detail.setText("Focused " + area.displayName() + " at " + tile.x + "," + tile.y + "," + tile.z);
 	}
 
 	private Map3DMinimapOverlay createMinimapOverlay()
@@ -464,11 +556,25 @@ public final class Map3DPanel extends JPanel
 			AntialiasingScale scale = AntialiasingScale.forSamples(state.antialiasingSamples());
 			antialiasingSamples = scale.samples();
 			antialiasingScale.setSelectedItem(scale);
+			streamGridSize = Viewer3DState.clampViewDistanceRegions(state.viewDistanceRegions());
+			viewDistanceSelect.setSelectedItem(ViewDistanceOption.forGridSize(streamGridSize));
+			renderer.setViewDistanceRegions(streamGridSize);
+			pluginOverlaysOnTop = state.pluginOverlaysOnTop();
+			overlayPriorityButton.setSelected(pluginOverlaysOnTop);
+			updateOverlayPriorityButtonText();
+			renderer.setPluginOverlayOnTop(pluginOverlaysOnTop);
 			return;
 		}
 		AntialiasingScale scale = AntialiasingScale.forSamples(DEFAULT_ANTIALIASING_SAMPLES);
 		antialiasingSamples = scale.samples();
 		antialiasingScale.setSelectedItem(scale);
+		streamGridSize = Viewer3DState.DEFAULT_VIEW_DISTANCE_REGIONS;
+		viewDistanceSelect.setSelectedItem(ViewDistanceOption.forGridSize(streamGridSize));
+		renderer.setViewDistanceRegions(streamGridSize);
+		pluginOverlaysOnTop = false;
+		overlayPriorityButton.setSelected(false);
+		updateOverlayPriorityButtonText();
+		renderer.setPluginOverlayOnTop(false);
 	}
 
 	private void openWorldMapDock()
@@ -663,7 +769,9 @@ public final class Map3DPanel extends JPanel
 			camera.yawDegrees(),
 			camera.pitchDegrees(),
 			camera.fovDegrees(),
-			antialiasingSamples
+			antialiasingSamples,
+			streamGridSize,
+			pluginOverlaysOnTop
 		);
 		if (!state.equals(lastSavedState))
 		{
@@ -1074,6 +1182,50 @@ public final class Map3DPanel extends JPanel
 		saveViewerStateNow();
 	}
 
+	private void applyViewDistanceSelection()
+	{
+		Object selected = viewDistanceSelect.getSelectedItem();
+		if (!(selected instanceof ViewDistanceOption option) || option.gridSize() == streamGridSize)
+		{
+			return;
+		}
+
+		streamGridSize = option.gridSize();
+		renderer.setViewDistanceRegions(streamGridSize);
+		updateStreamedRegions();
+		requestPluginOverlayRefresh();
+		detail.setText("3D view distance " + option);
+		saveViewerStateNow();
+	}
+
+	private void applyOverlayPrioritySelection()
+	{
+		pluginOverlaysOnTop = overlayPriorityButton.isSelected();
+		updateOverlayPriorityButtonText();
+		renderer.setPluginOverlayOnTop(pluginOverlaysOnTop);
+		detail.setText(pluginOverlaysOnTop ? "3D overlays forced to front" : "3D overlays depth-tested");
+		saveViewerStateNow();
+	}
+
+	private void updateOverlayPriorityButtonText()
+	{
+		overlayPriorityButton.setText(pluginOverlaysOnTop ? "Overlays Front" : "Overlays Occluded");
+	}
+
+	private void applyMinimapVisibilitySelection()
+	{
+		if (minimapOverlay == null)
+		{
+			return;
+		}
+		boolean hidden = minimapButton.isSelected();
+		minimapOverlay.setVisible(!hidden);
+		minimapButton.setText(hidden ? "Show Minimap" : "Hide Minimap");
+		sceneLayer.revalidate();
+		sceneLayer.doLayout();
+		sceneLayer.repaint();
+	}
+
 	private static String cardinal(float degrees)
 	{
 		String[] names = new String[]{"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
@@ -1267,8 +1419,9 @@ public final class Map3DPanel extends JPanel
 			streamCenterRegionId = nextCenter;
 		}
 
-		List<Integer> desiredRegions = desiredRegionIds(streamCenterRegionId);
+		List<Integer> desiredRegions = desiredRegionIds(streamCenterRegionId, cameraTile());
 		Set<Integer> desiredRegionSet = Set.copyOf(desiredRegions);
+		boolean desiredRegionsChanged = !desiredRegionSet.equals(desiredRegionIds);
 		desiredRegionIds = desiredRegionSet;
 		boolean sceneChanged = loadedMeshes.entrySet().removeIf(entry -> {
 			if (desiredRegionSet.contains(entry.getKey()))
@@ -1301,18 +1454,26 @@ public final class Map3DPanel extends JPanel
 		{
 			rebuildScene();
 		}
+		else if (desiredRegionsChanged)
+		{
+			requestPluginOverlayRefresh();
+		}
 		pumpRegionQueue();
 		updateStreamStatus();
 	}
 
-	private List<Integer> desiredRegionIds(int centerRegionId)
+	private List<Integer> desiredRegionIds(int centerRegionId, Tile centerTile)
 	{
 		int centerX = TerrainScene.regionX(centerRegionId);
 		int centerY = TerrainScene.regionY(centerRegionId);
 		List<Integer> regions = new ArrayList<>();
-		for (int dx = -STREAM_RADIUS_REGIONS; dx <= STREAM_RADIUS_REGIONS; dx++)
+		int startX = streamStartOffset(streamGridSize,
+			centerTile == null ? 0 : Math.floorMod(centerTile.x, TerrainScene.REGION_SIZE));
+		int startY = streamStartOffset(streamGridSize,
+			centerTile == null ? 0 : Math.floorMod(centerTile.y, TerrainScene.REGION_SIZE));
+		for (int dx = startX; dx < startX + streamGridSize; dx++)
 		{
-			for (int dy = -STREAM_RADIUS_REGIONS; dy <= STREAM_RADIUS_REGIONS; dy++)
+			for (int dy = startY; dy < startY + streamGridSize; dy++)
 			{
 				regions.add(TerrainScene.regionId(centerX + dx, centerY + dy));
 			}
@@ -1323,19 +1484,27 @@ public final class Map3DPanel extends JPanel
 		return regions;
 	}
 
+	private static int streamStartOffset(int gridSize, int localTile)
+	{
+		int clampedGridSize = Viewer3DState.clampViewDistanceRegions(gridSize);
+		if ((clampedGridSize & 1) == 1)
+		{
+			return -clampedGridSize / 2;
+		}
+		return localTile >= TerrainScene.REGION_SIZE / 2
+			? -(clampedGridSize / 2 - 1)
+			: -clampedGridSize / 2;
+	}
+
 	private void updateStreamStatus()
 	{
-		int desiredCount = (STREAM_RADIUS_REGIONS * 2 + 1) * (STREAM_RADIUS_REGIONS * 2 + 1);
 		if (!cameraInitialized)
 		{
 			detail.setText("Loading center region " + regionId + "...");
 			return;
 		}
 
-		detail.setText(
-			"Regions " + loadedRegionIds.size() + "/" + desiredCount
-				+ " loaded, " + loadingRegionIds.size() + " loading, " + regionLoadQueue.size() + " queued"
-		);
+		detail.setText("3D view distance " + streamGridSize + "x" + streamGridSize);
 	}
 
 	private void closeLoaderSession()
@@ -1377,13 +1546,25 @@ public final class Map3DPanel extends JPanel
 		{
 			return Map3DOverlay.empty();
 		}
-		Map3DOverlay overlay = active3DLayer.overlay(new Map3DRenderContext(cameraTile(), List.copyOf(loadedRegionIds)));
+		Map3DOverlay overlay = active3DLayer.overlay(new Map3DRenderContext(cameraTile(), List.copyOf(desiredRegionIds)));
 		return overlay == null ? Map3DOverlay.empty() : overlay;
 	}
 
 	private void requestPluginOverlayRefresh()
 	{
 		pluginOverlayDirty = true;
+	}
+
+	private void updatePluginOverlayContext()
+	{
+		Tile cameraTile = cameraTile();
+		Set<Integer> regionIds = desiredRegionIds;
+		if (!cameraTile.equals(lastPluginOverlayCameraTile) || !regionIds.equals(lastPluginOverlayRegionIds))
+		{
+			lastPluginOverlayCameraTile = new Tile(cameraTile.x, cameraTile.y, cameraTile.z);
+			lastPluginOverlayRegionIds = Set.copyOf(regionIds);
+			requestPluginOverlayRefresh();
+		}
 	}
 
 	private void processRenderTasks()
@@ -1465,12 +1646,16 @@ public final class Map3DPanel extends JPanel
 			{
 				camera.setPosition(applyMovementConstraints(previousPosition, camera.position()));
 			}
-			if (cameraPositionChanged(previousPosition) || cameraOrientationChanged(previousYaw, previousPitch))
+			boolean positionChanged = cameraPositionChanged(previousPosition);
+			boolean orientationChanged = cameraOrientationChanged(previousYaw, previousPitch);
+			if (positionChanged || orientationChanged)
 			{
 				scheduleStateSave();
+				renderer.invalidatePluginOverlayGeometry();
 			}
 		}
 		updateStreamedRegions();
+		updatePluginOverlayContext();
 		updateCompassHud();
 		maybeSaveViewerState(now);
 		if (minimapOverlay != null)
@@ -1804,6 +1989,54 @@ public final class Map3DPanel extends JPanel
 		JLabel label = new JLabel(text);
 		label.setForeground(new Color(210, 210, 210));
 		return label;
+	}
+
+	private record AreaSearch(
+		MapPanel mapPanel,
+		MapAreaSearchPanel searchPanel
+	)
+	{
+	}
+
+	private enum ViewDistanceOption
+	{
+		X2("2x2", 2),
+		X3("3x3", 3),
+		X4("4x4", 4),
+		X5("5x5", 5);
+
+		private final String label;
+		private final int gridSize;
+
+		ViewDistanceOption(String label, int gridSize)
+		{
+			this.label = label;
+			this.gridSize = gridSize;
+		}
+
+		int gridSize()
+		{
+			return gridSize;
+		}
+
+		static ViewDistanceOption forGridSize(int gridSize)
+		{
+			int clampedGridSize = Viewer3DState.clampViewDistanceRegions(gridSize);
+			for (ViewDistanceOption option : values())
+			{
+				if (option.gridSize == clampedGridSize)
+				{
+					return option;
+				}
+			}
+			return X3;
+		}
+
+		@Override
+		public String toString()
+		{
+			return label;
+		}
 	}
 
 	private enum AntialiasingScale

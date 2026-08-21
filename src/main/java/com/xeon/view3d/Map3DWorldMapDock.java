@@ -36,6 +36,7 @@ import java.awt.Color;
 import java.awt.Component;
 import java.awt.Cursor;
 import java.awt.Dimension;
+import java.awt.FlowLayout;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Insets;
@@ -51,8 +52,11 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JDialog;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
@@ -72,9 +76,11 @@ final class Map3DWorldMapDock extends JDialog
 	private final Supplier<Tile> focusTileSupplier;
 	private final Consumer<Tile> warpConsumer;
 	private final Timer clampDebounce;
+	private final JComboBox<Integer> planeSelect;
 	private MapViewerPlugin activePlugin;
 	private ComponentAdapter clampListener;
 	private boolean mapPanelDisposed;
+	private int selectedPlane = 0;
 
 	Map3DWorldMapDock(Component ownerForLocation, MapPanel mapPanel,
 	                  Supplier<Tile> focusTileSupplier, Consumer<Tile> warpConsumer)
@@ -85,6 +91,7 @@ final class Map3DWorldMapDock extends JDialog
 		this.focusTileSupplier = focusTileSupplier;
 		this.warpConsumer = warpConsumer;
 		this.clampDebounce = new Timer(50, e -> clampInsideOwner());
+		this.planeSelect = new JComboBox<>(planeOptions(mapPanel.getPlaneCount()));
 		this.clampDebounce.setRepeats(false);
 
 		setUndecorated(true);
@@ -92,6 +99,7 @@ final class Map3DWorldMapDock extends JDialog
 		getRootPane().setBorder(new LineBorder(new Color(80, 82, 86), BORDER_PX, false));
 		setLayout(new BorderLayout());
 
+		mapPanel.setPlane(selectedPlane);
 		JScrollPane scrollPane = new JScrollPane(mapPanel);
 		scrollPane.setBorder(null);
 		scrollPane.getViewport().setBackground(Color.BLACK);
@@ -100,6 +108,7 @@ final class Map3DWorldMapDock extends JDialog
 		CloseOverlay overlay = new CloseOverlay();
 		getRootPane().setGlassPane(overlay);
 		overlay.setVisible(true);
+		installPlaneSelector();
 
 		mapPanel.setDockShiftDragEnabled(true);
 		installDoubleClickWarp();
@@ -179,7 +188,23 @@ final class Map3DWorldMapDock extends JDialog
 		{
 			return;
 		}
-		SwingUtilities.invokeLater(() -> mapPanel.focusTile(tile, OPEN_ZOOM));
+		Tile focusTile = new Tile(tile.x, tile.y, selectedPlane);
+		SwingUtilities.invokeLater(() -> mapPanel.focusTile(focusTile, OPEN_ZOOM));
+	}
+
+	private void installPlaneSelector()
+	{
+		planeSelect.setFocusable(false);
+		planeSelect.setSelectedItem(selectedPlane);
+		planeSelect.addActionListener(e -> {
+			Object selected = planeSelect.getSelectedItem();
+			if (selected instanceof Integer plane)
+			{
+				selectedPlane = Math.max(0, Math.min(mapPanel.getPlaneCount() - 1, plane));
+				mapPanel.setPlane(selectedPlane);
+				mapPanel.repaintVisible();
+			}
+		});
 	}
 
 	private void installDoubleClickWarp()
@@ -497,10 +522,19 @@ final class Map3DWorldMapDock extends JDialog
 		private static final int BTN_SIZE = 20;
 		private static final int PAD = 8;
 		private static final int ARC = 6;
+		private final JPanel planePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 3));
 
 		CloseOverlay()
 		{
 			setOpaque(false);
+			setLayout(null);
+			planePanel.setOpaque(true);
+			planePanel.setBackground(new Color(0, 0, 0, 165));
+			JLabel label = new JLabel("Plane");
+			label.setForeground(Color.WHITE);
+			planePanel.add(label);
+			planePanel.add(planeSelect);
+			add(planePanel);
 			addMouseListener(new MouseAdapter()
 			{
 				@Override
@@ -526,6 +560,13 @@ final class Map3DWorldMapDock extends JDialog
 					setCursor(cursorFor(hitTest(e.getX(), e.getY()), false));
 				}
 			});
+		}
+
+		@Override
+		public void doLayout()
+		{
+			Dimension preferred = planePanel.getPreferredSize();
+			planePanel.setBounds(PAD, PAD, preferred.width, preferred.height);
 		}
 
 		private Rectangle closeRect()
@@ -563,7 +604,20 @@ final class Map3DWorldMapDock extends JDialog
 		@Override
 		public boolean contains(int x, int y)
 		{
-			return closeRect().contains(x, y) || Map3DWorldMapDock.this.hitTest(x, y) != 0;
+			return planePanel.getBounds().contains(x, y)
+				|| closeRect().contains(x, y)
+				|| Map3DWorldMapDock.this.hitTest(x, y) != 0;
 		}
+	}
+
+	private static Integer[] planeOptions(int planeCount)
+	{
+		int count = Math.max(1, planeCount);
+		Integer[] planes = new Integer[count];
+		for (int i = 0; i < count; i++)
+		{
+			planes[i] = i;
+		}
+		return planes;
 	}
 }

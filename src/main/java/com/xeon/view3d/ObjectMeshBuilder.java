@@ -26,7 +26,9 @@
 package com.xeon.view3d;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import net.runelite.cache.ObjectManager;
 import net.runelite.cache.definitions.ModelDefinition;
 import net.runelite.cache.definitions.ObjectDefinition;
@@ -59,6 +61,7 @@ final class ObjectMeshBuilder
 	private static final int MODEL_BASE_CONTRAST = 768;
 	private static final int NORMAL_SCALE = 256;
 	private static final float MIN_VISIBLE_ALPHA = 1.0f / 255.0f;
+	private static final int MAX_OBJECT_TRANSFORM_DEPTH = 8;
 
 	private ObjectMeshBuilder()
 	{
@@ -92,7 +95,7 @@ final class ObjectMeshBuilder
 				continue;
 			}
 
-			ObjectDefinition definition = objectManager.getObject(location.getId());
+			ObjectDefinition definition = completionStateDefinition(objectManager, objectManager.getObject(location.getId()));
 			if (definition == null || definition.getObjectModels() == null)
 			{
 				continue;
@@ -128,6 +131,67 @@ final class ObjectMeshBuilder
 			);
 		}
 		return animatedObjects;
+	}
+
+	private static ObjectDefinition completionStateDefinition(ObjectManager objectManager, ObjectDefinition definition)
+	{
+		return completionStateDefinition(objectManager, definition, new HashSet<>(), 0);
+	}
+
+	private static ObjectDefinition completionStateDefinition(
+		ObjectManager objectManager,
+		ObjectDefinition definition,
+		Set<Integer> seen,
+		int depth
+	)
+	{
+		if (objectManager == null || definition == null || depth >= MAX_OBJECT_TRANSFORM_DEPTH)
+		{
+			return definition;
+		}
+		if (!seen.add(definition.getId()))
+		{
+			return definition;
+		}
+
+		int[] transforms = definition.getConfigChangeDest();
+		if (transforms == null || transforms.length == 0)
+		{
+			return definition;
+		}
+
+		ObjectDefinition fallback = null;
+		for (int i = transforms.length - 1; i >= 0; i--)
+		{
+			int objectId = transforms[i];
+			if (objectId < 0)
+			{
+				continue;
+			}
+			ObjectDefinition candidate = objectManager.getObject(objectId);
+			if (candidate == null)
+			{
+				continue;
+			}
+			if (fallback == null)
+			{
+				fallback = candidate;
+			}
+
+			ObjectDefinition resolved = completionStateDefinition(objectManager, candidate, seen, depth + 1);
+			if (hasObjectModels(resolved))
+			{
+				return resolved;
+			}
+		}
+		return fallback == null ? definition : fallback;
+	}
+
+	private static boolean hasObjectModels(ObjectDefinition definition)
+	{
+		return definition != null
+			&& definition.getObjectModels() != null
+			&& definition.getObjectModels().length > 0;
 	}
 
 	private static void appendLocation(
