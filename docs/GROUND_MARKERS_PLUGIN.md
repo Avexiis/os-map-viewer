@@ -55,6 +55,7 @@ The marker list on the left has three tabs:
 Clicking a marker in the list zooms in and centers it on the map. In 3D mode, it warps the camera to that marker.
 
 ## Ground Markers In 3D
+<img width="1919" height="1044" alt="image" src="https://github.com/user-attachments/assets/a6ca0583-6f87-4199-bd40-fcd099e71564" />
 
 Ground markers work in 3D mode when the plugin is active.
 
