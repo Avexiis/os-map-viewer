@@ -33,6 +33,7 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.awt.RenderingHints;
+import java.util.List;
 import javax.swing.BorderFactory;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
@@ -45,7 +46,17 @@ final class Map3DControlsOverlay extends JPanel
 		setOpaque(false);
 		setFocusable(false);
 		setBorder(BorderFactory.createEmptyBorder(10, 12, 10, 12));
+		rebuild(null, List.of());
+	}
 
+	void setPluginControls(String pluginName, List<Map3DControlHint> hints)
+	{
+		rebuild(pluginName, hints == null ? List.of() : hints);
+	}
+
+	private void rebuild(String pluginName, List<Map3DControlHint> hints)
+	{
+		removeAll();
 		GridBagConstraints c = new GridBagConstraints();
 		c.gridx = 0;
 		c.gridy = 0;
@@ -73,6 +84,23 @@ final class Map3DControlsOverlay extends JPanel
 		addRow(c, line("Shift-drag", "move floating map"));
 		addRow(c, line("Drag edges", "resize floating map"));
 		addRow(c, line("X", "close floating map"));
+
+		if (!hints.isEmpty())
+		{
+			c.insets = new Insets(7, 0, 4, 0);
+			addRow(c, title(pluginName == null || pluginName.isBlank() ? "Plugin Controls" : pluginName + " Controls"));
+			c.insets = new Insets(0, 0, 4, 0);
+			for (Map3DControlHint hint : hints)
+			{
+				if (hint == null || hint.input().isBlank() || hint.action().isBlank())
+				{
+					continue;
+				}
+				addRow(c, line(hint.input(), hint.action()));
+			}
+		}
+		revalidate();
+		repaint();
 	}
 
 	@Override

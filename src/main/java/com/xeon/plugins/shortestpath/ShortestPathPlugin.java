@@ -52,6 +52,15 @@ import com.xeon.view.MapMouseEvent;
 import com.xeon.view.MapRenderContext;
 import com.xeon.view.MapTool;
 import com.xeon.view.RegionChangeListener;
+import com.xeon.view3d.Map3DControlHint;
+import com.xeon.view3d.Map3DLabel;
+import com.xeon.view3d.Map3DLayer;
+import com.xeon.view3d.Map3DMarker;
+import com.xeon.view3d.Map3DMouseEvent;
+import com.xeon.view3d.Map3DOverlay;
+import com.xeon.view3d.Map3DPathSegment;
+import com.xeon.view3d.Map3DRenderContext;
+import com.xeon.view3d.Map3DTileAction;
 
 import java.io.File;
 import javax.swing.*;
@@ -65,6 +74,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.EnumSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -75,7 +85,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
-public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapTool
+public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapTool, Map3DLayer
 {
 	private static final String KEY_INCLUDE_TRANSPORTS = "includeTransports";
 	private static final String KEY_INCLUDE_TELEPORTS = "includeTeleports";
@@ -86,6 +96,8 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 	private static final String KEY_DISABLED_TRANSPORT_TYPES = "transportTypes.disabled";
 	private static final String KEY_SHOW_COLLISION_MAP = "showCollisionMap";
 	private static final String KEY_COLLISION_MAP_MODE = "collisionMap.mode";
+	private static final String KEY_3D_SHOW_ROUTE_LABELS = "viewer3d.showRouteTransportLabels";
+	private static final String KEY_3D_SHOW_ALL_TRANSPORT_LABELS = "viewer3d.showAllTransportLabels";
 	private static final String KEY_WALK_LINE_COLOR = "color.walkLine";
 	private static final String KEY_TRANSPORT_LINE_COLOR = "color.transportLine";
 	private static final String KEY_START_MARKER_COLOR = "color.startMarker";
@@ -127,6 +139,8 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 	private Color stepMarkerColor = DEFAULT_STEP_MARKER_COLOR;
 	private Color targetMarkerColor = DEFAULT_TARGET_MARKER_COLOR;
 	private Color collisionColor = DEFAULT_COLLISION_COLOR;
+	private boolean show3DRouteLabels = true;
+	private boolean show3DAllTransportLabels;
 	private Tile startTile;
 	private final List<Tile> stepTiles = new ArrayList<>();
 	private Tile targetTile;
@@ -169,12 +183,16 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 		stepMarkerColor = loadColor(context.config(), KEY_STEP_MARKER_COLOR, DEFAULT_STEP_MARKER_COLOR);
 		targetMarkerColor = loadColor(context.config(), KEY_TARGET_MARKER_COLOR, DEFAULT_TARGET_MARKER_COLOR);
 		collisionColor = loadColor(context.config(), KEY_COLLISION_COLOR, DEFAULT_COLLISION_COLOR);
+		show3DRouteLabels = context.config().getBoolean(KEY_3D_SHOW_ROUTE_LABELS, true);
+		show3DAllTransportLabels = context.config().getBoolean(KEY_3D_SHOW_ALL_TRANSPORT_LABELS, false);
 		panel.setOptions(options.includeTransports(), options.includeTeleports(), options.avoidWilderness(),
 			options.includePoh(), options.avoidItemTeleports(), options.enabledTransportTypes(), collisionMapMode);
 		panel.setColors(walkLineColor, transportLineColor, startMarkerColor, stepMarkerColor,
 			targetMarkerColor, collisionColor);
+		panel.set3DOptions(show3DRouteLabels, show3DAllTransportLabels);
 		panel.setTeleportItems(enabledTeleportItems);
 		panel.setOnOptionsChanged(this::handleOptionsChanged);
+		panel.setOn3DOptionsChanged(this::handle3DOptionsChanged);
 		panel.setOnCenterStart(this::setStartToCenter);
 		panel.setOnSwap(this::swapEndpoints);
 		panel.setOnRecalculate(this::recalculate);
@@ -185,7 +203,7 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 		routePanel.setOnFocusTile(tile -> {
 			if (tile != null && this.context != null)
 			{
-				this.context.mapPanel().focusTile(tile, null);
+				this.context.focusTile(tile, null);
 			}
 		});
 		menu.setOnCenterStart(this::setStartToCenter);
@@ -247,7 +265,7 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 		}
 		if (isPopupTrigger(event))
 		{
-			return showRoutePointMenu(event);
+			return showTileActionMenu(event);
 		}
 		if (!SwingUtilities.isLeftMouseButton(event.source()))
 		{
@@ -314,25 +332,298 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 		return routePointTooltip(tile);
 	}
 
+	@Override
+	public Map3DOverlay overlay(Map3DRenderContext context)
+	{
+		List<Map3DPathSegment> segments = new ArrayList<>();
+		List<Map3DMarker> markers = new ArrayList<>();
+		List<Map3DLabel> labels = new ArrayList<>();
+		Set<Integer> visibleRegions = context == null
+			? Set.of()
+			: new HashSet<>(context.visibleRegionIds());
+
+		List<PathStep> steps = currentPath();
+		for (int i = 1; i < steps.size(); i++)
+		{
+			int previous = steps.get(i - 1).getPackedPosition();
+			int current = steps.get(i).getPackedPosition();
+			Tile source = tile(previous);
+			Tile destination = tile(current);
+			boolean adjacent = isAdjacent(previous, current);
+			segments.add(new Map3DPathSegment(
+				source,
+				destination,
+				adjacent ? walkLineColor : transportLineColor,
+				!adjacent
+			));
+		}
+
+		add3DMarker(markers, startTile, startMarkerColor, "S");
+		for (int i = 0; i < stepTiles.size(); i++)
+		{
+			add3DMarker(markers, stepTiles.get(i), stepMarkerColor, Integer.toString(i + 1));
+		}
+		add3DMarker(markers, targetTile, targetMarkerColor, "E");
+
+		if (show3DRouteLabels)
+		{
+			for (RouteTransportLabel label : currentRouteTransportLabels(visibleRegions))
+			{
+				labels.add(new Map3DLabel(label.tile(), label.text(), transportLineColor, label.warpTarget()));
+			}
+		}
+		if (show3DAllTransportLabels && pathfinderConfig != null)
+		{
+			Set<String> seen = new HashSet<>();
+			for (Transport transport : pathfinderConfig.visibleTransports())
+			{
+				RouteTransportLabel label = transportLabel(transport, visibleRegions);
+				if (label == null)
+				{
+					continue;
+				}
+				String key = tileText(label.tile()) + ":" + label.text();
+				if (seen.add(key))
+				{
+					labels.add(new Map3DLabel(label.tile(), label.text(), transportLineColor, label.warpTarget()));
+				}
+			}
+		}
+
+		return new Map3DOverlay(segments, markers, labels);
+	}
+
+	@Override
+	public List<Map3DTileAction> tileActions(Map3DMouseEvent event)
+	{
+		if (event == null || event.tile() == null)
+		{
+			return List.of();
+		}
+
+		Tile tile = event.tile();
+		List<Map3DTileAction> actions = new ArrayList<>();
+		actions.add(new Map3DTileAction("Set start", () -> setStart(tile)));
+		if (startTile != null)
+		{
+			actions.add(new Map3DTileAction("Add step", () -> addStep(tile)));
+		}
+
+		ShortestPathRoutePanel.Entry routePoint = routePointAt(tile);
+		if (routePoint != null)
+		{
+			actions.add(new Map3DTileAction("Remove " + routePointLabel(routePoint.pointIndex()),
+				() -> removeRoutePointFromMenu(routePoint.pointIndex())));
+		}
+
+		actions.add(new Map3DTileAction("Set end", () -> setTarget(tile)));
+		return List.copyOf(actions);
+	}
+
+	@Override
+	public Tile clickWarpTarget(Map3DMouseEvent event)
+	{
+		if (event == null || event.tile() == null)
+		{
+			return null;
+		}
+		return transportWarpTargetAt(event.tile());
+	}
+
+	@Override
+	public List<Map3DControlHint> controlHints()
+	{
+		return List.of(
+			new Map3DControlHint("Right-click tile", "set start, add step, remove step, or set end"),
+			new Map3DControlHint("Right-click world map", "edit route points from the floating map"),
+			new Map3DControlHint("Click route step", "warp camera to that step"),
+			new Map3DControlHint("Click transport flag", "warp to the next route step")
+		);
+	}
+
 	private boolean isPopupTrigger(MapMouseEvent event)
 	{
 		return event.source().isPopupTrigger() || SwingUtilities.isRightMouseButton(event.source());
 	}
 
-	private boolean showRoutePointMenu(MapMouseEvent event)
+	private boolean showTileActionMenu(MapMouseEvent event)
 	{
-		ShortestPathRoutePanel.Entry entry = routePointAt(event.tile());
-		if (entry == null)
+		List<Map3DTileAction> actions = tileActions(new Map3DMouseEvent(
+			event.tile(),
+			event.source().getButton(),
+			true,
+			event.isAdditiveSelection(),
+			event.isShiftDown()
+		));
+		if (actions.isEmpty())
 		{
 			return false;
 		}
 		JPopupMenu popup = new JPopupMenu();
-		JMenuItem remove = new JMenuItem("Remove " + routePointLabel(entry.pointIndex()));
-		remove.addActionListener(e -> removeRoutePointFromMenu(entry.pointIndex()));
-		popup.add(remove);
+		for (Map3DTileAction action : actions)
+		{
+			JMenuItem item = new JMenuItem(action.label());
+			item.addActionListener(e -> action.run());
+			popup.add(item);
+		}
 		MouseEvent source = event.source();
 		popup.show(source.getComponent(), source.getX(), source.getY());
 		return true;
+	}
+
+	private void add3DMarker(List<Map3DMarker> markers, Tile tile, Color color, String label)
+	{
+		if (tile != null)
+		{
+			markers.add(new Map3DMarker(tile, color, label));
+		}
+	}
+
+	private List<RouteTransportLabel> currentRouteTransportLabels(Set<Integer> visibleRegions)
+	{
+		if (pathfinderConfig == null)
+		{
+			return List.of();
+		}
+		List<PathStep> steps = currentPath();
+		if (steps.size() < 2)
+		{
+			return List.of();
+		}
+
+		List<RouteTransportLabel> labels = new ArrayList<>();
+		for (int i = 1; i < steps.size(); i++)
+		{
+			PathStep previousStep = steps.get(i - 1);
+			int previous = previousStep.getPackedPosition();
+			int current = steps.get(i).getPackedPosition();
+			if (isAdjacent(previous, current))
+			{
+				continue;
+			}
+
+			Transport transport = pathfinderConfig.findTransport(previous, current, previousStep.isBankVisited());
+			if (!has3DTransportMarker(transport))
+			{
+				continue;
+			}
+			Tile source = tile(previous);
+			Tile destination = tile(current);
+			Tile labelTile = transportLabelTile(transport, source, destination);
+			if (labelTile != null && isVisible(labelTile, visibleRegions))
+			{
+				labels.add(new RouteTransportLabel(labelTile, destination, transportDisplayLabel(transport)));
+			}
+		}
+		return List.copyOf(labels);
+	}
+
+	private RouteTransportLabel transportLabel(Transport transport, Set<Integer> visibleRegions)
+	{
+		if (!has3DTransportMarker(transport))
+		{
+			return null;
+		}
+		Tile origin = validPacked(transport.getOrigin()) ? tile(transport.getOrigin()) : null;
+		Tile destination = validPacked(transport.getDestination()) ? tile(transport.getDestination()) : null;
+		Tile labelTile = transportLabelTile(transport, origin, destination);
+		if (labelTile == null || !isVisible(labelTile, visibleRegions))
+		{
+			return null;
+		}
+		return new RouteTransportLabel(labelTile, destination, transportDisplayLabel(transport));
+	}
+
+	private static boolean has3DTransportMarker(Transport transport)
+	{
+		return transport != null
+			&& transport.getDisplayInfo() != null
+			&& !transport.getDisplayInfo().isBlank();
+	}
+
+	private Tile transportWarpTargetAt(Tile clickedTile)
+	{
+		for (RouteTransportLabel label : currentRouteTransportLabels(Set.of()))
+		{
+			if (nearTile(clickedTile, label.tile()) && label.warpTarget() != null)
+			{
+				return copy(label.warpTarget());
+			}
+		}
+		return null;
+	}
+
+	private static Tile transportLabelTile(Transport transport, Tile source, Tile destination)
+	{
+		if (transport != null && validPacked(transport.getOrigin()))
+		{
+			return tile(transport.getOrigin());
+		}
+		return source != null ? copy(source) : copy(destination);
+	}
+
+	private static String transportDisplayLabel(Transport transport)
+	{
+		if (transport == null)
+		{
+			return "Transport";
+		}
+		if (transport.getDisplayInfo() != null && !transport.getDisplayInfo().isBlank())
+		{
+			return transport.getDisplayInfo();
+		}
+		if (transport.getType() == null)
+		{
+			return "Transport";
+		}
+		return titleCase(transport.getType().name());
+	}
+
+	private static boolean isVisible(Tile tile, Set<Integer> visibleRegions)
+	{
+		return tile != null && (visibleRegions == null || visibleRegions.isEmpty() || visibleRegions.contains(regionId(tile)));
+	}
+
+	private static boolean nearTile(Tile a, Tile b)
+	{
+		return a != null && b != null && a.z == b.z
+			&& Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)) <= ROUTE_POINT_HIT_RADIUS_TILES;
+	}
+
+	private static int regionId(Tile tile)
+	{
+		return (Math.floorDiv(tile.x, 64) << 8) | Math.floorDiv(tile.y, 64);
+	}
+
+	private static boolean validPacked(int packed)
+	{
+		return packed != WorldPointUtil.UNDEFINED && packed != Transport.LOCATION_PERMUTATION;
+	}
+
+	private static String titleCase(String value)
+	{
+		if (value == null || value.isBlank())
+		{
+			return "Transport";
+		}
+		StringBuilder out = new StringBuilder();
+		for (String part : value.toLowerCase(Locale.ROOT).split("_+"))
+		{
+			if (part.isBlank())
+			{
+				continue;
+			}
+			if (out.length() > 0)
+			{
+				out.append(' ');
+			}
+			out.append(Character.toUpperCase(part.charAt(0)));
+			if (part.length() > 1)
+			{
+				out.append(part.substring(1));
+			}
+		}
+		return out.length() == 0 ? "Transport" : out.toString();
 	}
 
 	private String routePointTooltip(Tile tile)
@@ -392,6 +683,16 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 		}
 	}
 
+	@Override
+	public void viewer3DModeChanged(boolean active)
+	{
+		if (panel != null)
+		{
+			panel.set3DOptionsVisible(active);
+		}
+		repaint();
+	}
+
 	private void handleOptionsChanged()
 	{
 		options = new PathOptions(
@@ -412,10 +713,13 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 		stepMarkerColor = panel.stepMarkerColor();
 		targetMarkerColor = panel.targetMarkerColor();
 		collisionColor = panel.collisionColor();
+		show3DRouteLabels = panel.show3DRouteLabels();
+		show3DAllTransportLabels = panel.show3DAllTransportLabels();
 		saveOptions(context.config(), options);
 		saveEnabledTeleportItems(context.config(), enabledTeleportItems);
 		saveColors(context.config());
 		saveCollisionMapMode(context.config(), collisionMapMode);
+		save3DOptions(context.config());
 		if (previousCollisionMapMode != collisionMapMode)
 		{
 			context.mapPanel().setActiveTool(this);
@@ -426,6 +730,14 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 		pathfinderConfig.refresh(options);
 		pathfinderConfig.setEnabledTeleportItems(enabledTeleportItems);
 		recalculate();
+	}
+
+	private void handle3DOptionsChanged()
+	{
+		show3DRouteLabels = panel.show3DRouteLabels();
+		show3DAllTransportLabels = panel.show3DAllTransportLabels();
+		save3DOptions(context.config());
+		repaint();
 	}
 
 	private boolean isCollisionRegionSelectionClick(MapMouseEvent event)
@@ -520,7 +832,7 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 
 	private void setStartToCenter()
 	{
-		Tile tile = context.mapPanel().getCenterTile();
+		Tile tile = context.centerTile();
 		if (tile != null)
 		{
 			setStart(tile);
@@ -529,7 +841,7 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 
 	private void setTargetToCenter()
 	{
-		Tile tile = context.mapPanel().getCenterTile();
+		Tile tile = context.centerTile();
 		if (tile != null)
 		{
 			setTarget(tile);
@@ -1298,7 +1610,7 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 	{
 		if (context != null)
 		{
-			context.mapPanel().repaintVisible();
+			context.repaintVisible();
 		}
 	}
 
@@ -1599,6 +1911,12 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 		config.setString(KEY_STEP_MARKER_COLOR, colorString(stepMarkerColor));
 		config.setString(KEY_TARGET_MARKER_COLOR, colorString(targetMarkerColor));
 		config.setString(KEY_COLLISION_COLOR, colorString(collisionColor));
+	}
+
+	private void save3DOptions(PluginConfig config)
+	{
+		config.setBoolean(KEY_3D_SHOW_ROUTE_LABELS, show3DRouteLabels);
+		config.setBoolean(KEY_3D_SHOW_ALL_TRANSPORT_LABELS, show3DAllTransportLabels);
 	}
 
 	private static Color loadColor(PluginConfig config, String key, Color fallback)
@@ -1922,6 +2240,10 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 	}
 
 	private record RouteFailure(int pointIndex, Tile point, PathfinderResult result)
+	{
+	}
+
+	private record RouteTransportLabel(Tile tile, Tile warpTarget, String text)
 	{
 	}
 

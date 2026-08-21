@@ -30,6 +30,7 @@ import com.xeon.io.Paths;
 import com.xeon.io.Viewer3DState;
 import com.xeon.io.ViewerSettings;
 import com.xeon.model.Tile;
+import com.xeon.plugin.MapViewerPlugin;
 import com.xeon.view.MapPanel;
 
 import java.awt.BorderLayout;
@@ -60,6 +61,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import javax.swing.AbstractButton;
@@ -68,7 +71,9 @@ import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JLayeredPane;
 import javax.swing.JLabel;
+import javax.swing.JMenuItem;
 import javax.swing.JPanel;
+import javax.swing.JPopupMenu;
 import javax.swing.JSlider;
 import javax.swing.JToggleButton;
 import javax.swing.SwingUtilities;
@@ -107,6 +112,8 @@ public final class Map3DPanel extends JPanel
 	private final long mapCacheBudgetBytes;
 	private final ViewerSettings settings;
 	private final Viewer3DState initialState;
+	private MapViewerPlugin activePlugin;
+	private Map3DLayer active3DLayer;
 	private final int regionId;
 	private final int originRegionX;
 	private final int originRegionY;
@@ -115,6 +122,7 @@ public final class Map3DPanel extends JPanel
 		thread.setDaemon(true);
 		return thread;
 	});
+	private final Queue<Runnable> renderTasks = new ConcurrentLinkedQueue<>();
 	private final Map<Integer, TerrainMesh> loadedMeshes = new LinkedHashMap<>();
 	private final List<Integer> regionLoadQueue = new ArrayList<>();
 	private final Set<Integer> loadedRegionIds = new HashSet<>();
@@ -161,14 +169,16 @@ public final class Map3DPanel extends JPanel
 	private long lastStateSaveNanos;
 	private Viewer3DState lastSavedState;
 	private Map3DWorldMapDock worldMapDock;
+	private boolean pluginPopupHandledDuringPressRelease;
+	private volatile boolean pluginOverlayDirty = true;
 
 	public Map3DPanel(Path cacheDirectory, int regionId, Runnable exitAction)
 	{
-		this(cacheDirectory, regionId, installedAtlasPath(), DEFAULT_MAP_CACHE_BUDGET_BYTES, null, exitAction);
+		this(cacheDirectory, regionId, installedAtlasPath(), DEFAULT_MAP_CACHE_BUDGET_BYTES, null, null, exitAction);
 	}
 
 	public Map3DPanel(Path cacheDirectory, int regionId, Path atlasPath, long mapCacheBudgetBytes,
-	                  ViewerSettings settings, Runnable exitAction)
+	                  ViewerSettings settings, MapViewerPlugin activePlugin, Runnable exitAction)
 	{
 		super(new BorderLayout());
 		this.cacheDirectory = cacheDirectory;
@@ -177,6 +187,7 @@ public final class Map3DPanel extends JPanel
 		this.settings = settings;
 		this.initialState = settings == null ? null : settings.viewer3DState();
 		this.lastSavedState = initialState;
+		setActivePlugin(activePlugin);
 		this.regionId = regionId;
 		this.originRegionX = TerrainScene.regionX(regionId);
 		this.originRegionY = TerrainScene.regionY(regionId);
@@ -242,6 +253,55 @@ public final class Map3DPanel extends JPanel
 		finally
 		{
 			destroyContext();
+		}
+	}
+
+	public void setActivePlugin(MapViewerPlugin plugin)
+	{
+		activePlugin = plugin;
+		active3DLayer = plugin instanceof Map3DLayer layer ? layer : null;
+		controlsOverlay.setPluginControls(
+			active3DLayer == null || plugin == null ? null : plugin.displayName(),
+			active3DLayer == null ? List.of() : active3DLayer.controlHints()
+		);
+		requestPluginOverlayRefresh();
+		if (worldMapDock != null)
+		{
+			worldMapDock.setPlugin(plugin);
+		}
+	}
+
+	public void focusTile(Tile tile)
+	{
+		warpCameraToTile(tile);
+	}
+
+	public Tile getCameraTile()
+	{
+		return cameraTile();
+	}
+
+	public void repaintPluginViews()
+	{
+		requestPluginOverlayRefresh();
+		if (worldMapDock != null)
+		{
+			if (SwingUtilities.isEventDispatchThread())
+			{
+				worldMapDock.repaintMap();
+			}
+			else
+			{
+				SwingUtilities.invokeLater(worldMapDock::repaintMap);
+			}
+		}
+	}
+
+	public void invokeRenderLater(Runnable task)
+	{
+		if (task != null)
+		{
+			renderTasks.add(task);
 		}
 	}
 
@@ -428,6 +488,7 @@ public final class Map3DPanel extends JPanel
 		{
 			MapPanel worldMapPanel = new MapPanel(atlasPath, mapCacheBudgetBytes);
 			worldMapDock = new Map3DWorldMapDock(sceneLayer, worldMapPanel, this::cameraTile, this::warpCameraToTile);
+			worldMapDock.setPlugin(activePlugin);
 			worldMapDock.addWindowListener(new WindowAdapter()
 			{
 				@Override
@@ -708,10 +769,24 @@ public final class Map3DPanel extends JPanel
 		canvas.addMouseListener(new MouseAdapter()
 		{
 			@Override
+			public void mouseClicked(MouseEvent e)
+			{
+				if (handlePluginClick(e))
+				{
+					return;
+				}
+			}
+
+			@Override
 			public void mousePressed(MouseEvent e)
 			{
 				canvas.requestFocusInWindow();
 				updateHoveredTile(e);
+				if (handlePluginPopupTrigger(e))
+				{
+					pluginPopupHandledDuringPressRelease = true;
+					return;
+				}
 				if (e.getButton() == MouseEvent.BUTTON2)
 				{
 					middleMouseLook = true;
@@ -722,6 +797,16 @@ public final class Map3DPanel extends JPanel
 			@Override
 			public void mouseReleased(MouseEvent e)
 			{
+				if (e.isPopupTrigger() && pluginPopupHandledDuringPressRelease)
+				{
+					pluginPopupHandledDuringPressRelease = false;
+					return;
+				}
+				if (handlePluginPopupTrigger(e))
+				{
+					pluginPopupHandledDuringPressRelease = true;
+					return;
+				}
 				if (e.getButton() == MouseEvent.BUTTON2)
 				{
 					middleMouseLook = false;
@@ -819,6 +904,94 @@ public final class Map3DPanel extends JPanel
 			updateStreamedRegions();
 		}
 		updateHoveredTile(event);
+	}
+
+	private boolean handlePluginPopupTrigger(MouseEvent event)
+	{
+		if (active3DLayer == null || !event.isPopupTrigger() && !SwingUtilities.isRightMouseButton(event))
+		{
+			return false;
+		}
+		updateHoveredTile(event);
+		Tile tile = hoveredTile();
+		if (tile == null)
+		{
+			return false;
+		}
+
+		List<Map3DTileAction> actions = active3DLayer.tileActions(to3DMouseEvent(event, tile, true));
+		if (actions == null || actions.isEmpty())
+		{
+			return false;
+		}
+
+		JPopupMenu popup = new JPopupMenu();
+		for (Map3DTileAction action : actions)
+		{
+			if (action == null || action.label().isBlank())
+			{
+				continue;
+			}
+			JMenuItem item = new JMenuItem(action.label());
+			item.addActionListener(e -> {
+				action.run();
+				repaintPluginViews();
+				if (minimapOverlay != null)
+				{
+					minimapOverlay.repaint();
+				}
+			});
+			popup.add(item);
+		}
+		if (popup.getComponentCount() == 0)
+		{
+			return false;
+		}
+		popup.show(canvas, event.getX(), event.getY());
+		event.consume();
+		return true;
+	}
+
+	private boolean handlePluginClick(MouseEvent event)
+	{
+		if (active3DLayer == null || !SwingUtilities.isLeftMouseButton(event) || event.getClickCount() != 1)
+		{
+			return false;
+		}
+		updateHoveredTile(event);
+		Tile tile = hoveredTile();
+		if (tile == null)
+		{
+			return false;
+		}
+		Tile warpTarget = active3DLayer.clickWarpTarget(to3DMouseEvent(event, tile, false));
+		if (warpTarget == null)
+		{
+			return false;
+		}
+		warpCameraToTile(warpTarget);
+		event.consume();
+		return true;
+	}
+
+	private Map3DMouseEvent to3DMouseEvent(MouseEvent event, Tile tile, boolean popup)
+	{
+		return new Map3DMouseEvent(
+			tile,
+			event.getButton(),
+			popup || event.isPopupTrigger(),
+			event.isControlDown() || event.isMetaDown(),
+			event.isShiftDown()
+		);
+	}
+
+	private Tile hoveredTile()
+	{
+		if (hoveredTile == null)
+		{
+			return null;
+		}
+		return new Tile(hoveredTile.worldX(), hoveredTile.worldY(), hoveredTile.plane());
 	}
 
 	private void updateHoveredTile(MouseEvent event)
@@ -1078,6 +1251,7 @@ public final class Map3DPanel extends JPanel
 	{
 		currentScene = new TerrainScene(originRegionX, originRegionY, loadedMeshes);
 		renderer.setScene(currentScene);
+		requestPluginOverlayRefresh();
 	}
 
 	private void updateStreamedRegions()
@@ -1197,6 +1371,55 @@ public final class Map3DPanel extends JPanel
 		loadedMeshes.clear();
 	}
 
+	private Map3DOverlay currentPluginOverlay()
+	{
+		if (active3DLayer == null)
+		{
+			return Map3DOverlay.empty();
+		}
+		Map3DOverlay overlay = active3DLayer.overlay(new Map3DRenderContext(cameraTile(), List.copyOf(loadedRegionIds)));
+		return overlay == null ? Map3DOverlay.empty() : overlay;
+	}
+
+	private void requestPluginOverlayRefresh()
+	{
+		pluginOverlayDirty = true;
+	}
+
+	private void processRenderTasks()
+	{
+		Runnable task;
+		while ((task = renderTasks.poll()) != null)
+		{
+			try
+			{
+				task.run();
+			}
+			catch (RuntimeException ex)
+			{
+				System.err.println("3D render task failed: " + rootMessage(ex));
+			}
+		}
+	}
+
+	private void refreshPluginOverlayIfNeeded()
+	{
+		if (!pluginOverlayDirty)
+		{
+			return;
+		}
+		pluginOverlayDirty = false;
+		try
+		{
+			renderer.setPluginOverlay(currentPluginOverlay());
+		}
+		catch (RuntimeException ex)
+		{
+			renderer.setPluginOverlay(Map3DOverlay.empty());
+			System.err.println("3D plugin overlay failed: " + rootMessage(ex));
+		}
+	}
+
 	private static int chebyshevDistance(int centerX, int centerY, int regionId)
 	{
 		return Math.max(
@@ -1265,6 +1488,8 @@ public final class Map3DPanel extends JPanel
 		{
 			awtContext.makeCurrent();
 			GL33C.glBindFramebuffer(GL33C.GL_FRAMEBUFFER, awtContext.getFramebuffer(false));
+			processRenderTasks();
+			refreshPluginOverlayIfNeeded();
 			renderer.render(camera, renderWidth(), renderHeight());
 			awtContext.swapBuffers();
 			rendered = true;

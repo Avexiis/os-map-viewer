@@ -103,6 +103,9 @@ final class ShortestPathPanel extends JPanel
 	private final JCheckBox includePoh = new JCheckBox("POH links", true);
 	private final JCheckBox avoidItemTeleports = new JCheckBox("Avoid item teleports", false);
 	private final JComboBox<CollisionMapMode> collisionMapMode = new JComboBox<>(CollisionMapMode.values());
+	private final JCheckBox show3DRouteLabels = new JCheckBox("Show route transport labels", true);
+	private final JCheckBox show3DAllTransportLabels = new JCheckBox("Show all transport labels", false);
+	private final JPanel view3DOptions = new JPanel();
 	private final JTextField profileName = new JTextField(12);
 	private final JButton lookUpProfile = new JButton("Look up");
 	private final JLabel profileStatus = new JLabel("Profile: None");
@@ -134,6 +137,7 @@ final class ShortestPathPanel extends JPanel
 	private final Color profileStatusMissingForeground = new Color(0xFF5C7A);
 
 	private Runnable onOptionsChanged;
+	private Runnable on3DOptionsChanged;
 	private Runnable onCenterStart;
 	private Runnable onSwap;
 	private Runnable onRecalculate;
@@ -183,6 +187,9 @@ final class ShortestPathPanel extends JPanel
 		optionGrid.add(avoidWilderness);
 		optionGrid.add(includePoh);
 		addFullRow(controls, c, optionGrid);
+
+		configure3DOptions();
+		addFullRow(controls, c, view3DOptions);
 
 		addFullRow(controls, c, title("Use"));
 		JPanel useGrid = new JPanel(new GridLayout(0, 1, 0, 2));
@@ -249,6 +256,8 @@ final class ShortestPathPanel extends JPanel
 		avoidWilderness.addActionListener(e -> emitOptionsChanged());
 		includePoh.addActionListener(e -> emitOptionsChanged());
 		collisionMapMode.addActionListener(e -> emitOptionsChanged());
+		show3DRouteLabels.addActionListener(e -> emit3DOptionsChanged());
+		show3DAllTransportLabels.addActionListener(e -> emit3DOptionsChanged());
 		teleportItemSort.addActionListener(e -> refreshTeleportItemList());
 		teleportItemFilter.getDocument().addDocumentListener(new DocumentListener()
 		{
@@ -349,6 +358,16 @@ final class ShortestPathPanel extends JPanel
 		return selected instanceof CollisionMapMode mode ? mode : CollisionMapMode.OFF;
 	}
 
+	boolean show3DRouteLabels()
+	{
+		return show3DRouteLabels.isSelected();
+	}
+
+	boolean show3DAllTransportLabels()
+	{
+		return show3DAllTransportLabels.isSelected();
+	}
+
 	Set<TransportType> enabledTransportTypes()
 	{
 		EnumSet<TransportType> types = EnumSet.noneOf(TransportType.class);
@@ -437,6 +456,19 @@ final class ShortestPathPanel extends JPanel
 		refreshColorButtons();
 	}
 
+	void set3DOptions(boolean routeLabels, boolean allTransportLabels)
+	{
+		show3DRouteLabels.setSelected(routeLabels);
+		show3DAllTransportLabels.setSelected(allTransportLabels);
+	}
+
+	void set3DOptionsVisible(boolean visible)
+	{
+		view3DOptions.setVisible(visible);
+		revalidate();
+		repaint();
+	}
+
 	void setTeleportItems(Set<TeleportItem> enabledItems)
 	{
 		enabledTeleportItems = copyTeleportItems(enabledItems);
@@ -484,6 +516,11 @@ final class ShortestPathPanel extends JPanel
 		this.onOptionsChanged = onOptionsChanged;
 	}
 
+	void setOn3DOptionsChanged(Runnable on3DOptionsChanged)
+	{
+		this.on3DOptionsChanged = on3DOptionsChanged;
+	}
+
 	void setOnCenterStart(Runnable onCenterStart)
 	{
 		this.onCenterStart = onCenterStart;
@@ -527,6 +564,14 @@ final class ShortestPathPanel extends JPanel
 		}
 	}
 
+	private void emit3DOptionsChanged()
+	{
+		if (on3DOptionsChanged != null)
+		{
+			on3DOptionsChanged.run();
+		}
+	}
+
 	private void addTransportToggle(JPanel panel, TransportType type, String label)
 	{
 		JCheckBox box = new JCheckBox(label, true);
@@ -554,6 +599,20 @@ final class ShortestPathPanel extends JPanel
 		collisionMapMode.setAlignmentX(Component.LEFT_ALIGNMENT);
 		row.add(collisionMapMode);
 		return row;
+	}
+
+	private void configure3DOptions()
+	{
+		view3DOptions.setOpaque(false);
+		view3DOptions.setLayout(new BoxLayout(view3DOptions, BoxLayout.Y_AXIS));
+		JLabel label = title("3D View");
+		label.setAlignmentX(Component.LEFT_ALIGNMENT);
+		show3DRouteLabels.setAlignmentX(Component.LEFT_ALIGNMENT);
+		show3DAllTransportLabels.setAlignmentX(Component.LEFT_ALIGNMENT);
+		view3DOptions.add(label);
+		view3DOptions.add(show3DRouteLabels);
+		view3DOptions.add(show3DAllTransportLabels);
+		view3DOptions.setVisible(false);
 	}
 
 	private JPanel stackedButtons(int width, AbstractButton... buttons)

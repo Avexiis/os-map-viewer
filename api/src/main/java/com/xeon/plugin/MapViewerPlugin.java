@@ -47,4 +47,8 @@ public interface MapViewerPlugin
 	default void tileFocused(Tile tile)
 	{
 	}
+
+	default void viewer3DModeChanged(boolean active)
+	{
+	}
 }

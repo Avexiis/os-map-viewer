@@ -25,7 +25,10 @@
 package com.xeon.view3d;
 
 import com.xeon.model.Tile;
+import com.xeon.plugin.MapViewerPlugin;
+import com.xeon.view.MapLayer;
 import com.xeon.view.MapPanel;
+import com.xeon.view.MapTool;
 
 import java.awt.BasicStroke;
 import java.awt.BorderLayout;
@@ -69,6 +72,7 @@ final class Map3DWorldMapDock extends JDialog
 	private final Supplier<Tile> focusTileSupplier;
 	private final Consumer<Tile> warpConsumer;
 	private final Timer clampDebounce;
+	private MapViewerPlugin activePlugin;
 	private ComponentAdapter clampListener;
 	private boolean mapPanelDisposed;
 
@@ -119,6 +123,33 @@ final class Map3DWorldMapDock extends JDialog
 		clampInsideOwner();
 		focusCameraTile();
 		toFront();
+	}
+
+	void setPlugin(MapViewerPlugin plugin)
+	{
+		if (activePlugin instanceof MapLayer layer)
+		{
+			mapPanel.removeLayer(layer);
+		}
+		if (activePlugin instanceof MapTool tool)
+		{
+			mapPanel.clearActiveTool(tool);
+		}
+
+		activePlugin = plugin;
+		if (activePlugin instanceof MapLayer layer)
+		{
+			mapPanel.addLayer(layer);
+		}
+		if (activePlugin instanceof MapTool tool)
+		{
+			mapPanel.setActiveTool(tool);
+		}
+	}
+
+	void repaintMap()
+	{
+		mapPanel.repaintVisible();
 	}
 
 	@Override

@@ -88,12 +88,12 @@ public class MapViewerController
 	private static final String EXPERIMENTAL_3D_VIEWER_DESCRIPTION =
 		"This option reads regions from the local OSRS cache and replaces the 2D map workspace "
 			+ "with an embedded LWJGL terrain viewer that streams nearby regions around the camera. "
-			+ "It is intended for terrain inspection and renderer development, so plugins are cleared while it is active.";
+			+ "It is intended for terrain inspection and renderer development. Active plugin sidebars remain available.";
 	private static final String MAP_3D_NOTICE =
 		"NOTICE: The 3D viewer is experimental and streams cache regions around the camera. "
 			+ "It reads terrain, overlay, underlay, texture, and height data from the local OSRS cache and "
-			+ "does not modify game files. The 2D map workspace and active plugins will be cleared until you "
-			+ "return to the normal map viewer. If no saved 3D view is available, it starts in Lumbridge.";
+			+ "does not modify game files. Active plugin sidebars remain available when the plugin supports 3D. "
+			+ "If no saved 3D view is available, it starts in Lumbridge.";
 	private static final double FULL_JUMP_ZOOM = Double.POSITIVE_INFINITY;
 	private static final MemoryPreset[] MEMORY_PRESETS = new MemoryPreset[]{
 		new MemoryPreset("512 MB", 512),
@@ -580,10 +580,6 @@ public class MapViewerController
 		{
 			return false;
 		}
-		if (is3DViewerActive())
-		{
-			return false;
-		}
 		handle.plugin.install(new DefaultPluginContext(handle.plugin.id()));
 		handle.installed = true;
 		return true;
@@ -644,6 +640,24 @@ public class MapViewerController
 		westPanel.revalidate();
 		frame.revalidate();
 		frame.repaint();
+		sync3DPluginState();
+	}
+
+	private void sync3DPluginState()
+	{
+		PluginHandle active = activePluginHandle();
+		MapViewerPlugin activePlugin = active == null || !active.installed ? null : active.plugin;
+		if (map3DPanel != null)
+		{
+			map3DPanel.setActivePlugin(activePlugin);
+		}
+		for (PluginHandle handle : plugins)
+		{
+			if (handle.installed)
+			{
+				handle.plugin.viewer3DModeChanged(map3DPanel != null && handle.plugin == activePlugin);
+			}
+		}
 	}
 
 	private void rebuildToolRail()
@@ -748,12 +762,6 @@ public class MapViewerController
 
 	private void showPluginManagerDialog()
 	{
-		if (is3DViewerActive())
-		{
-			setStatus("Return to the 2D map before managing plugins");
-			return;
-		}
-
 		JDialog dialog = new JDialog(frame, "Plugins", true);
 		dialog.setLayout(new BorderLayout(10, 10));
 
@@ -853,11 +861,6 @@ public class MapViewerController
 		{
 			return;
 		}
-		if (enabled && is3DViewerActive())
-		{
-			setStatus("Return to the 2D map before enabling plugins");
-			return;
-		}
 		if (enabled)
 		{
 			boolean disabledOthers = false;
@@ -946,12 +949,6 @@ public class MapViewerController
 
 	private void promptLoadPluginJar()
 	{
-		if (is3DViewerActive())
-		{
-			setStatus("Return to the 2D map before loading plugins");
-			return;
-		}
-
 		JFileChooser chooser = new JFileChooser();
 		chooser.setDialogTitle("Load plugin JAR");
 		if (chooser.showOpenDialog(frame) != JFileChooser.APPROVE_OPTION)
@@ -1149,11 +1146,13 @@ public class MapViewerController
 			return;
 		}
 		saveLastViewState();
-		clearWorkspaceFor3D();
 		mapScrollHorizontalPolicy = mapScrollPane.getHorizontalScrollBarPolicy();
 		mapScrollVerticalPolicy = mapScrollPane.getVerticalScrollBarPolicy();
+		PluginHandle active = activePluginHandle();
 		map3DPanel = new Map3DPanel(cacheDirectory, regionId, atlasPath,
-			memoryBudgetBytes(selectedMemoryBudgetMb()), settings, this::exit3DViewer);
+			memoryBudgetBytes(selectedMemoryBudgetMb()), settings,
+			active == null || !active.installed ? null : active.plugin,
+			this::exit3DViewer);
 		mapScrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
 		mapScrollPane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER);
 		mapScrollPane.setViewportView(map3DPanel);
@@ -1164,6 +1163,7 @@ public class MapViewerController
 		}
 		viewerPane.revalidate();
 		viewerPane.repaint();
+		sync3DPluginState();
 		setStatus("Opened 3D viewer for region " + regionId);
 	}
 
@@ -1186,22 +1186,8 @@ public class MapViewerController
 		}
 		viewerPane.revalidate();
 		viewerPane.repaint();
+		sync3DPluginState();
 		setStatus("Returned to 2D map viewer");
-	}
-
-	private void clearWorkspaceFor3D()
-	{
-		for (PluginHandle handle : plugins)
-		{
-			if (handle.installed)
-			{
-				handle.plugin.uninstall();
-				handle.installed = false;
-			}
-			handle.enabled = false;
-		}
-		settings.setActivePluginId(null);
-		refreshPluginHosts();
 	}
 
 	private boolean is3DViewerActive()
@@ -1807,6 +1793,50 @@ public class MapViewerController
 		public MapView mapPanel()
 		{
 			return mapPanel;
+		}
+
+		@Override
+		public boolean is3DViewerActive()
+		{
+			return MapViewerController.this.is3DViewerActive();
+		}
+
+		@Override
+		public Tile centerTile()
+		{
+			return map3DPanel == null ? mapPanel.getCenterTile() : map3DPanel.getCameraTile();
+		}
+
+		@Override
+		public void focusTile(Tile tile, Double targetZoom)
+		{
+			if (map3DPanel != null)
+			{
+				map3DPanel.focusTile(tile);
+				return;
+			}
+			mapPanel.focusTile(tile, targetZoom);
+		}
+
+		@Override
+		public void repaintVisible()
+		{
+			mapPanel.repaintVisible();
+			if (map3DPanel != null)
+			{
+				map3DPanel.repaintPluginViews();
+			}
+		}
+
+		@Override
+		public void invoke3DRenderLater(Runnable task)
+		{
+			if (map3DPanel != null)
+			{
+				map3DPanel.invokeRenderLater(task);
+				return;
+			}
+			PluginContext.super.invoke3DRenderLater(task);
 		}
 
 		@Override

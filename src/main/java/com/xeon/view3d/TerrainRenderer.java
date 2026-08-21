@@ -25,6 +25,14 @@
  */
 package com.xeon.view3d;
 
+import com.xeon.model.Tile;
+
+import java.awt.Color;
+import java.awt.Font;
+import java.awt.FontMetrics;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.image.BufferedImage;
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
@@ -35,6 +43,7 @@ import java.util.Map;
 import java.util.Set;
 import org.joml.FrustumIntersection;
 import org.joml.Matrix4f;
+import org.joml.Vector3f;
 import org.joml.Vector3fc;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL33C;
@@ -152,6 +161,39 @@ final class TerrainRenderer
 			fragColor = uColor;
 		}
 		""";
+	private static final String TEXT_VERTEX_SHADER = """
+		#version 330 core
+		layout(location = 0) in vec3 aPosition;
+		layout(location = 1) in vec2 aTexCoord;
+
+		uniform mat4 uMvp;
+
+		out vec2 vTexCoord;
+
+		void main()
+		{
+			vTexCoord = aTexCoord;
+			gl_Position = uMvp * vec4(aPosition, 1.0);
+		}
+		""";
+	private static final String TEXT_FRAGMENT_SHADER = """
+		#version 330 core
+		in vec2 vTexCoord;
+
+		uniform sampler2D uText;
+
+		out vec4 fragColor;
+
+		void main()
+		{
+			vec4 color = texture(uText, vTexCoord);
+			if (color.a <= 0.01)
+			{
+				discard;
+			}
+			fragColor = color;
+		}
+		""";
 	private static final int POSITION_FLOATS = 3;
 	private static final int NORMAL_FLOATS = 3;
 	private static final int COLOR_FLOATS = 3;
@@ -162,9 +204,24 @@ final class TerrainRenderer
 	private static final int TEXTURE_ANIMATION_FLOATS = 1;
 	private static final int TEXTURE_ALPHA_CUTOFF_FLOATS = 1;
 	private static final int OUTLINE_VERTICES = 8;
+	private static final int OVERLAY_LINE_POSITION_FLOATS = 3;
+	private static final int OVERLAY_TEXT_UV_FLOATS = 2;
+	private static final int OVERLAY_TEXT_FLOATS_PER_VERTEX = OVERLAY_LINE_POSITION_FLOATS + OVERLAY_TEXT_UV_FLOATS;
 	private static final int MAX_UPLOAD_BYTES_PER_FRAME = 4 * 1024 * 1024;
 	private static final int MAX_UPLOAD_FLOATS_PER_FRAME = MAX_UPLOAD_BYTES_PER_FRAME / Float.BYTES;
 	private static final float OUTLINE_HEIGHT_OFFSET = SceneScale.SCENE_TO_WORLD * 1.5f;
+	private static final float OVERLAY_PATH_HEIGHT_OFFSET = 0.28f;
+	private static final float OVERLAY_MARKER_HEIGHT_OFFSET = 0.42f;
+	private static final float OVERLAY_LABEL_HEIGHT_OFFSET = 1.15f;
+	private static final float OVERLAY_DASH_LENGTH = 0.55f;
+	private static final float OVERLAY_DASH_GAP = 0.34f;
+	private static final float OVERLAY_LABEL_STEM_HEIGHT = 0.58f;
+	private static final float OVERLAY_LABEL_FLAG_WIDTH = 0.38f;
+	private static final float OVERLAY_TEXT_WORLD_HEIGHT = 0.48f;
+	private static final int OVERLAY_TEXT_PADDING_X = 5;
+	private static final int OVERLAY_TEXT_PADDING_Y = 3;
+	private static final int OVERLAY_TEXT_ATLAS_MAX_WIDTH = 2048;
+	private static final int OVERLAY_TRANSPORT_ICON_RGB = 0xFF2E3D;
 	private static final float REGION_CULL_PADDING = 2.0f;
 
 	private final Matrix4f projection = new Matrix4f();
@@ -187,10 +244,19 @@ final class TerrainRenderer
 	private int outlineProgram;
 	private int outlineMvpLocation;
 	private int outlineColorLocation;
+	private int textProgram;
+	private int textMvpLocation;
+	private int textTextureLocation;
 	private int terrainTextureArray;
 	private int uploadedTextureLayerCount;
 	private int outlineVao;
 	private int outlineVbo;
+	private int overlayLineVao;
+	private int overlayLineVbo;
+	private int overlayLineVertexCount;
+	private int overlayTextVao;
+	private int overlayTextVbo;
+	private int overlayTextTexture;
 	private int sceneFbo;
 	private int sceneColorRbo;
 	private int sceneDepthRbo;
@@ -201,9 +267,13 @@ final class TerrainRenderer
 	private String glRenderer = "Unavailable";
 	private String glVersion = "Unavailable";
 	private TerrainRenderStats renderStats = TerrainRenderStats.unavailable();
+	private Map3DOverlay pluginOverlay = Map3DOverlay.empty();
+	private List<OverlayLineDraw> overlayLineDraws = List.of();
+	private List<OverlayTextLabel> overlayTextLabels = List.of();
 	private boolean initialized;
 	private int antialiasingSamples = 4;
 	private long startNanos;
+	private boolean pluginOverlayDirty = true;
 
 	void init()
 	{
@@ -240,6 +310,9 @@ final class TerrainRenderer
 		outlineProgram = createProgram(OUTLINE_VERTEX_SHADER, OUTLINE_FRAGMENT_SHADER);
 		outlineMvpLocation = GL33C.glGetUniformLocation(outlineProgram, "uMvp");
 		outlineColorLocation = GL33C.glGetUniformLocation(outlineProgram, "uColor");
+		textProgram = createProgram(TEXT_VERTEX_SHADER, TEXT_FRAGMENT_SHADER);
+		textMvpLocation = GL33C.glGetUniformLocation(textProgram, "uMvp");
+		textTextureLocation = GL33C.glGetUniformLocation(textProgram, "uText");
 		startNanos = System.nanoTime();
 		initialized = true;
 	}
@@ -262,6 +335,12 @@ final class TerrainRenderer
 	void setHoveredTile(HoveredTile hoveredTile)
 	{
 		this.hoveredTile = hoveredTile;
+	}
+
+	void setPluginOverlay(Map3DOverlay overlay)
+	{
+		pluginOverlay = overlay == null ? Map3DOverlay.empty() : overlay;
+		pluginOverlayDirty = true;
 	}
 
 	boolean isInitialized()
@@ -299,18 +378,20 @@ final class TerrainRenderer
 
 		RenderCounts renderCounts = RenderCounts.empty();
 		int outlineDrawCalls = 0;
+		int overlayDrawCalls = 0;
 		if (!uploadedRegions.isEmpty())
 		{
 			uploadPendingRegions();
 			prepareMatrices(camera, safeWidth / (float) safeHeight);
 			renderCounts = renderTerrain(camera);
 			outlineDrawCalls = renderHoveredTile();
+			overlayDrawCalls = renderPluginOverlay(camera);
 		}
 		else
 		{
 			uploadPendingRegions();
 		}
-		updateRenderStats(renderCounts, outlineDrawCalls);
+		updateRenderStats(renderCounts, outlineDrawCalls + overlayDrawCalls);
 		if (renderFramebuffer != defaultFramebuffer)
 		{
 			blitRenderTarget(defaultFramebuffer, safeWidth, safeHeight);
@@ -340,6 +421,27 @@ final class TerrainRenderer
 			GL33C.glDeleteVertexArrays(outlineVao);
 			outlineVao = 0;
 		}
+		if (overlayLineVbo != 0)
+		{
+			GL33C.glDeleteBuffers(overlayLineVbo);
+			overlayLineVbo = 0;
+		}
+		if (overlayLineVao != 0)
+		{
+			GL33C.glDeleteVertexArrays(overlayLineVao);
+			overlayLineVao = 0;
+		}
+		if (overlayTextVbo != 0)
+		{
+			GL33C.glDeleteBuffers(overlayTextVbo);
+			overlayTextVbo = 0;
+		}
+		if (overlayTextVao != 0)
+		{
+			GL33C.glDeleteVertexArrays(overlayTextVao);
+			overlayTextVao = 0;
+		}
+		deleteOverlayTextTexture();
 		if (terrainProgram != 0)
 		{
 			GL33C.glDeleteProgram(terrainProgram);
@@ -349,6 +451,11 @@ final class TerrainRenderer
 		{
 			GL33C.glDeleteProgram(outlineProgram);
 			outlineProgram = 0;
+		}
+		if (textProgram != 0)
+		{
+			GL33C.glDeleteProgram(textProgram);
+			textProgram = 0;
 		}
 		deleteSceneFbo();
 		initialized = false;
@@ -478,6 +585,565 @@ final class TerrainRenderer
 		return 2;
 	}
 
+	private int renderPluginOverlay(FreeCamera camera)
+	{
+		if (currentScene == null)
+		{
+			return 0;
+		}
+		if (pluginOverlayDirty)
+		{
+			rebuildPluginOverlayLines();
+			pluginOverlayDirty = false;
+		}
+		if (overlayLineVertexCount <= 0 || overlayLineDraws.isEmpty())
+		{
+			return renderPluginOverlayText(camera);
+		}
+
+		GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, overlayLineVbo);
+		GL33C.glUseProgram(outlineProgram);
+		try (MemoryStack stack = MemoryStack.stackPush())
+		{
+			FloatBuffer matrixBuffer = stack.mallocFloat(16);
+			GL33C.glUniformMatrix4fv(outlineMvpLocation, false, mvp.get(matrixBuffer));
+		}
+		GL33C.glBindVertexArray(overlayLineVao);
+		GL33C.glUniform4f(outlineColorLocation, 0.0f, 0.0f, 0.0f, 0.70f);
+		GL33C.glLineWidth(5.2f);
+		GL33C.glDrawArrays(GL33C.GL_LINES, 0, overlayLineVertexCount);
+		int drawCalls = 1;
+		for (OverlayLineDraw draw : overlayLineDraws)
+		{
+			GL33C.glUniform4f(outlineColorLocation, draw.red(), draw.green(), draw.blue(), draw.alpha());
+			GL33C.glLineWidth(2.7f);
+			GL33C.glDrawArrays(GL33C.GL_LINES, draw.startVertex(), draw.vertexCount());
+			drawCalls++;
+		}
+		GL33C.glLineWidth(1.0f);
+		GL33C.glBindVertexArray(0);
+		GL33C.glUseProgram(0);
+		return drawCalls + renderPluginOverlayText(camera);
+	}
+
+	private void rebuildPluginOverlayLines()
+	{
+		if (overlayLineVao == 0)
+		{
+			overlayLineVao = GL33C.glGenVertexArrays();
+			overlayLineVbo = GL33C.glGenBuffers();
+			GL33C.glBindVertexArray(overlayLineVao);
+			GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, overlayLineVbo);
+			GL33C.glEnableVertexAttribArray(0);
+			GL33C.glVertexAttribPointer(
+				0,
+				OVERLAY_LINE_POSITION_FLOATS,
+				GL33C.GL_FLOAT,
+				false,
+				OVERLAY_LINE_POSITION_FLOATS * Float.BYTES,
+				0L
+			);
+			GL33C.glBindVertexArray(0);
+		}
+
+		Map<Integer, OverlayLineBatch> batches = new LinkedHashMap<>();
+		for (Map3DPathSegment segment : pluginOverlay.segments())
+		{
+			if (segment == null)
+			{
+				continue;
+			}
+			Vector3f start = tileWorldPosition(segment.start(), OVERLAY_PATH_HEIGHT_OFFSET);
+			Vector3f end = tileWorldPosition(segment.end(), OVERLAY_PATH_HEIGHT_OFFSET);
+			if (start == null || end == null)
+			{
+				continue;
+			}
+			OverlayLineBatch batch = overlayBatch(batches, segment.color());
+			if (segment.dashed())
+			{
+				addDashedLine(batch, start, end);
+			}
+			else
+			{
+				batch.addLine(start, end);
+			}
+		}
+		for (Map3DMarker marker : pluginOverlay.markers())
+		{
+			if (marker != null)
+			{
+				addTileHighlightLines(batches, marker.tile(), marker.color());
+			}
+		}
+		for (Map3DLabel label : pluginOverlay.labels())
+		{
+			if (label != null)
+			{
+				addLabelAnchorLines(batches, label.tile());
+			}
+		}
+
+		FloatList vertices = new FloatList();
+		List<OverlayLineDraw> draws = new ArrayList<>();
+		int startVertex = 0;
+		for (OverlayLineBatch batch : batches.values())
+		{
+			int vertexCount = batch.vertexCount();
+			if (vertexCount <= 0)
+			{
+				continue;
+			}
+			draws.add(new OverlayLineDraw(
+				startVertex,
+				vertexCount,
+				channel(batch.argb(), 16),
+				channel(batch.argb(), 8),
+				channel(batch.argb(), 0),
+				channel(batch.argb(), 24)
+			));
+			vertices.addAll(batch.vertices());
+			startVertex += vertexCount;
+		}
+
+		overlayLineDraws = List.copyOf(draws);
+		overlayLineVertexCount = startVertex;
+		GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, overlayLineVbo);
+		if (vertices.size() == 0)
+		{
+			GL33C.glBufferData(GL33C.GL_ARRAY_BUFFER, 0L, GL33C.GL_DYNAMIC_DRAW);
+			rebuildPluginOverlayTextAtlas();
+			return;
+		}
+		FloatBuffer buffer = MemoryUtil.memAllocFloat(vertices.size());
+		try
+		{
+			buffer.put(vertices.array(), 0, vertices.size()).flip();
+			GL33C.glBufferData(GL33C.GL_ARRAY_BUFFER, buffer, GL33C.GL_DYNAMIC_DRAW);
+		}
+		finally
+		{
+			MemoryUtil.memFree(buffer);
+		}
+		rebuildPluginOverlayTextAtlas();
+	}
+
+	private void rebuildPluginOverlayTextAtlas()
+	{
+		List<OverlayTextCandidate> candidates = overlayTextCandidates();
+		if (candidates.isEmpty())
+		{
+			deleteOverlayTextTexture();
+			overlayTextLabels = List.of();
+			return;
+		}
+
+		Font font = new Font(Font.SANS_SERIF, Font.BOLD, 19);
+		BufferedImage probe = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
+		Graphics2D probeGraphics = probe.createGraphics();
+		FontMetrics metrics;
+		try
+		{
+			probeGraphics.setFont(font);
+			metrics = probeGraphics.getFontMetrics();
+		}
+		finally
+		{
+			probeGraphics.dispose();
+		}
+
+		List<PackedOverlayText> packed = new ArrayList<>();
+		int cursorX = 0;
+		int cursorY = 0;
+		int rowHeight = 0;
+		int atlasWidth = 1;
+		int maxTextureSize = Math.max(256, GL33C.glGetInteger(GL33C.GL_MAX_TEXTURE_SIZE));
+		int atlasMaxWidth = Math.min(OVERLAY_TEXT_ATLAS_MAX_WIDTH, maxTextureSize);
+		for (OverlayTextCandidate label : candidates)
+		{
+			String text = fitOverlayText(label.text(), metrics, atlasMaxWidth - OVERLAY_TEXT_PADDING_X * 2);
+			int width = Math.max(1, metrics.stringWidth(text) + OVERLAY_TEXT_PADDING_X * 2);
+			int height = Math.max(1, metrics.getHeight() + OVERLAY_TEXT_PADDING_Y * 2);
+			if (cursorX > 0 && cursorX + width > atlasMaxWidth)
+			{
+				cursorY += rowHeight;
+				cursorX = 0;
+				rowHeight = 0;
+			}
+			if (cursorY + height > maxTextureSize)
+			{
+				break;
+			}
+			packed.add(new PackedOverlayText(label.position(), text, cursorX, cursorY, width, height));
+			cursorX += width;
+			rowHeight = Math.max(rowHeight, height);
+			atlasWidth = Math.max(atlasWidth, cursorX);
+		}
+		if (packed.isEmpty())
+		{
+			deleteOverlayTextTexture();
+			overlayTextLabels = List.of();
+			return;
+		}
+
+		int atlasHeight = Math.max(1, cursorY + rowHeight);
+		BufferedImage atlas = new BufferedImage(atlasWidth, atlasHeight, BufferedImage.TYPE_INT_ARGB);
+		Graphics2D g = atlas.createGraphics();
+		try
+		{
+			g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+			g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+			g.setFont(font);
+			metrics = g.getFontMetrics();
+			for (PackedOverlayText label : packed)
+			{
+				int baseline = label.y() + OVERLAY_TEXT_PADDING_Y + metrics.getAscent();
+				g.setColor(Color.BLACK);
+				int x = label.x() + OVERLAY_TEXT_PADDING_X;
+				for (int dx = -2; dx <= 2; dx++)
+				{
+					for (int dy = -2; dy <= 2; dy++)
+					{
+						if (dx == 0 && dy == 0)
+						{
+							continue;
+						}
+						g.drawString(label.text(), x + dx, baseline + dy);
+					}
+				}
+				g.setColor(Color.WHITE);
+				g.drawString(label.text(), label.x() + OVERLAY_TEXT_PADDING_X, baseline);
+			}
+		}
+		finally
+		{
+			g.dispose();
+		}
+
+		uploadOverlayTextAtlas(atlas);
+		List<OverlayTextLabel> labels = new ArrayList<>();
+		for (PackedOverlayText label : packed)
+		{
+			labels.add(new OverlayTextLabel(
+				new Vector3f(label.position()),
+				label.width(),
+				label.height(),
+				label.x() / (float) atlasWidth,
+				label.y() / (float) atlasHeight,
+				(label.x() + label.width()) / (float) atlasWidth,
+				(label.y() + label.height()) / (float) atlasHeight
+			));
+		}
+		overlayTextLabels = List.copyOf(labels);
+	}
+
+	private static String fitOverlayText(String text, FontMetrics metrics, int maxTextWidth)
+	{
+		if (metrics.stringWidth(text) <= maxTextWidth)
+		{
+			return text;
+		}
+		String suffix = "...";
+		int suffixWidth = metrics.stringWidth(suffix);
+		int end = text.length();
+		while (end > 1 && metrics.stringWidth(text.substring(0, end)) + suffixWidth > maxTextWidth)
+		{
+			end--;
+		}
+		return text.substring(0, Math.max(1, end)) + suffix;
+	}
+
+	private List<OverlayTextCandidate> overlayTextCandidates()
+	{
+		List<OverlayTextCandidate> candidates = new ArrayList<>();
+		for (Map3DLabel label : pluginOverlay.labels())
+		{
+			if (label == null || label.text().isBlank())
+			{
+				continue;
+			}
+			Vector3f position = tileWorldPosition(label.tile(), OVERLAY_LABEL_HEIGHT_OFFSET + OVERLAY_LABEL_STEM_HEIGHT);
+			if (position != null)
+			{
+				candidates.add(new OverlayTextCandidate(position, label.text()));
+			}
+		}
+		return candidates;
+	}
+
+	private void uploadOverlayTextAtlas(BufferedImage atlas)
+	{
+		deleteOverlayTextTexture();
+		int width = atlas.getWidth();
+		int height = atlas.getHeight();
+		int[] pixelsArgb = atlas.getRGB(0, 0, width, height, null, 0, width);
+		ByteBuffer pixels = MemoryUtil.memAlloc(width * height * 4);
+		try
+		{
+			for (int argb : pixelsArgb)
+			{
+				pixels.put((byte) (argb >> 16 & 0xFF));
+				pixels.put((byte) (argb >> 8 & 0xFF));
+				pixels.put((byte) (argb & 0xFF));
+				pixels.put((byte) (argb >> 24 & 0xFF));
+			}
+			pixels.flip();
+
+			overlayTextTexture = GL33C.glGenTextures();
+			GL33C.glBindTexture(GL33C.GL_TEXTURE_2D, overlayTextTexture);
+			GL33C.glPixelStorei(GL33C.GL_UNPACK_ALIGNMENT, 1);
+			GL33C.glTexParameteri(GL33C.GL_TEXTURE_2D, GL33C.GL_TEXTURE_MIN_FILTER, GL33C.GL_LINEAR);
+			GL33C.glTexParameteri(GL33C.GL_TEXTURE_2D, GL33C.GL_TEXTURE_MAG_FILTER, GL33C.GL_LINEAR);
+			GL33C.glTexParameteri(GL33C.GL_TEXTURE_2D, GL33C.GL_TEXTURE_WRAP_S, GL33C.GL_CLAMP_TO_EDGE);
+			GL33C.glTexParameteri(GL33C.GL_TEXTURE_2D, GL33C.GL_TEXTURE_WRAP_T, GL33C.GL_CLAMP_TO_EDGE);
+			GL33C.glTexImage2D(
+				GL33C.GL_TEXTURE_2D,
+				0,
+				GL33C.GL_RGBA8,
+				width,
+				height,
+				0,
+				GL33C.GL_RGBA,
+				GL33C.GL_UNSIGNED_BYTE,
+				pixels
+			);
+			GL33C.glBindTexture(GL33C.GL_TEXTURE_2D, 0);
+		}
+		finally
+		{
+			MemoryUtil.memFree(pixels);
+		}
+	}
+
+	private int renderPluginOverlayText(FreeCamera camera)
+	{
+		if (overlayTextTexture == 0 || overlayTextLabels.isEmpty())
+		{
+			return 0;
+		}
+		if (overlayTextVao == 0)
+		{
+			overlayTextVao = GL33C.glGenVertexArrays();
+			overlayTextVbo = GL33C.glGenBuffers();
+			GL33C.glBindVertexArray(overlayTextVao);
+			GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, overlayTextVbo);
+			int stride = OVERLAY_TEXT_FLOATS_PER_VERTEX * Float.BYTES;
+			GL33C.glEnableVertexAttribArray(0);
+			GL33C.glVertexAttribPointer(0, OVERLAY_LINE_POSITION_FLOATS, GL33C.GL_FLOAT, false, stride, 0L);
+			GL33C.glEnableVertexAttribArray(1);
+			GL33C.glVertexAttribPointer(
+				1,
+				OVERLAY_TEXT_UV_FLOATS,
+				GL33C.GL_FLOAT,
+				false,
+				stride,
+				OVERLAY_LINE_POSITION_FLOATS * Float.BYTES
+			);
+			GL33C.glBindVertexArray(0);
+		}
+
+		FloatList vertices = overlayTextVertices(camera);
+		if (vertices.size() == 0)
+		{
+			return 0;
+		}
+		FloatBuffer buffer = MemoryUtil.memAllocFloat(vertices.size());
+		try
+		{
+			buffer.put(vertices.array(), 0, vertices.size()).flip();
+			GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, overlayTextVbo);
+			GL33C.glBufferData(GL33C.GL_ARRAY_BUFFER, buffer, GL33C.GL_DYNAMIC_DRAW);
+		}
+		finally
+		{
+			MemoryUtil.memFree(buffer);
+		}
+
+		GL33C.glUseProgram(textProgram);
+		try (MemoryStack stack = MemoryStack.stackPush())
+		{
+			FloatBuffer matrixBuffer = stack.mallocFloat(16);
+			GL33C.glUniformMatrix4fv(textMvpLocation, false, mvp.get(matrixBuffer));
+		}
+		GL33C.glActiveTexture(GL33C.GL_TEXTURE0);
+		GL33C.glBindTexture(GL33C.GL_TEXTURE_2D, overlayTextTexture);
+		GL33C.glUniform1i(textTextureLocation, 0);
+		GL33C.glBindVertexArray(overlayTextVao);
+		GL33C.glDrawArrays(GL33C.GL_TRIANGLES, 0, vertices.size() / OVERLAY_TEXT_FLOATS_PER_VERTEX);
+		GL33C.glBindVertexArray(0);
+		GL33C.glBindTexture(GL33C.GL_TEXTURE_2D, 0);
+		GL33C.glUseProgram(0);
+		return 1;
+	}
+
+	private FloatList overlayTextVertices(FreeCamera camera)
+	{
+		Vector3f direction = camera.direction(new Vector3f());
+		Vector3f right = direction.cross(new Vector3f(0.0f, 1.0f, 0.0f), new Vector3f());
+		if (right.lengthSquared() < 0.0001f)
+		{
+			right.set(1.0f, 0.0f, 0.0f);
+		}
+		else
+		{
+			right.normalize();
+		}
+		Vector3f up = new Vector3f(right).cross(direction).normalize();
+		FloatList vertices = new FloatList();
+		for (OverlayTextLabel label : overlayTextLabels)
+		{
+			float height = OVERLAY_TEXT_WORLD_HEIGHT;
+			float width = height * label.pixelWidth() / Math.max(1.0f, label.pixelHeight());
+			Vector3f center = new Vector3f(label.position()).add(0.0f, height * 0.55f, 0.0f);
+			Vector3f halfRight = new Vector3f(right).mul(width * 0.5f);
+			Vector3f halfUp = new Vector3f(up).mul(height * 0.5f);
+			Vector3f bottomLeft = new Vector3f(center).sub(halfRight).sub(halfUp);
+			Vector3f bottomRight = new Vector3f(center).add(halfRight).sub(halfUp);
+			Vector3f topRight = new Vector3f(center).add(halfRight).add(halfUp);
+			Vector3f topLeft = new Vector3f(center).sub(halfRight).add(halfUp);
+			addTextVertex(vertices, bottomLeft, label.u0(), label.v1());
+			addTextVertex(vertices, bottomRight, label.u1(), label.v1());
+			addTextVertex(vertices, topRight, label.u1(), label.v0());
+			addTextVertex(vertices, bottomLeft, label.u0(), label.v1());
+			addTextVertex(vertices, topRight, label.u1(), label.v0());
+			addTextVertex(vertices, topLeft, label.u0(), label.v0());
+		}
+		return vertices;
+	}
+
+	private void addTextVertex(FloatList vertices, Vector3f position, float u, float v)
+	{
+		vertices
+			.add(position.x).add(position.y).add(position.z)
+			.add(u).add(v);
+	}
+
+	private void deleteOverlayTextTexture()
+	{
+		if (overlayTextTexture != 0)
+		{
+			GL33C.glDeleteTextures(overlayTextTexture);
+			overlayTextTexture = 0;
+		}
+	}
+
+	private OverlayLineBatch overlayBatch(Map<Integer, OverlayLineBatch> batches, Color color)
+	{
+		int argb = color == null ? 0xFFFFFFFF : color.getRGB();
+		return batches.computeIfAbsent(argb, OverlayLineBatch::new);
+	}
+
+	private void addDashedLine(OverlayLineBatch batch, Vector3f start, Vector3f end)
+	{
+		Vector3f delta = new Vector3f(end).sub(start);
+		float length = delta.length();
+		if (length <= 0.0001f)
+		{
+			return;
+		}
+		Vector3f direction = delta.div(length);
+		float cursor = 0.0f;
+		while (cursor < length)
+		{
+			float dashEnd = Math.min(length, cursor + OVERLAY_DASH_LENGTH);
+			Vector3f dashStart = new Vector3f(start).fma(cursor, direction);
+			Vector3f dashStop = new Vector3f(start).fma(dashEnd, direction);
+			batch.addLine(dashStart, dashStop);
+			cursor += OVERLAY_DASH_LENGTH + OVERLAY_DASH_GAP;
+		}
+	}
+
+	private void addTileHighlightLines(Map<Integer, OverlayLineBatch> batches, Tile tile, Color color)
+	{
+		TileGeometry geometry = tileGeometry(tile, OVERLAY_MARKER_HEIGHT_OFFSET);
+		if (geometry == null)
+		{
+			return;
+		}
+		OverlayLineBatch batch = overlayBatch(batches, color);
+		batch.addLine(geometry.northWest(), geometry.northEast());
+		batch.addLine(geometry.northEast(), geometry.southEast());
+		batch.addLine(geometry.southEast(), geometry.southWest());
+		batch.addLine(geometry.southWest(), geometry.northWest());
+	}
+
+	private void addLabelAnchorLines(Map<Integer, OverlayLineBatch> batches, Tile tile)
+	{
+		Vector3f base = tileWorldPosition(tile, OVERLAY_LABEL_HEIGHT_OFFSET);
+		if (base == null)
+		{
+			return;
+		}
+		OverlayLineBatch batch = overlayBatch(batches, new Color(OVERLAY_TRANSPORT_ICON_RGB));
+		Vector3f top = new Vector3f(base).add(0.0f, OVERLAY_LABEL_STEM_HEIGHT, 0.0f);
+		Vector3f flagA = new Vector3f(top).add(OVERLAY_LABEL_FLAG_WIDTH, -OVERLAY_LABEL_STEM_HEIGHT * 0.18f, 0.0f);
+		Vector3f flagB = new Vector3f(top).add(0.0f, -OVERLAY_LABEL_STEM_HEIGHT * 0.36f, 0.0f);
+		batch.addLine(base, top);
+		batch.addLine(top, flagA);
+		batch.addLine(flagA, flagB);
+		batch.addLine(flagB, top);
+	}
+
+	private Vector3f tileWorldPosition(Tile tile, float heightOffset)
+	{
+		if (tile == null || currentScene == null)
+		{
+			return null;
+		}
+		int regionId = TerrainScene.regionId(
+			Math.floorDiv(tile.x, TerrainScene.REGION_SIZE),
+			Math.floorDiv(tile.y, TerrainScene.REGION_SIZE)
+		);
+		TerrainMesh mesh = currentScene.mesh(regionId);
+		if (mesh == null)
+		{
+			return null;
+		}
+		float localX = Math.floorMod(tile.x, TerrainScene.REGION_SIZE) + 0.5f;
+		float localY = Math.floorMod(tile.y, TerrainScene.REGION_SIZE) + 0.5f;
+		return worldPosition(mesh, tile.z, localX, localY, heightOffset);
+	}
+
+	private TileGeometry tileGeometry(Tile tile, float heightOffset)
+	{
+		if (tile == null || currentScene == null)
+		{
+			return null;
+		}
+		int regionId = TerrainScene.regionId(
+			Math.floorDiv(tile.x, TerrainScene.REGION_SIZE),
+			Math.floorDiv(tile.y, TerrainScene.REGION_SIZE)
+		);
+		TerrainMesh mesh = currentScene.mesh(regionId);
+		if (mesh == null)
+		{
+			return null;
+		}
+		float localX = Math.floorMod(tile.x, TerrainScene.REGION_SIZE);
+		float localY = Math.floorMod(tile.y, TerrainScene.REGION_SIZE);
+		int plane = Math.max(0, Math.min(3, tile.z));
+		return new TileGeometry(
+			worldPosition(mesh, plane, localX, localY, heightOffset),
+			worldPosition(mesh, plane, localX + 1.0f, localY, heightOffset),
+			worldPosition(mesh, plane, localX + 1.0f, localY + 1.0f, heightOffset),
+			worldPosition(mesh, plane, localX, localY + 1.0f, heightOffset)
+		);
+	}
+
+	private Vector3f worldPosition(TerrainMesh mesh, int plane, float localX, float localY, float heightOffset)
+	{
+		int clampedPlane = Math.max(0, Math.min(3, plane));
+		float x = currentScene.offsetX(mesh) + SceneScale.worldXFromTile(localX);
+		float z = currentScene.offsetZ(mesh) + SceneScale.worldZFromTile(localY);
+		float y = mesh.worldHeightAt(clampedPlane, localX, localY) + heightOffset;
+		return new Vector3f(x, y, z);
+	}
+
+	private static float channel(int argb, int shift)
+	{
+		return (argb >> shift & 0xFF) / 255.0f;
+	}
+
 	private void updateRenderStats(RenderCounts renderCounts, int outlineDrawCalls)
 	{
 		renderStats = new TerrainRenderStats(
@@ -555,6 +1221,7 @@ final class TerrainRenderer
 			}
 		}
 		currentScene = scene;
+		pluginOverlayDirty = true;
 	}
 
 	private void uploadPendingRegions()
@@ -973,6 +1640,136 @@ final class TerrainRenderer
 			worldX0, h01, worldZ1,
 			worldX0, h00, worldZ0
 		};
+	}
+
+	private static final class OverlayLineBatch
+	{
+		private final int argb;
+		private final FloatList vertices = new FloatList();
+
+		private OverlayLineBatch(int argb)
+		{
+			this.argb = argb;
+		}
+
+		private int argb()
+		{
+			return argb;
+		}
+
+		private float[] vertices()
+		{
+			return vertices.array();
+		}
+
+		private int vertexCount()
+		{
+			return vertices.size() / OVERLAY_LINE_POSITION_FLOATS;
+		}
+
+		private void addLine(Vector3f start, Vector3f end)
+		{
+			vertices.add(start.x).add(start.y).add(start.z);
+			vertices.add(end.x).add(end.y).add(end.z);
+		}
+	}
+
+	private static final class FloatList
+	{
+		private float[] values = new float[128];
+		private int size;
+
+		private FloatList add(float value)
+		{
+			ensureCapacity(size + 1);
+			values[size++] = value;
+			return this;
+		}
+
+		private void addAll(float[] source)
+		{
+			ensureCapacity(size + source.length);
+			System.arraycopy(source, 0, values, size, source.length);
+			size += source.length;
+		}
+
+		private float[] array()
+		{
+			float[] copy = new float[size];
+			System.arraycopy(values, 0, copy, 0, size);
+			return copy;
+		}
+
+		private int size()
+		{
+			return size;
+		}
+
+		private void ensureCapacity(int minimum)
+		{
+			if (minimum <= values.length)
+			{
+				return;
+			}
+			int next = values.length;
+			while (next < minimum)
+			{
+				next *= 2;
+			}
+			float[] expanded = new float[next];
+			System.arraycopy(values, 0, expanded, 0, size);
+			values = expanded;
+		}
+	}
+
+	private record OverlayLineDraw(
+		int startVertex,
+		int vertexCount,
+		float red,
+		float green,
+		float blue,
+		float alpha
+	)
+	{
+	}
+
+	private record TileGeometry(
+		Vector3f northWest,
+		Vector3f northEast,
+		Vector3f southEast,
+		Vector3f southWest
+	)
+	{
+	}
+
+	private record PackedOverlayText(
+		Vector3f position,
+		String text,
+		int x,
+		int y,
+		int width,
+		int height
+	)
+	{
+	}
+
+	private record OverlayTextCandidate(
+		Vector3f position,
+		String text
+	)
+	{
+	}
+
+	private record OverlayTextLabel(
+		Vector3f position,
+		int pixelWidth,
+		int pixelHeight,
+		float u0,
+		float v0,
+		float u1,
+		float v1
+	)
+	{
 	}
 
 	private static int createProgram(String vertexSource, String fragmentSource)
