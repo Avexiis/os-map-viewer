@@ -35,8 +35,9 @@ final class FreeCamera
 	private static final Vector3f WORLD_UP = new Vector3f(0.0f, 1.0f, 0.0f);
 	private static final float MOVE_SPEED = 22.0f;
 	private static final float FAST_MOVE_MULTIPLIER = 2.0f;
-	private static final float MOUSE_SENSITIVITY = 0.055f;
-	private static final float MAX_MOUSE_DELTA = 48.0f;
+	private static final float MOUSE_HORIZONTAL_SENSITIVITY = 0.18f;
+	private static final float MOUSE_VERTICAL_SENSITIVITY = 0.13f;
+	private static final float MAX_MOUSE_DELTA = 96.0f;
 	private static final float KEY_ROTATION_SPEED = 95.0f;
 	private static final float SCROLL_ZOOM_DISTANCE = 6.0f;
 	private static final float DEFAULT_FOV_DEGREES = 68.0f;
@@ -141,8 +142,8 @@ final class FreeCamera
 	{
 		deltaX = clamp(deltaX, -MAX_MOUSE_DELTA, MAX_MOUSE_DELTA);
 		deltaY = clamp(deltaY, -MAX_MOUSE_DELTA, MAX_MOUSE_DELTA);
-		yaw -= deltaX * MOUSE_SENSITIVITY;
-		pitch -= deltaY * MOUSE_SENSITIVITY;
+		yaw -= deltaX * MOUSE_HORIZONTAL_SENSITIVITY;
+		pitch -= deltaY * MOUSE_VERTICAL_SENSITIVITY;
 		clampPitch();
 	}
 

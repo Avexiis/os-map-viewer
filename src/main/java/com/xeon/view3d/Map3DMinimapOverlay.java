@@ -103,6 +103,12 @@ final class Map3DMinimapOverlay extends JPanel
 		repaint();
 	}
 
+	void setMapBackgroundColor(Color color)
+	{
+		mapPanel.setMapBackgroundColor(color == null ? Color.BLACK : color);
+		repaint();
+	}
+
 	@Override
 	public Dimension getPreferredSize()
 	{

@@ -67,6 +67,7 @@ import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Consumer;
 import javax.swing.AbstractButton;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -76,6 +77,7 @@ import javax.swing.JLabel;
 import javax.swing.JMenuItem;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
+import javax.swing.JProgressBar;
 import javax.swing.JSlider;
 import javax.swing.JToggleButton;
 import javax.swing.SwingUtilities;
@@ -87,6 +89,8 @@ import org.lwjgl.opengl.GL33C;
 
 public final class Map3DPanel extends JPanel
 {
+	public static final String CACHE_LOAD_FAILURE_PREFIX = "CACHE_LOAD_FAILURE:";
+
 	private static final int FRAME_DELAY_MS = 16;
 	private static final int TOOLBAR_HEIGHT = 40;
 	private static final double SLOW_FRAME_MILLIS = 33.4;
@@ -113,6 +117,7 @@ public final class Map3DPanel extends JPanel
 	private final long mapCacheBudgetBytes;
 	private final ViewerSettings settings;
 	private final Viewer3DState initialState;
+	private final Tile initialFocusTile;
 	private MapViewerPlugin activePlugin;
 	private Map3DLayer active3DLayer;
 	private final int regionId;
@@ -144,12 +149,14 @@ public final class Map3DPanel extends JPanel
 	private final JLabel tileHud = new JLabel("Tile --");
 	private final JLabel fovHud = new JLabel();
 	private final JLabel debugOverlay = new JLabel();
+	private final JPanel loadingOverlay;
 	private final Map3DMinimapOverlay minimapOverlay;
 	private final MapPanel areaSearchMapPanel;
 	private final MapAreaSearchPanel areaSearchPanel;
 	private final Map3DControlsOverlay controlsOverlay = new Map3DControlsOverlay();
 	private final Timer renderTimer;
 	private final Runnable exitAction;
+	private final Consumer<String> failureAction;
 	private volatile TerrainRegionLoader.Session loaderSession;
 	private volatile Set<Integer> desiredRegionIds = Set.of();
 	private TerrainScene currentScene;
@@ -159,6 +166,7 @@ public final class Map3DPanel extends JPanel
 	private boolean disposed;
 	private boolean glContextReady;
 	private boolean glContextFailed;
+	private boolean glFailureReported;
 	private boolean middleMouseLook;
 	private boolean cameraLocked;
 	private boolean cameraInitialized;
@@ -184,18 +192,33 @@ public final class Map3DPanel extends JPanel
 
 	public Map3DPanel(Path cacheDirectory, int regionId, Runnable exitAction)
 	{
-		this(cacheDirectory, regionId, installedAtlasPath(), DEFAULT_MAP_CACHE_BUDGET_BYTES, null, null, exitAction);
+		this(cacheDirectory, regionId, installedAtlasPath(), DEFAULT_MAP_CACHE_BUDGET_BYTES, null, null, exitAction, null);
 	}
 
 	public Map3DPanel(Path cacheDirectory, int regionId, Path atlasPath, long mapCacheBudgetBytes,
 	                  ViewerSettings settings, MapViewerPlugin activePlugin, Runnable exitAction)
+	{
+		this(cacheDirectory, regionId, atlasPath, mapCacheBudgetBytes, settings, activePlugin, exitAction, null);
+	}
+
+	public Map3DPanel(Path cacheDirectory, int regionId, Path atlasPath, long mapCacheBudgetBytes,
+	                  ViewerSettings settings, MapViewerPlugin activePlugin, Runnable exitAction,
+	                  Consumer<String> failureAction)
+	{
+		this(cacheDirectory, regionId, atlasPath, mapCacheBudgetBytes, settings, activePlugin, exitAction, failureAction, null);
+	}
+
+	public Map3DPanel(Path cacheDirectory, int regionId, Path atlasPath, long mapCacheBudgetBytes,
+	                  ViewerSettings settings, MapViewerPlugin activePlugin, Runnable exitAction,
+	                  Consumer<String> failureAction, Tile initialFocusTile)
 	{
 		super(new BorderLayout());
 		this.cacheDirectory = cacheDirectory;
 		this.atlasPath = atlasPath;
 		this.mapCacheBudgetBytes = mapCacheBudgetBytes <= 0L ? DEFAULT_MAP_CACHE_BUDGET_BYTES : mapCacheBudgetBytes;
 		this.settings = settings;
-		this.initialState = settings == null ? null : settings.viewer3DState();
+		this.initialFocusTile = initialFocusTile == null ? null : new Tile(initialFocusTile.x, initialFocusTile.y, initialFocusTile.z);
+		this.initialState = this.initialFocusTile == null && settings != null ? settings.viewer3DState() : null;
 		this.lastSavedState = initialState;
 		this.regionId = regionId;
 		this.originRegionX = TerrainScene.regionX(regionId);
@@ -203,6 +226,7 @@ public final class Map3DPanel extends JPanel
 		this.currentScene = TerrainScene.empty(originRegionX, originRegionY);
 		this.streamCenterRegionId = regionId;
 		this.exitAction = exitAction;
+		this.failureAction = failureAction;
 		setOpaque(true);
 		setBackground(Color.BLACK);
 		applyInitialPreferences();
@@ -215,7 +239,9 @@ public final class Map3DPanel extends JPanel
 		AreaSearch areaSearch = createAreaSearch();
 		areaSearchMapPanel = areaSearch.mapPanel();
 		areaSearchPanel = areaSearch.searchPanel();
+		loadingOverlay = buildLoadingOverlay();
 		sceneLayer = buildSceneLayer();
+		setMapBackgroundColor(settings == null ? Color.BLACK : settings.mapBackgroundColor());
 		setActivePlugin(activePlugin);
 
 		add(buildToolbar(), BorderLayout.NORTH);
@@ -334,6 +360,28 @@ public final class Map3DPanel extends JPanel
 		}
 	}
 
+	public void setMapBackgroundColor(Color color)
+	{
+		Color background = color == null ? Color.BLACK : color;
+		setBackground(background);
+		canvas.setBackground(background);
+		sceneLayer.setBackground(background);
+		renderer.setBackgroundColor(background);
+		if (minimapOverlay != null)
+		{
+			minimapOverlay.setMapBackgroundColor(background);
+		}
+		if (areaSearchMapPanel != null)
+		{
+			areaSearchMapPanel.setMapBackgroundColor(background);
+		}
+		if (worldMapDock != null)
+		{
+			worldMapDock.setMapBackgroundColor(background);
+		}
+		repaint();
+	}
+
 	public void invokeRenderLater(Runnable task)
 	{
 		if (task != null)
@@ -414,10 +462,10 @@ public final class Map3DPanel extends JPanel
 			sceneLayer.doLayout();
 			sceneLayer.repaint();
 		});
-		styleToolbarButton(minimapButton);
-		minimapButton.setEnabled(minimapOverlay != null);
-		minimapButton.addActionListener(e -> applyMinimapVisibilitySelection());
-		JButton exit = new JButton("Return to 2D Map");
+			styleToolbarButton(minimapButton);
+			minimapButton.setEnabled(minimapOverlay != null);
+			minimapButton.addActionListener(e -> applyMinimapVisibilitySelection());
+			JButton exit = new JButton("Switch to 2D Map");
 		styleToolbarButton(exit);
 		exit.addActionListener(e -> {
 			if (exitAction != null)
@@ -479,6 +527,13 @@ public final class Map3DPanel extends JPanel
 				Dimension preferredSize = debugOverlay.getPreferredSize();
 				int x = Math.max(8, size.width - preferredSize.width - 10);
 				debugOverlay.setBounds(x, debugTop, preferredSize.width, preferredSize.height);
+				if (loadingOverlay.isVisible())
+				{
+					Dimension loadingSize = loadingOverlay.getPreferredSize();
+					int loadingX = Math.max(0, (size.width - loadingSize.width) / 2);
+					int loadingY = Math.max(0, (size.height - loadingSize.height) / 2);
+					loadingOverlay.setBounds(loadingX, loadingY, loadingSize.width, loadingSize.height);
+				}
 			}
 		};
 		layeredPane.setOpaque(true);
@@ -491,7 +546,31 @@ public final class Map3DPanel extends JPanel
 		controlsOverlay.setVisible(false);
 		layeredPane.add(controlsOverlay, JLayeredPane.PALETTE_LAYER);
 		layeredPane.add(debugOverlay, JLayeredPane.PALETTE_LAYER);
+		layeredPane.add(loadingOverlay, JLayeredPane.MODAL_LAYER);
 		return layeredPane;
+	}
+
+	private JPanel buildLoadingOverlay()
+	{
+		JPanel panel = new JPanel(new BorderLayout(0, 8));
+		panel.setOpaque(true);
+		panel.setBackground(new Color(24, 26, 30, 232));
+		panel.setBorder(BorderFactory.createCompoundBorder(
+			BorderFactory.createLineBorder(new Color(105, 108, 116)),
+			BorderFactory.createEmptyBorder(12, 14, 12, 14)
+		));
+		panel.setPreferredSize(new Dimension(280, 82));
+		panel.setFocusable(false);
+
+		JLabel label = new JLabel("Loading 3D scene...");
+		label.setForeground(new Color(235, 235, 235));
+		label.setFont(label.getFont().deriveFont(Font.BOLD, 13f));
+		JProgressBar progress = new JProgressBar();
+		progress.setIndeterminate(true);
+		progress.setFocusable(false);
+		panel.add(label, BorderLayout.NORTH);
+		panel.add(progress, BorderLayout.CENTER);
+		return panel;
 	}
 
 	private AreaSearch createAreaSearch()
@@ -590,11 +669,15 @@ public final class Map3DPanel extends JPanel
 			return;
 		}
 
-		try
-		{
-			MapPanel worldMapPanel = new MapPanel(atlasPath, mapCacheBudgetBytes);
-			worldMapDock = new Map3DWorldMapDock(sceneLayer, worldMapPanel, this::cameraTile, this::warpCameraToTile);
-			worldMapDock.setPlugin(activePlugin);
+			try
+			{
+				MapPanel worldMapPanel = new MapPanel(atlasPath, mapCacheBudgetBytes);
+				if (settings != null)
+				{
+					worldMapPanel.setMapBackgroundColor(settings.mapBackgroundColor());
+				}
+				worldMapDock = new Map3DWorldMapDock(sceneLayer, worldMapPanel, this::cameraTile, this::warpCameraToTile);
+				worldMapDock.setPlugin(activePlugin);
 			worldMapDock.addWindowListener(new WindowAdapter()
 			{
 				@Override
@@ -662,14 +745,12 @@ public final class Map3DPanel extends JPanel
 		}
 
 		int targetRegionId = regionIdForTile(tile);
-		float worldX = tile.x - originRegionX * TerrainScene.REGION_SIZE - SceneScale.REGION_CENTER_TILES + 0.5f;
-		float worldZ = originRegionY * TerrainScene.REGION_SIZE + SceneScale.REGION_CENTER_TILES - tile.y - 0.5f;
-		float worldY = warpCameraHeight(tile, targetRegionId);
-		camera.setPosition(new Vector3f(worldX, worldY, worldZ));
+		setCameraPositionForTile(tile, targetRegionId);
 		if (!cameraInitialized)
 		{
 			cameraInitialized = true;
 			title.setText("3D Region Stream");
+			hideLoadingOverlay();
 		}
 		streamCenterRegionId = targetRegionId;
 		updateStreamedRegions();
@@ -679,6 +760,10 @@ public final class Map3DPanel extends JPanel
 		if (minimapOverlay != null)
 		{
 			minimapOverlay.repaint();
+		}
+		if (worldMapDock != null)
+		{
+			worldMapDock.updateCameraTile();
 		}
 		canvas.requestFocusInWindow();
 	}
@@ -699,7 +784,12 @@ public final class Map3DPanel extends JPanel
 
 	private void initializeCamera(TerrainMesh mesh)
 	{
-		if (initialState != null)
+		if (initialFocusTile != null && isValidWorldTile(initialFocusTile))
+		{
+			camera.reset(mesh.initialCameraX(), mesh.initialCameraY(), mesh.initialCameraZ());
+			setCameraPositionForTile(initialFocusTile, regionIdForTile(initialFocusTile));
+		}
+		else if (initialState != null)
 		{
 			camera.setPosition(new Vector3f(
 				sceneWorldXFromAbsoluteTile(initialState.worldTileX()),
@@ -717,8 +807,28 @@ public final class Map3DPanel extends JPanel
 
 		cameraInitialized = true;
 		title.setText("3D Region Stream");
+		hideLoadingOverlay();
 		saveViewerStateNow();
 		canvas.requestFocusInWindow();
+	}
+
+	private void setCameraPositionForTile(Tile tile, int targetRegionId)
+	{
+		float worldX = tile.x - originRegionX * TerrainScene.REGION_SIZE - SceneScale.REGION_CENTER_TILES + 0.5f;
+		float worldZ = originRegionY * TerrainScene.REGION_SIZE + SceneScale.REGION_CENTER_TILES - tile.y - 0.5f;
+		float worldY = warpCameraHeight(tile, targetRegionId);
+		camera.setPosition(new Vector3f(worldX, worldY, worldZ));
+	}
+
+	private void hideLoadingOverlay()
+	{
+		if (!loadingOverlay.isVisible())
+		{
+			return;
+		}
+		loadingOverlay.setVisible(false);
+		sceneLayer.revalidate();
+		sceneLayer.repaint();
 	}
 
 	private Vector3f applyMovementConstraints(Vector3fc previous, Vector3fc attempted)
@@ -1355,11 +1465,12 @@ public final class Map3DPanel extends JPanel
 		{
 			failedRegionIds.add(requestedRegionId);
 			System.err.println("Failed to load 3D region " + requestedRegionId + ": " + rootMessage(failure));
-			if (!cameraInitialized && requestedRegionId == regionId)
-			{
-				detail.setText("Failed to load center region: " + rootMessage(failure));
-				return;
-			}
+				if (!cameraInitialized && requestedRegionId == regionId)
+				{
+					detail.setText("Failed to load center region: " + rootMessage(failure));
+					reportStartupFailure(CACHE_LOAD_FAILURE_PREFIX + " " + rootMessage(failure));
+					return;
+				}
 			updateStreamStatus();
 			pumpRegionQueue();
 			return;
@@ -1546,7 +1657,7 @@ public final class Map3DPanel extends JPanel
 		{
 			return Map3DOverlay.empty();
 		}
-		Map3DOverlay overlay = active3DLayer.overlay(new Map3DRenderContext(cameraTile(), List.copyOf(desiredRegionIds)));
+		Map3DOverlay overlay = active3DLayer.overlay(new Map3DRenderContext(cameraTile(), List.copyOf(loadedRegionIds)));
 		return overlay == null ? Map3DOverlay.empty() : overlay;
 	}
 
@@ -1558,7 +1669,7 @@ public final class Map3DPanel extends JPanel
 	private void updatePluginOverlayContext()
 	{
 		Tile cameraTile = cameraTile();
-		Set<Integer> regionIds = desiredRegionIds;
+		Set<Integer> regionIds = Set.copyOf(loadedRegionIds);
 		if (!cameraTile.equals(lastPluginOverlayCameraTile) || !regionIds.equals(lastPluginOverlayRegionIds))
 		{
 			lastPluginOverlayCameraTile = new Tile(cameraTile.x, cameraTile.y, cameraTile.z);
@@ -1658,13 +1769,17 @@ public final class Map3DPanel extends JPanel
 		updatePluginOverlayContext();
 		updateCompassHud();
 		maybeSaveViewerState(now);
-		if (minimapOverlay != null)
-		{
-			minimapOverlay.repaint();
-		}
-		if (!ensureContext())
-		{
-			updateDebugOverlay();
+			if (minimapOverlay != null)
+			{
+				minimapOverlay.repaint();
+			}
+			if (worldMapDock != null)
+			{
+				worldMapDock.updateCameraTile();
+			}
+			if (!ensureContext())
+			{
+				updateDebugOverlay();
 			return;
 		}
 		long renderStartNanos = System.nanoTime();
@@ -1887,8 +2002,24 @@ public final class Map3DPanel extends JPanel
 			detail.setText("OpenGL context error: " + message);
 			System.err.println("OpenGL context error: " + message);
 			destroyContext();
+			reportGlFailure(message);
 			return false;
 		}
+	}
+
+	private void reportGlFailure(String message)
+	{
+		reportStartupFailure(message);
+	}
+
+	private void reportStartupFailure(String message)
+	{
+		if (glFailureReported || failureAction == null)
+		{
+			return;
+		}
+		glFailureReported = true;
+		SwingUtilities.invokeLater(() -> failureAction.accept(message));
 	}
 
 	private int renderWidth()

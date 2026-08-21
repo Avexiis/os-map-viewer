@@ -19,8 +19,10 @@ The API lets plugins do things like:
 - Add a button to the left rail.
 - Add panels to the left or right side of the app.
 - Draw overlays on the map.
+- Draw overlays in the 3D viewer.
 - Show tooltips for map tiles.
 - Handle map clicks and tile selection.
+- Handle 3D tile context actions.
 - Search bundled map area metadata.
 - Save plugin settings in the shared config manager.
 

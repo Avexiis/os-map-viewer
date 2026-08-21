@@ -2,22 +2,20 @@
 <img width="1917" height="1048" alt="image" src="https://github.com/user-attachments/assets/5558f01c-c0bd-4244-af9a-2ea187ec7c10" /> 
 OS Map Viewer is a desktop map viewer for the Old School RuneScape world map.
 
-The core app is only a map viewer. Extra tools are added through plugins. The app includes built-in plugins for RuneLite/HDOS ground markers and experimental shortest-path routing.
+The app includes a 2D world map, a 3D cache-backed scene viewer, and built-in plugins for RuneLite/HDOS ground markers and shortest-path routing.
 
-## Experimental branch
+## 3D Mode
 
-This branch is the experimental branch of OS Map Viewer. It contains features that may be removed, changed, or never make it to the stable main branch. To run the experimental branch, you must download the release file named `OSMapViewer_EXPERIMENTAL.jar`.
-- The main feature of the experimental branch is the [3D mode](docs/3D_MODE.md), which renders the game world as you would see it in-game, but with a free camera.
-- A preview of 3D Mode:
+When the app opens, choose either `2D Map` or `3D Viewer`. You can also open 3D mode later from the Options menu. 3D mode reads your local OSRS cache and renders nearby regions around a free camera.
+
+Preview:
 <img width="1915" height="1046" alt="image" src="https://github.com/user-attachments/assets/feab2174-a68a-46e6-a580-ec2daa5330d4" />
 
-***Note: 3D mode does NOT rely on or utilize a Jagex client. It is a semi-faithful reproduction of the 3D map scene, read directly from the game cache. Visual bugs and mismatches with OSRS or RuneLite are to be expected.***
+3D mode does **NOT** rely on a Jagex client and does **NOT** modify game files.
 
-### Other experimental features include:
-- Map printer that uses the official RuneLite cache library to read your installed game cache for the purpose of printing a new map after game updates.
-- Map binary stored in the user home directory to support the map printer. This branch will also automatically replace the map binary when a new version is run for the first time.
-- Map binary backup. This branch will validate that a new printed map is non-corrupt before using it. It will roll the binary back to the last version if found to be corrupt. 
-- Experimental shortest-path plugin adapted from the RuneLite `shortest-path` plugin data and pathfinder core (2D only for now.)
+## Map Printer
+
+The Options menu includes a map printer that uses the RuneLite cache library to read your installed game cache and print a new 2D atlas after game updates.
 
 ## Requirements
 
@@ -27,7 +25,10 @@ This branch is the experimental branch of OS Map Viewer. It contains features th
 ## Main Features
 
 - View the bundled OSRS world map.
+- Choose 2D or 3D mode on startup.
 - Pan and zoom the map.
+- Fly around the game world in 3D with a free camera.
+- Use the 3D minimap, floating world map, and area search to navigate.
 - Change map planes.
 - Search for map areas by name.
 - Jump to a region ID, region coordinates, or world tile.
@@ -38,7 +39,8 @@ This branch is the experimental branch of OS Map Viewer. It contains features th
 - Lock the map so it cannot be moved or zoomed by mistake.
 - Change the map background color.
 - Save your last viewed region and zoom level.
-- Enable, disable, and load plugins.
+- Enable, disable, and load plugins. One plugin can be active at a time.
+- Use ground markers and shortest-path overlays in both 2D and 3D.
 
 ## Documentation
 
@@ -48,7 +50,7 @@ This branch is the experimental branch of OS Map Viewer. It contains features th
 - [Plugins](docs/PLUGINS.md)
 - [Built-In Shortest Path Plugin](docs/SHORTEST_PATH_PLUGIN.md)
 - [Built-In Ground Markers Plugin](docs/GROUND_MARKERS_PLUGIN.md)
-- [Experimental 3D Viewer](docs/3D_MODE.md)
+- [3D Mode](docs/3D_MODE.md)
 - [Saved Settings](docs/SAVED_SETTINGS.md)
 - [Notes For Developers](docs/DEVELOPER_NOTES.md)
 - [3rd Party Attributions](docs/ATTRIBUTIONS.md)

@@ -31,6 +31,7 @@ import com.xeon.atlas.MapAtlasPrinter;
 import com.xeon.atlas.RuneLiteCacheLocator;
 import com.xeon.config.ConfigManager;
 import com.xeon.config.PluginConfig;
+import com.xeon.io.Paths;
 import com.xeon.io.Viewer3DState;
 import com.xeon.io.ViewerSettings;
 import com.xeon.model.Tile;
@@ -75,6 +76,8 @@ public class MapViewerController
 	private static final Color WARNING_ORANGE = new Color(0xD98C20);
 	private static final int DEFAULT_3D_REGION_ID = 12850;
 	private static final String GITHUB_URL = "https://github.com/Avexiis/os-map-viewer";
+	private static final String RELEASE_URL = "https://github.com/Avexiis/os-map-viewer/releases/tag/Release";
+	private static final String DISCORD_URL = "https://discord.gg/W59sFN7auq";
 	private static final String EXPERIMENTAL_MAP_PRINT_DESCRIPTION =
 		"This option will load an internal copy of RuneLite's cache module and read the OSRS game cache "
 			+ "installed to your PC for the purpose of printing a new map. Use this feature if Jagex "
@@ -85,15 +88,6 @@ public class MapViewerController
 			+ "The map printing process can be quite resource intensive and should only be attempted "
 			+ "on devices with at least 10GB of RAM not in use. If your PC cannot handle this, or if "
 			+ "the operation fails, please check the GitHub for the latest release version of OS Map Viewer.";
-	private static final String EXPERIMENTAL_3D_VIEWER_DESCRIPTION =
-		"This option reads regions from the local OSRS cache and replaces the 2D map workspace "
-			+ "with an embedded LWJGL terrain viewer that streams nearby regions around the camera. "
-			+ "It is intended for terrain inspection and renderer development. Active plugin sidebars remain available.";
-	private static final String MAP_3D_NOTICE =
-		"NOTICE: The 3D viewer is experimental and streams cache regions around the camera. "
-			+ "It reads terrain, overlay, underlay, texture, and height data from the local OSRS cache and "
-			+ "does not modify game files. Active plugin sidebars remain available when the plugin supports 3D. "
-			+ "If no saved 3D view is available, it starts in Lumbridge.";
 	private static final double FULL_JUMP_ZOOM = Double.POSITIVE_INFINITY;
 	private static final MemoryPreset[] MEMORY_PRESETS = new MemoryPreset[]{
 		new MemoryPreset("512 MB", 512),
@@ -208,28 +202,88 @@ public class MapViewerController
 			}
 		}
 
-		buildUi();
 		frame.setSize(1660, 950);
 		frame.setLocationRelativeTo(null);
 		frame.setVisible(true);
 
-		for (PluginHandle handle : plugins)
+		SwingUtilities.invokeLater(this::openStartupMode);
+	}
+
+	private void openStartupMode()
+	{
+		while (true)
 		{
-			if (handle.enabled && handle.installed)
+			StartupMode startupMode = promptStartupMode();
+			if (startupMode == StartupMode.MAP_2D)
 			{
-				handle.plugin.afterShow();
+				openInitial2DMode();
+				return;
+			}
+
+			CacheDirectoryResult cacheResult = resolve3DCacheDirectoryResult(frame);
+			if (cacheResult.directory() != null)
+			{
+				openInitial3DMode(cacheResult.directory());
+				return;
+			}
+			if (cacheResult.failed())
+			{
+				openInitial2DMode();
+				return;
 			}
 		}
-		SwingUtilities.invokeLater(() -> {
-			if (!restoreLastViewState())
-			{
-				mapPanel.centerMap();
-			}
-			if (enabledPluginCount() == 0)
-			{
-				showNoPluginsToast();
-			}
-		});
+	}
+
+	private void openInitial2DMode()
+	{
+		buildUi();
+		initialize2DMapPosition();
+		finishInitialUi();
+	}
+
+	private void openInitial3DMode(Path cacheDirectory)
+	{
+		Viewer3DState saved3DState = settings.viewer3DState();
+		int regionId = saved3DState == null ? DEFAULT_3D_REGION_ID : saved3DState.regionId();
+		buildUi();
+		initialize2DMapPosition();
+		enter3DViewer(cacheDirectory, regionId, null);
+		finishInitialUi();
+	}
+
+	private void initialize2DMapPosition()
+	{
+		if (!restoreLastViewState())
+		{
+			mapPanel.centerMap();
+		}
+	}
+
+	private void finishInitialUi()
+	{
+		frame.revalidate();
+		frame.repaint();
+		notifyPluginsAfterShow();
+		if (enabledPluginCount() == 0)
+		{
+			showNoPluginsToast();
+		}
+	}
+
+	private StartupMode promptStartupMode()
+	{
+		Object[] options = new Object[]{"2D Map", "3D Viewer"};
+		int answer = JOptionPane.showOptionDialog(
+			frame,
+			"Choose how to open OS Map Viewer.",
+			"Open OS Map Viewer",
+			JOptionPane.YES_NO_OPTION,
+			JOptionPane.QUESTION_MESSAGE,
+			null,
+			options,
+			options[0]
+		);
+		return answer == 1 ? StartupMode.VIEWER_3D : StartupMode.MAP_2D;
 	}
 
 	private void buildUi()
@@ -342,6 +396,17 @@ public class MapViewerController
 		pluginsItem.addActionListener(e -> showPluginManagerDialog());
 		JMenuItem loadPlugin = new JMenuItem("Load plugin JAR...");
 		loadPlugin.addActionListener(e -> promptLoadPluginJar());
+		JMenuItem viewer3D = new JMenuItem("Open 3D Viewer");
+		viewer3D.addActionListener(e -> {
+			if (is3DViewerActive())
+			{
+				exit3DViewer();
+			}
+			else
+			{
+				promptOpen3DViewer(frame);
+			}
+		});
 		JMenuItem experimentalOptions = new JMenuItem("Experimental Options");
 		experimentalOptions.addActionListener(e -> showExperimentalOptionsDialog());
 		JMenuItem backgroundColor = new JMenuItem("Map Background Color...");
@@ -359,6 +424,7 @@ public class MapViewerController
 		JMenu memoryBudget = buildMemoryBudgetMenu();
 		optionsMenu.add(pluginsItem);
 		optionsMenu.add(loadPlugin);
+		optionsMenu.add(viewer3D);
 		optionsMenu.add(experimentalOptions);
 		optionsMenu.addSeparator();
 		optionsMenu.add(backgroundColor);
@@ -369,6 +435,7 @@ public class MapViewerController
 			@Override
 			public void popupMenuWillBecomeVisible(PopupMenuEvent e)
 			{
+				viewer3D.setText(is3DViewerActive() ? "Switch to 2D Map" : "Open 3D Viewer");
 			}
 
 			@Override
@@ -435,6 +502,7 @@ public class MapViewerController
 				}
 			}
 		});
+		mapControls.onSwitchTo3DMap.addListener(ignored -> switchTo3DFrom2DMap());
 		attachMapPanelListeners(mapPanel);
 	}
 
@@ -467,6 +535,12 @@ public class MapViewerController
 	private int clampedPlane(int plane, MapPanel panel)
 	{
 		return Math.max(0, Math.min(panel.getPlaneCount() - 1, plane));
+	}
+
+	private static int regionIdForTile(Tile tile)
+	{
+		return (Math.floorDiv(tile.x, Paths.REGION_TILE_SIZE) << 8)
+			| Math.floorDiv(tile.y, Paths.REGION_TILE_SIZE);
 	}
 
 	private void notifyPluginsAfterShow()
@@ -1007,23 +1081,6 @@ public class MapViewerController
 		styleToolbarButton(print);
 		print.addActionListener(e -> promptPrintNewMap(dialog));
 		list.add(experimentalOptionRow(printDescription, print));
-		list.add(Box.createVerticalStrut(8));
-
-		JTextArea viewer3DDescription = wrappedText(EXPERIMENTAL_3D_VIEWER_DESCRIPTION, 470, 88);
-		JButton viewer3D = new JButton(is3DViewerActive() ? "Return to 2D Map" : "Open 3D Viewer");
-		styleToolbarButton(viewer3D);
-		viewer3D.addActionListener(e -> {
-			if (is3DViewerActive())
-			{
-				dialog.dispose();
-				exit3DViewer();
-			}
-			else
-			{
-				promptOpen3DViewer(dialog);
-			}
-		});
-		list.add(experimentalOptionRow(viewer3DDescription, viewer3D));
 
 		JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
 		JButton close = new JButton("Close");
@@ -1033,7 +1090,7 @@ public class MapViewerController
 
 		dialog.add(list, BorderLayout.CENTER);
 		dialog.add(buttons, BorderLayout.SOUTH);
-		dialog.setSize(580, 430);
+		dialog.setSize(580, 285);
 		dialog.setLocationRelativeTo(frame);
 		dialog.setVisible(true);
 	}
@@ -1083,16 +1140,7 @@ public class MapViewerController
 
 	private void promptOpen3DViewer(Window owner)
 	{
-		if (!confirm3DViewerNotice(owner))
-		{
-			return;
-		}
-
-		Path cacheDirectory = RuneLiteCacheLocator.locateCacheDirectory();
-		if (cacheDirectory == null)
-		{
-			cacheDirectory = chooseCacheDirectory(owner);
-		}
+		Path cacheDirectory = resolve3DCacheDirectory(owner);
 		if (cacheDirectory == null)
 		{
 			return;
@@ -1105,7 +1153,124 @@ public class MapViewerController
 		{
 			dialog.dispose();
 		}
-		enter3DViewer(cacheDirectory, regionId);
+		enter3DViewer(cacheDirectory, regionId, null);
+	}
+
+	private void switchTo3DFrom2DMap()
+	{
+		if (mapPanel == null)
+		{
+			return;
+		}
+		Path cacheDirectory = resolve3DCacheDirectory(frame);
+		if (cacheDirectory == null)
+		{
+			return;
+		}
+
+		Tile centerTile = mapPanel.getCenterTile();
+		int regionId = centerTile == null ? DEFAULT_3D_REGION_ID : regionIdForTile(centerTile);
+		enter3DViewer(cacheDirectory, regionId, centerTile);
+	}
+
+	private Path resolve3DCacheDirectory(Component owner)
+	{
+		return resolve3DCacheDirectoryResult(owner).directory();
+	}
+
+	private CacheDirectoryResult resolve3DCacheDirectoryResult(Component owner)
+	{
+		CacheSelection selection = choose3DCacheSelection(owner);
+		if (selection.cancelled())
+		{
+			return new CacheDirectoryResult(null, true, false);
+		}
+		if (!selection.autoDetect())
+		{
+			return choose3DCacheDirectory(owner);
+		}
+
+		Path cacheDirectory = RuneLiteCacheLocator.locateCacheDirectory();
+		if (cacheDirectory == null)
+		{
+			show3DCacheLoadFailure("No installed OSRS cache was found in the standard RuneLite or Bolt cache locations.");
+			return new CacheDirectoryResult(null, false, true);
+		}
+		return new CacheDirectoryResult(cacheDirectory, false, false);
+	}
+
+	private CacheSelection choose3DCacheSelection(Component owner)
+	{
+		if (!settings.viewer3DCacheAskOnOpen())
+		{
+			return new CacheSelection(settings.viewer3DCacheAutoDetect(), false);
+		}
+
+		JCheckBox doNotAskAgain = new JCheckBox("Do not ask again");
+		doNotAskAgain.setSelected(false);
+		JTextArea message = wrappedText(
+			"3D mode needs your installed OSRS cache. Auto-detect searches common RuneLite and Bolt cache locations. "
+				+ "Choose No if you want to select a cache folder manually.",
+			520,
+			95
+		);
+		JPanel content = new JPanel(new BorderLayout(0, 8));
+		content.add(message, BorderLayout.CENTER);
+		content.add(doNotAskAgain, BorderLayout.SOUTH);
+		Object[] options = new Object[]{"Yes, auto-detect", "No, choose folder", "Cancel"};
+		int answer = JOptionPane.showOptionDialog(
+			owner == null ? frame : owner,
+			content,
+			"Open 3D Viewer",
+			JOptionPane.YES_NO_CANCEL_OPTION,
+			JOptionPane.QUESTION_MESSAGE,
+			null,
+			options,
+			options[0]
+		);
+		if (answer != 0 && answer != 1)
+		{
+			return new CacheSelection(true, true);
+		}
+
+		boolean autoDetect = answer == 0;
+		if (doNotAskAgain.isSelected())
+		{
+			settings.setViewer3DCachePrompt(false, autoDetect);
+		}
+		return new CacheSelection(autoDetect, false);
+	}
+
+	private CacheDirectoryResult choose3DCacheDirectory(Component parent)
+	{
+		JFileChooser chooser = new JFileChooser();
+		chooser.setDialogTitle("Choose OSRS Cache Directory");
+		chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+		chooser.setAcceptAllFileFilterUsed(false);
+
+		Path candidate = firstExistingCacheCandidate();
+		if (candidate != null)
+		{
+			chooser.setCurrentDirectory(candidate.getParent().toFile());
+			chooser.setSelectedFile(candidate.toFile());
+		}
+		else
+		{
+			chooser.setCurrentDirectory(Path.of(System.getProperty("user.home")).toFile());
+		}
+
+		if (chooser.showOpenDialog(parent == null ? frame : parent) != JFileChooser.APPROVE_OPTION)
+		{
+			return new CacheDirectoryResult(null, true, false);
+		}
+
+		Path selected = chooser.getSelectedFile().toPath().toAbsolutePath().normalize();
+		if (!RuneLiteCacheLocator.isCacheDirectory(selected))
+		{
+			show3DCacheLoadFailure("The selected folder is missing OSRS cache files.");
+			return new CacheDirectoryResult(null, false, true);
+		}
+		return new CacheDirectoryResult(selected, false, false);
 	}
 
 	private boolean confirmMapPrintNotice(Window owner)
@@ -1118,17 +1283,12 @@ public class MapViewerController
 		return value instanceof Integer answer && answer == JOptionPane.YES_OPTION;
 	}
 
-	private boolean confirm3DViewerNotice(Window owner)
+	private void enter3DViewer(Path cacheDirectory, int regionId)
 	{
-		JTextArea message = wrappedText(MAP_3D_NOTICE, 540, 155);
-		JOptionPane pane = new JOptionPane(message, JOptionPane.WARNING_MESSAGE, JOptionPane.YES_NO_OPTION);
-		JDialog dialog = pane.createDialog(owner == null ? frame : owner, "Open 3D Viewer");
-		dialog.setVisible(true);
-		Object value = pane.getValue();
-		return value instanceof Integer answer && answer == JOptionPane.YES_OPTION;
+		enter3DViewer(cacheDirectory, regionId, null);
 	}
 
-	private void enter3DViewer(Path cacheDirectory, int regionId)
+	private void enter3DViewer(Path cacheDirectory, int regionId, Tile startupTile)
 	{
 		if (is3DViewerActive())
 		{
@@ -1149,10 +1309,21 @@ public class MapViewerController
 		mapScrollHorizontalPolicy = mapScrollPane.getHorizontalScrollBarPolicy();
 		mapScrollVerticalPolicy = mapScrollPane.getVerticalScrollBarPolicy();
 		PluginHandle active = activePluginHandle();
-		map3DPanel = new Map3DPanel(cacheDirectory, regionId, atlasPath,
-			memoryBudgetBytes(selectedMemoryBudgetMb()), settings,
-			active == null || !active.installed ? null : active.plugin,
-			this::exit3DViewer);
+		try
+		{
+			map3DPanel = new Map3DPanel(cacheDirectory, regionId, atlasPath,
+				memoryBudgetBytes(selectedMemoryBudgetMb()), settings,
+				active == null || !active.installed ? null : active.plugin,
+				this::exit3DViewer,
+				this::handle3DViewerFailure,
+				startupTile);
+		}
+		catch (RuntimeException ex)
+		{
+			setStatus("Failed to open 3D viewer");
+			Ui.error("The 3D viewer could not start:\n\n" + rootMessage(ex));
+			return;
+		}
 		mapScrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
 		mapScrollPane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER);
 		mapScrollPane.setViewportView(map3DPanel);
@@ -1165,6 +1336,22 @@ public class MapViewerController
 		viewerPane.repaint();
 		sync3DPluginState();
 		setStatus("Opened 3D viewer for region " + regionId);
+	}
+
+	private void handle3DViewerFailure(String message)
+	{
+		if (!is3DViewerActive())
+		{
+			return;
+		}
+		String detail = message == null || message.isBlank() ? "Unknown OpenGL error" : message;
+		exit3DViewer();
+		if (detail.startsWith(Map3DPanel.CACHE_LOAD_FAILURE_PREFIX))
+		{
+			show3DCacheLoadFailure(detail.substring(Map3DPanel.CACHE_LOAD_FAILURE_PREFIX.length()).trim());
+			return;
+		}
+		Ui.error("The 3D viewer could not start:\n\n" + detail + "\n\nReturned to 2D mode.");
 	}
 
 	private void exit3DViewer()
@@ -1187,7 +1374,7 @@ public class MapViewerController
 		viewerPane.revalidate();
 		viewerPane.repaint();
 		sync3DPluginState();
-		setStatus("Returned to 2D map viewer");
+		setStatus("Switched to 2D map viewer");
 	}
 
 	private boolean is3DViewerActive()
@@ -1321,6 +1508,10 @@ public class MapViewerController
 		if (mapPanel != null)
 		{
 			mapPanel.setMapBackgroundColor(picked);
+		}
+		if (map3DPanel != null)
+		{
+			map3DPanel.setMapBackgroundColor(picked);
 		}
 		setStatus("Map background color updated");
 	}
@@ -1720,12 +1911,59 @@ public class MapViewerController
 
 	private Throwable rootCause(Throwable throwable)
 	{
+		if (throwable == null)
+		{
+			return null;
+		}
 		Throwable current = throwable;
 		while (current.getCause() != null)
 		{
 			current = current.getCause();
 		}
 		return current;
+	}
+
+	private String rootMessage(Throwable throwable)
+	{
+		Throwable root = rootCause(throwable);
+		String message = root == null ? null : root.getMessage();
+		return message == null || message.isBlank() ? root == null ? "Unknown error" : root.getClass().getSimpleName() : message;
+	}
+
+	private void show3DCacheLoadFailure(String detail)
+	{
+		setStatus("Failed to load OSRS cache");
+		String detailText = detail == null || detail.isBlank() ? "" : "\n\nDetails: " + detail.trim();
+		JTextArea message = wrappedText(
+			"Failed to load OSRS cache. The selected cache is either missing or invalid. "
+				+ "This can happen if the game has updated and OS Map Viewer's cache loader is outdated "
+				+ "or if the selected folder does not contain a valid OSRS cache."
+				+ "Please try updating OS Map Viewer and loading the map again.\n"
+				+ "For further support, join our Discord"
+				+ detailText,
+			620,
+			190
+		);
+
+		Object[] options = new Object[]{"Open Releases", "Open Discord", "Close"};
+		int answer = JOptionPane.showOptionDialog(
+			frame,
+			message,
+			"OSRS Cache Load Failed",
+			JOptionPane.YES_NO_CANCEL_OPTION,
+			JOptionPane.ERROR_MESSAGE,
+			null,
+			options,
+			options[2]
+		);
+		if (answer == 0)
+		{
+			openUrl(RELEASE_URL);
+		}
+		else if (answer == 1)
+		{
+			openUrl(DISCORD_URL);
+		}
 	}
 
 	private void showMapPrintFailure(Throwable throwable)
@@ -1761,13 +1999,18 @@ public class MapViewerController
 
 	private void openGitHub()
 	{
+		openUrl(GITHUB_URL);
+	}
+
+	private void openUrl(String url)
+	{
 		if (!Desktop.isDesktopSupported())
 		{
 			return;
 		}
 		try
 		{
-			Desktop.getDesktop().browse(URI.create(GITHUB_URL));
+			Desktop.getDesktop().browse(URI.create(url));
 		}
 		catch (Exception ignored)
 		{
@@ -1908,6 +2151,20 @@ public class MapViewerController
 			this.plugin = plugin;
 			this.enabled = enabled;
 		}
+	}
+
+	private enum StartupMode
+	{
+		MAP_2D,
+		VIEWER_3D
+	}
+
+	private record CacheSelection(boolean autoDetect, boolean cancelled)
+	{
+	}
+
+	private record CacheDirectoryResult(Path directory, boolean cancelled, boolean failed)
+	{
 	}
 
 	private record MemoryPreset(String label, int megabytes)

@@ -4,6 +4,8 @@ Plugins are disabled by default. Only one plugin can be active at a time.
 
 When no plugin is active, OS Map Viewer only shows the map viewer and core map controls. A small message tells you how to select a plugin.
 
+The active plugin stays active when you enter 3D mode. Plugins that support 3D can draw in-world overlays, add 3D right-click tile actions, and add controls to the `View Controls` overlay.
+
 To enable a plugin:
 
 1. Click the hamburger button in the left rail.

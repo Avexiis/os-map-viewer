@@ -63,6 +63,7 @@ public final class MapControlsPanel extends JPanel
 	private final JButton btnJumpRegionId = new JButton("Jump");
 	private final JButton btnJumpRegionCoords = new JButton("Jump");
 	private final JButton btnJump = new JButton("Jump");
+	private final JButton btnSwitch3D = new JButton("Switch to 3D Map");
 	private final JButton btnCollapse = new JButton(">");
 	private final JLabel lbTitle = new JLabel("Map Controls");
 	private final JPanel header = new JPanel(new BorderLayout(8, 0));
@@ -87,6 +88,7 @@ public final class MapControlsPanel extends JPanel
 	public final Event<Boolean> onToggleLocked = new Event<>();
 	public final Event<Integer> onPlaneChanged = new Event<>();
 	public final Event<Tile> onJumpToTile = new Event<>();
+	public final Event<Void> onSwitchTo3DMap = new Event<>();
 
 	public MapControlsPanel()
 	{
@@ -98,6 +100,7 @@ public final class MapControlsPanel extends JPanel
 		styleButton(btnJumpRegionId);
 		styleButton(btnJumpRegionCoords);
 		styleButton(btnJump);
+		styleButton(btnSwitch3D);
 		styleCollapseButton(btnCollapse, EXPANDED_COLLAPSE_BUTTON_SIZE);
 		lbTitle.setFont(lbTitle.getFont().deriveFont(Font.BOLD, 13f));
 
@@ -167,6 +170,11 @@ public final class MapControlsPanel extends JPanel
 		jumpRow.add(btnJump, BorderLayout.CENTER);
 		jumpRows.add(Box.createVerticalStrut(6));
 		jumpRows.add(jumpRow);
+		JPanel switch3DRow = new JPanel(new BorderLayout());
+		switch3DRow.setOpaque(false);
+		switch3DRow.add(btnSwitch3D, BorderLayout.CENTER);
+		jumpRows.add(Box.createVerticalStrut(8));
+		jumpRows.add(switch3DRow);
 		lower.add(jumpRows, BorderLayout.CENTER);
 		body.add(lower, BorderLayout.CENTER);
 
@@ -252,6 +260,7 @@ public final class MapControlsPanel extends JPanel
 			}
 			onJumpToTile.emit(new Tile(x, y, z == null ? 0 : z));
 		});
+		btnSwitch3D.addActionListener(e -> onSwitchTo3DMap.emit(null));
 		btnCollapse.addActionListener(e -> setCollapsed(!collapsed));
 
 		setPlaneCount(4);

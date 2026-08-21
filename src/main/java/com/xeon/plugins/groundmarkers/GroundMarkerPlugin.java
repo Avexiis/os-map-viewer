@@ -34,6 +34,13 @@ import com.xeon.view.MapLayer;
 import com.xeon.view.MapMouseEvent;
 import com.xeon.view.MapRenderContext;
 import com.xeon.view.MapTool;
+import com.xeon.view3d.Map3DControlHint;
+import com.xeon.view3d.Map3DLayer;
+import com.xeon.view3d.Map3DMouseEvent;
+import com.xeon.view3d.Map3DOverlay;
+import com.xeon.view3d.Map3DRenderContext;
+import com.xeon.view3d.Map3DTileAction;
+import com.xeon.view3d.Map3DTileOverlay;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -47,9 +54,10 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-public final class GroundMarkerPlugin implements MapViewerPlugin, MapLayer, MapTool
+public final class GroundMarkerPlugin implements MapViewerPlugin, MapLayer, MapTool, Map3DLayer
 {
 	private static final double FULL_FOCUS_ZOOM = Double.POSITIVE_INFINITY;
+	private static final Color MARKER_FILL_COLOR = new Color(0x66000000, true);
 
 	private final GroundMarkerProject project = new GroundMarkerProject();
 	private final LinkedHashSet<Integer> selectedRegionIds = new LinkedHashSet<>();
@@ -114,6 +122,7 @@ public final class GroundMarkerPlugin implements MapViewerPlugin, MapLayer, MapT
 				currentRegionId = GroundMarker.regionId(selectedTile);
 			}
 			refreshPanels();
+			context.repaintVisible();
 			context.setStatus("Saved " + targets.size() + " marker(s)");
 		});
 		sidebar.setOnDelete(this::deleteSelectedMarker);
@@ -160,6 +169,10 @@ public final class GroundMarkerPlugin implements MapViewerPlugin, MapLayer, MapT
 		if (event == null || event.tile() == null)
 		{
 			return false;
+		}
+		if (isPopupTrigger(event))
+		{
+			return showTileActionMenu(event);
 		}
 		if (event.isShiftDown())
 		{
@@ -254,6 +267,62 @@ public final class GroundMarkerPlugin implements MapViewerPlugin, MapLayer, MapT
 	}
 
 	@Override
+	public Map3DOverlay overlay(Map3DRenderContext context)
+	{
+		if (context == null || context.visibleRegionIds().isEmpty())
+		{
+			return Map3DOverlay.empty();
+		}
+		Set<Integer> loadedRegions = Set.copyOf(context.visibleRegionIds());
+		List<Map3DTileOverlay> overlays = new ArrayList<>();
+		for (GroundMarker marker : project.inRegions(loadedRegions))
+		{
+			Color color = marker.awtColor();
+			overlays.add(new Map3DTileOverlay(
+				marker.tile(),
+				MARKER_FILL_COLOR,
+				color,
+				marker.label
+			));
+		}
+		return new Map3DOverlay(List.of(), List.of(), List.of(), overlays);
+	}
+
+	@Override
+	public List<Map3DTileAction> tileActions(Map3DMouseEvent event)
+	{
+		if (event == null || event.tile() == null)
+		{
+			return List.of();
+		}
+		Tile tile = event.tile();
+		GroundMarker marker = project.at(tile).orElse(null);
+		List<Map3DTileAction> actions = new ArrayList<>();
+		if (marker == null)
+		{
+			actions.add(new Map3DTileAction("Add marker", () -> addMarkerAt(tile)));
+			return List.copyOf(actions);
+		}
+
+		actions.add(new Map3DTileAction("Select marker", () -> selectMarker(marker, false)));
+		actions.add(new Map3DTileAction(marker.label == null || marker.label.isBlank() ? "Add label..." : "Set label...",
+			() -> promptMarkerLabel(marker)));
+		actions.add(new Map3DTileAction("Set color...", () -> promptMarkerColor(marker)));
+		actions.add(new Map3DTileAction("Delete marker", () -> deleteMarkerAt(tile)));
+		return List.copyOf(actions);
+	}
+
+	@Override
+	public List<Map3DControlHint> controlHints()
+	{
+		return List.of(
+			new Map3DControlHint("Right-click tile", "add or edit a ground marker"),
+			new Map3DControlHint("Click marker list", "warp the camera to the marker"),
+			new Map3DControlHint("Import markers", "RuneLite, HDOS, and JSON markers draw in 2D and 3D")
+		);
+	}
+
+	@Override
 	public void planeChanged(int plane)
 	{
 		Tile current = selectedTile;
@@ -298,6 +367,130 @@ public final class GroundMarkerPlugin implements MapViewerPlugin, MapLayer, MapT
 		context.mapPanel().repaintRegion(regionId);
 	}
 
+	private boolean isPopupTrigger(MapMouseEvent event)
+	{
+		return event.source().isPopupTrigger() || SwingUtilities.isRightMouseButton(event.source());
+	}
+
+	private boolean showTileActionMenu(MapMouseEvent event)
+	{
+		List<Map3DTileAction> actions = tileActions(new Map3DMouseEvent(
+			event.tile(),
+			event.source().getButton(),
+			true,
+			event.isAdditiveSelection(),
+			event.isShiftDown()
+		));
+		if (actions.isEmpty())
+		{
+			return false;
+		}
+
+		JPopupMenu popup = new JPopupMenu();
+		for (Map3DTileAction action : actions)
+		{
+			JMenuItem item = new JMenuItem(action.label());
+			item.addActionListener(e -> {
+				action.run();
+				context.repaintVisible();
+			});
+			popup.add(item);
+		}
+		popup.show(event.source().getComponent(), event.source().getX(), event.source().getY());
+		return true;
+	}
+
+	private void addMarkerAt(Tile tile)
+	{
+		if (tile == null)
+		{
+			return;
+		}
+		GroundMarker marker = GroundMarker.fromTile(tile, null, GroundMarker.DEFAULT_COLOR);
+		project.upsert(marker);
+		rememberSessionNewTile(marker);
+		selectMarker(marker, false);
+		repaintMarkerTile(tile);
+		context.setStatus("Added marker at " + tile.x + "," + tile.y + "," + tile.z);
+	}
+
+	private void promptMarkerLabel(GroundMarker marker)
+	{
+		if (marker == null)
+		{
+			return;
+		}
+		String current = marker.label == null ? "" : marker.label;
+		String label = JOptionPane.showInputDialog(
+			context.frame(),
+			"Marker label:",
+			current
+		);
+		if (label == null)
+		{
+			return;
+		}
+		GroundMarker updated = marker.copy();
+		updated.label = GroundMarker.normalizeLabel(label);
+		project.upsert(updated);
+		selectMarker(updated, false);
+		repaintMarkerTile(updated.tile());
+		context.setStatus("Updated marker label");
+	}
+
+	private void promptMarkerColor(GroundMarker marker)
+	{
+		if (marker == null)
+		{
+			return;
+		}
+		Color current = marker.awtColor();
+		Color picked = JColorChooser.showDialog(context.frame(), "Ground Marker Color", current);
+		if (picked == null)
+		{
+			return;
+		}
+		int argb = (current.getAlpha() << 24) | (picked.getRGB() & 0x00FFFFFF);
+		GroundMarker updated = marker.copy();
+		updated.color = String.format("#%08X", argb);
+		project.upsert(updated);
+		selectMarker(updated, false);
+		repaintMarkerTile(updated.tile());
+		context.setStatus("Updated marker color");
+	}
+
+	private void deleteMarkerAt(Tile tile)
+	{
+		if (tile == null)
+		{
+			return;
+		}
+		if (project.remove(tile))
+		{
+			sessionNewTiles.remove(tile);
+			selectedTiles.remove(tile);
+			selectedTile = selectedTiles.isEmpty() ? null : lastSelectedTile();
+			selectedMarker = selectedTile == null ? null : project.at(selectedTile).orElse(null);
+			if (selectedMarker == null)
+			{
+				selectedTiles.removeIf(selected -> project.at(selected).isEmpty());
+				selectedTile = selectedTiles.isEmpty() ? null : lastSelectedTile();
+			}
+			refreshPanels();
+			repaintMarkerTile(tile);
+			context.setStatus("Deleted marker at " + tile.x + "," + tile.y + "," + tile.z);
+		}
+	}
+
+	private void repaintMarkerTile(Tile tile)
+	{
+		if (tile != null)
+		{
+			context.mapPanel().repaintTile(tile);
+		}
+		context.repaintVisible();
+	}
+
 	private void selectTile(Tile tile, boolean focus, boolean additive)
 	{
 		selectTile(tile, focus, additive, null);
@@ -316,6 +509,7 @@ public final class GroundMarkerPlugin implements MapViewerPlugin, MapLayer, MapT
 			{
 				context.mapPanel().repaintTile(previous);
 			}
+			context.repaintVisible();
 			return;
 		}
 
@@ -339,7 +533,7 @@ public final class GroundMarkerPlugin implements MapViewerPlugin, MapLayer, MapT
 			currentRegionId = GroundMarker.regionId(selectedTile);
 			if (focus)
 			{
-				context.mapPanel().focusTile(selectedTile, targetZoom);
+				context.focusTile(selectedTile, targetZoom);
 			}
 		}
 		refreshPanels();
@@ -351,6 +545,7 @@ public final class GroundMarkerPlugin implements MapViewerPlugin, MapLayer, MapT
 		{
 			context.mapPanel().repaintTile(selected);
 		}
+		context.repaintVisible();
 	}
 
 	private void selectMarker(GroundMarker marker, boolean focus)
@@ -367,10 +562,11 @@ public final class GroundMarkerPlugin implements MapViewerPlugin, MapLayer, MapT
 		currentRegionId = selectedMarker.regionId;
 		if (focus)
 		{
-			context.mapPanel().focusTile(selectedTile, FULL_FOCUS_ZOOM);
+			context.focusTile(selectedTile, FULL_FOCUS_ZOOM);
 		}
 		refreshPanels();
 		context.mapPanel().repaintTile(selectedTile);
+		context.repaintVisible();
 	}
 
 	private void clearTileSelection()
@@ -389,6 +585,7 @@ public final class GroundMarkerPlugin implements MapViewerPlugin, MapLayer, MapT
 		{
 			context.mapPanel().repaintTile(tile);
 		}
+		context.repaintVisible();
 	}
 
 	private void deleteSelectedMarker()
@@ -401,11 +598,14 @@ public final class GroundMarkerPlugin implements MapViewerPlugin, MapLayer, MapT
 			{
 				deleted++;
 				sessionNewTiles.remove(tile);
+				selectedTiles.remove(tile);
 				context.mapPanel().repaintTile(tile);
 			}
 		}
+		selectedTile = selectedTiles.isEmpty() ? null : lastSelectedTile();
 		selectedMarker = selectedTile == null ? null : project.at(selectedTile).orElse(null);
 		refreshPanels();
+		context.repaintVisible();
 		context.setStatus("Deleted " + deleted + " marker(s)");
 	}
 
@@ -500,8 +700,7 @@ public final class GroundMarkerPlugin implements MapViewerPlugin, MapLayer, MapT
 				continue;
 			}
 			Color color = marker.awtColor();
-			int fillAlpha = Math.max(55, Math.min(150, (int) Math.round(color.getAlpha() * 0.55)));
-			g.setColor(new Color(color.getRed(), color.getGreen(), color.getBlue(), fillAlpha));
+			g.setColor(MARKER_FILL_COLOR);
 			g.fillRect(rect.x, rect.y, rect.width, rect.height);
 			g.setColor(color);
 			g.drawRect(rect.x, rect.y, rect.width, rect.height);
@@ -727,7 +926,7 @@ public final class GroundMarkerPlugin implements MapViewerPlugin, MapLayer, MapT
 		{
 			refreshPanels();
 		}
-		context.mapPanel().repaintVisible();
+		context.repaintVisible();
 		context.setStatus(status + " (" + changed + " changed)");
 	}
 

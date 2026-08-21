@@ -101,14 +101,14 @@ final class TerrainRenderer
 		in vec3 vNormal;
 		in float vAlpha;
 		in float vDistance;
-		in vec2 vTexCoord;
-		flat in float vTextureLayer;
-		flat in float vTextureAlphaCutoff;
-
-		uniform sampler2DArray uTextures;
-		uniform float uTextureLayerCount;
-		uniform float uFogStart;
-		uniform float uFogEnd;
+			in vec2 vTexCoord;
+			flat in float vTextureLayer;
+			flat in float vTextureAlphaCutoff;
+			uniform sampler2DArray uTextures;
+			uniform float uTextureLayerCount;
+			uniform float uFogStart;
+			uniform float uFogEnd;
+			uniform vec3 uFogColor;
 
 		out vec4 fragColor;
 
@@ -129,12 +129,11 @@ final class TerrainRenderer
 				{
 					discard;
 				}
-				baseColor *= textureColor.rgb;
-				alpha *= textureColor.a;
-			}
-			vec3 sky = vec3(0.43, 0.53, 0.62);
-			float fog = smoothstep(uFogStart, uFogEnd, vDistance);
-			vec3 color = mix(baseColor * shade, sky, fog);
+					baseColor *= textureColor.rgb;
+					alpha *= textureColor.a;
+				}
+				float fog = smoothstep(uFogStart, uFogEnd, vDistance);
+				vec3 color = mix(baseColor * shade, uFogColor, fog);
 			if (alpha <= 0.01)
 			{
 				discard;
@@ -214,7 +213,7 @@ final class TerrainRenderer
 	private static final int MAX_UPLOAD_FLOATS_PER_FRAME = MAX_UPLOAD_BYTES_PER_FRAME / Float.BYTES;
 	private static final float OUTLINE_HEIGHT_OFFSET = SceneScale.SCENE_TO_WORLD * 1.5f;
 	private static final float OVERLAY_PATH_HEIGHT_OFFSET = 0.28f;
-	private static final float OVERLAY_MARKER_HEIGHT_OFFSET = 0.42f;
+	private static final float OVERLAY_MARKER_HEIGHT_OFFSET = OUTLINE_HEIGHT_OFFSET;
 	private static final float OVERLAY_LABEL_HEIGHT_OFFSET = 1.15f;
 	private static final float OVERLAY_LABEL_STACK_SPACING = 0.62f;
 	private static final double OVERLAY_TRANSPORT_ARROW_LENGTH_TILES = 1.35;
@@ -250,6 +249,7 @@ final class TerrainRenderer
 	private int terrainTextureLayerCountLocation;
 	private int terrainFogStartLocation;
 	private int terrainFogEndLocation;
+	private int terrainFogColorLocation;
 	private int outlineProgram;
 	private int outlineMvpLocation;
 	private int outlineColorLocation;
@@ -263,6 +263,9 @@ final class TerrainRenderer
 	private int overlayLineVao;
 	private int overlayLineVbo;
 	private int overlayLineVertexCount;
+	private int overlayTileVao;
+	private int overlayTileVbo;
+	private int overlayTileVertexCount;
 	private int overlayTextVao;
 	private int overlayTextVbo;
 	private int overlayTextTexture;
@@ -278,6 +281,7 @@ final class TerrainRenderer
 	private TerrainRenderStats renderStats = TerrainRenderStats.unavailable();
 	private Map3DOverlay pluginOverlay = Map3DOverlay.empty();
 	private List<OverlayLineDraw> overlayLineDraws = List.of();
+	private List<OverlayLineDraw> overlayTileDraws = List.of();
 	private List<OverlayTextLabel> overlayTextLabels = List.of();
 	private boolean initialized;
 	private int antialiasingSamples = 4;
@@ -285,6 +289,9 @@ final class TerrainRenderer
 	private long startNanos;
 	private boolean pluginOverlayDirty = true;
 	private boolean pluginOverlayOnTop;
+	private float backgroundRed = 0.0f;
+	private float backgroundGreen = 0.0f;
+	private float backgroundBlue = 0.0f;
 
 	void init()
 	{
@@ -309,7 +316,7 @@ final class TerrainRenderer
 		}
 		GL33C.glEnable(GL33C.GL_BLEND);
 		GL33C.glBlendFunc(GL33C.GL_SRC_ALPHA, GL33C.GL_ONE_MINUS_SRC_ALPHA);
-		GL33C.glClearColor(0.43f, 0.53f, 0.62f, 1.0f);
+		GL33C.glClearColor(backgroundRed, backgroundGreen, backgroundBlue, 1.0f);
 
 		terrainProgram = createProgram(TERRAIN_VERTEX_SHADER, TERRAIN_FRAGMENT_SHADER);
 		terrainMvpLocation = GL33C.glGetUniformLocation(terrainProgram, "uMvp");
@@ -320,6 +327,7 @@ final class TerrainRenderer
 		terrainTextureLayerCountLocation = GL33C.glGetUniformLocation(terrainProgram, "uTextureLayerCount");
 		terrainFogStartLocation = GL33C.glGetUniformLocation(terrainProgram, "uFogStart");
 		terrainFogEndLocation = GL33C.glGetUniformLocation(terrainProgram, "uFogEnd");
+		terrainFogColorLocation = GL33C.glGetUniformLocation(terrainProgram, "uFogColor");
 		outlineProgram = createProgram(OUTLINE_VERTEX_SHADER, OUTLINE_FRAGMENT_SHADER);
 		outlineMvpLocation = GL33C.glGetUniformLocation(outlineProgram, "uMvp");
 		outlineColorLocation = GL33C.glGetUniformLocation(outlineProgram, "uColor");
@@ -359,6 +367,14 @@ final class TerrainRenderer
 	void setPluginOverlayOnTop(boolean pluginOverlayOnTop)
 	{
 		this.pluginOverlayOnTop = pluginOverlayOnTop;
+	}
+
+	void setBackgroundColor(Color color)
+	{
+		Color background = color == null ? Color.BLACK : color;
+		backgroundRed = background.getRed() / 255.0f;
+		backgroundGreen = background.getGreen() / 255.0f;
+		backgroundBlue = background.getBlue() / 255.0f;
 	}
 
 	void invalidatePluginOverlayGeometry()
@@ -402,6 +418,7 @@ final class TerrainRenderer
 		int renderFramebuffer = prepareRenderTarget(safeWidth, safeHeight, defaultFramebuffer);
 		GL33C.glBindFramebuffer(GL33C.GL_FRAMEBUFFER, renderFramebuffer);
 		GL33C.glViewport(0, 0, safeWidth, safeHeight);
+		GL33C.glClearColor(backgroundRed, backgroundGreen, backgroundBlue, 1.0f);
 		GL33C.glClear(GL33C.GL_COLOR_BUFFER_BIT | GL33C.GL_DEPTH_BUFFER_BIT);
 
 		RenderCounts renderCounts = RenderCounts.empty();
@@ -457,6 +474,16 @@ final class TerrainRenderer
 		{
 			GL33C.glDeleteVertexArrays(overlayLineVao);
 			overlayLineVao = 0;
+		}
+		if (overlayTileVbo != 0)
+		{
+			GL33C.glDeleteBuffers(overlayTileVbo);
+			overlayTileVbo = 0;
+		}
+		if (overlayTileVao != 0)
+		{
+			GL33C.glDeleteVertexArrays(overlayTileVao);
+			overlayTileVao = 0;
 		}
 		if (overlayTextVbo != 0)
 		{
@@ -517,6 +544,7 @@ final class TerrainRenderer
 		float fogEnd = fogEndDistance();
 		GL33C.glUniform1f(terrainFogStartLocation, Math.max(18.0f, fogEnd - 56.0f));
 		GL33C.glUniform1f(terrainFogEndLocation, fogEnd);
+		GL33C.glUniform3f(terrainFogColorLocation, backgroundRed, backgroundGreen, backgroundBlue);
 		GL33C.glActiveTexture(GL33C.GL_TEXTURE0);
 		GL33C.glBindTexture(GL33C.GL_TEXTURE_2D_ARRAY, terrainTextureArray);
 		GL33C.glUniform1i(terrainTextureLocation, 0);
@@ -584,6 +612,7 @@ final class TerrainRenderer
 				POSITION_FLOATS * Float.BYTES,
 				0L
 			);
+			GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, 0);
 			GL33C.glBindVertexArray(0);
 		}
 
@@ -628,7 +657,8 @@ final class TerrainRenderer
 		}
 		try
 		{
-			return renderHoveredTile() + renderPluginOverlay(camera);
+			int hoverDrawCalls = hoveredTileCoveredByPluginOverlay() ? 0 : renderHoveredTile();
+			return hoverDrawCalls + renderPluginOverlay(camera);
 		}
 		finally
 		{
@@ -646,34 +676,115 @@ final class TerrainRenderer
 			rebuildPluginOverlayLines();
 			pluginOverlayDirty = false;
 		}
+		int drawCalls = renderPluginOverlayTiles();
 		if (overlayLineVertexCount <= 0 || overlayLineDraws.isEmpty())
 		{
-			return renderPluginOverlayText(camera);
+			return drawCalls + renderPluginOverlayText(camera);
 		}
 
 		GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, overlayLineVbo);
+		GL33C.glUseProgram(outlineProgram);
+		try
+		{
+			try (MemoryStack stack = MemoryStack.stackPush())
+			{
+				FloatBuffer matrixBuffer = stack.mallocFloat(16);
+				GL33C.glUniformMatrix4fv(outlineMvpLocation, false, mvp.get(matrixBuffer));
+			}
+			GL33C.glBindVertexArray(overlayLineVao);
+			if (validDrawRange(0, overlayLineVertexCount, overlayLineVertexCount, 2))
+			{
+				GL33C.glUniform4f(outlineColorLocation, 0.0f, 0.0f, 0.0f, 0.70f);
+				GL33C.glLineWidth(5.2f);
+				GL33C.glDrawArrays(GL33C.GL_LINES, 0, overlayLineVertexCount);
+				drawCalls++;
+			}
+			for (OverlayLineDraw draw : overlayLineDraws)
+			{
+				if (!validDrawRange(draw, overlayLineVertexCount, 2))
+				{
+					continue;
+				}
+				GL33C.glUniform4f(outlineColorLocation, draw.red(), draw.green(), draw.blue(), draw.alpha());
+				GL33C.glLineWidth(2.7f);
+				GL33C.glDrawArrays(GL33C.GL_LINES, draw.startVertex(), draw.vertexCount());
+				drawCalls++;
+			}
+		}
+		finally
+		{
+			GL33C.glLineWidth(1.0f);
+			GL33C.glBindVertexArray(0);
+			GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, 0);
+			GL33C.glUseProgram(0);
+		}
+		return drawCalls + renderPluginOverlayText(camera);
+	}
+
+	private boolean hoveredTileCoveredByPluginOverlay()
+	{
+		if (hoveredTile == null || pluginOverlay.tileOverlays().isEmpty())
+		{
+			return false;
+		}
+		for (Map3DTileOverlay overlay : pluginOverlay.tileOverlays())
+		{
+			if (overlay == null)
+			{
+				continue;
+			}
+			Tile tile = overlay.tile();
+			if (tile != null
+				&& tile.x == hoveredTile.worldX()
+				&& tile.y == hoveredTile.worldY()
+				&& tile.z == hoveredTile.plane())
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private int renderPluginOverlayTiles()
+	{
+		if (overlayTileVertexCount <= 0 || overlayTileDraws.isEmpty())
+		{
+			return 0;
+		}
+
+		GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, overlayTileVbo);
 		GL33C.glUseProgram(outlineProgram);
 		try (MemoryStack stack = MemoryStack.stackPush())
 		{
 			FloatBuffer matrixBuffer = stack.mallocFloat(16);
 			GL33C.glUniformMatrix4fv(outlineMvpLocation, false, mvp.get(matrixBuffer));
 		}
-		GL33C.glBindVertexArray(overlayLineVao);
-		GL33C.glUniform4f(outlineColorLocation, 0.0f, 0.0f, 0.0f, 0.70f);
-		GL33C.glLineWidth(5.2f);
-		GL33C.glDrawArrays(GL33C.GL_LINES, 0, overlayLineVertexCount);
-		int drawCalls = 1;
-		for (OverlayLineDraw draw : overlayLineDraws)
+
+		boolean depthMask = GL33C.glGetBoolean(GL33C.GL_DEPTH_WRITEMASK);
+		GL33C.glDepthMask(false);
+		int drawCalls = 0;
+		try
 		{
-			GL33C.glUniform4f(outlineColorLocation, draw.red(), draw.green(), draw.blue(), draw.alpha());
-			GL33C.glLineWidth(2.7f);
-			GL33C.glDrawArrays(GL33C.GL_LINES, draw.startVertex(), draw.vertexCount());
-			drawCalls++;
+			GL33C.glBindVertexArray(overlayTileVao);
+			for (OverlayLineDraw draw : overlayTileDraws)
+			{
+				if (!validDrawRange(draw, overlayTileVertexCount, 3))
+				{
+					continue;
+				}
+				GL33C.glUniform4f(outlineColorLocation, draw.red(), draw.green(), draw.blue(), draw.alpha());
+				GL33C.glDrawArrays(GL33C.GL_TRIANGLES, draw.startVertex(), draw.vertexCount());
+				drawCalls++;
+			}
 		}
-		GL33C.glLineWidth(1.0f);
-		GL33C.glBindVertexArray(0);
-		GL33C.glUseProgram(0);
-		return drawCalls + renderPluginOverlayText(camera);
+		finally
+		{
+			GL33C.glBindVertexArray(0);
+			GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, 0);
+			GL33C.glDepthMask(depthMask);
+			GL33C.glUseProgram(0);
+		}
+		return drawCalls;
 	}
 
 	private void rebuildPluginOverlayLines()
@@ -693,10 +804,30 @@ final class TerrainRenderer
 				OVERLAY_LINE_POSITION_FLOATS * Float.BYTES,
 				0L
 			);
+			GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, 0);
+			GL33C.glBindVertexArray(0);
+		}
+		if (overlayTileVao == 0)
+		{
+			overlayTileVao = GL33C.glGenVertexArrays();
+			overlayTileVbo = GL33C.glGenBuffers();
+			GL33C.glBindVertexArray(overlayTileVao);
+			GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, overlayTileVbo);
+			GL33C.glEnableVertexAttribArray(0);
+			GL33C.glVertexAttribPointer(
+				0,
+				OVERLAY_LINE_POSITION_FLOATS,
+				GL33C.GL_FLOAT,
+				false,
+				OVERLAY_LINE_POSITION_FLOATS * Float.BYTES,
+				0L
+			);
+			GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, 0);
 			GL33C.glBindVertexArray(0);
 		}
 
 		Map<Integer, OverlayLineBatch> batches = new LinkedHashMap<>();
+		Map<Integer, OverlayLineBatch> tileBatches = new LinkedHashMap<>();
 		for (Map3DPathSegment segment : pluginOverlay.segments())
 		{
 			if (segment == null)
@@ -712,6 +843,15 @@ final class TerrainRenderer
 			{
 				addTileHighlightLines(batches, marker.tile(), marker.color());
 			}
+		}
+		for (Map3DTileOverlay overlay : pluginOverlay.tileOverlays())
+		{
+			if (overlay == null)
+			{
+				continue;
+			}
+			addTileFill(tileBatches, overlay.tile(), overlay.fillColor());
+			addTileHighlightLines(batches, overlay.tile(), overlay.outlineColor());
 		}
 		Set<Long> labelFlagTiles = new HashSet<>();
 		for (Map3DLabel label : pluginOverlay.labels())
@@ -746,10 +886,12 @@ final class TerrainRenderer
 
 		overlayLineDraws = List.copyOf(draws);
 		overlayLineVertexCount = startVertex;
+		uploadPluginOverlayTiles(tileBatches);
 		GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, overlayLineVbo);
 		if (vertices.size() == 0)
 		{
 			GL33C.glBufferData(GL33C.GL_ARRAY_BUFFER, 0L, GL33C.GL_DYNAMIC_DRAW);
+			GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, 0);
 			rebuildPluginOverlayTextAtlas();
 			return;
 		}
@@ -762,8 +904,55 @@ final class TerrainRenderer
 		finally
 		{
 			MemoryUtil.memFree(buffer);
+			GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, 0);
 		}
 		rebuildPluginOverlayTextAtlas();
+	}
+
+	private void uploadPluginOverlayTiles(Map<Integer, OverlayLineBatch> batches)
+	{
+		FloatList vertices = new FloatList();
+		List<OverlayLineDraw> draws = new ArrayList<>();
+		int startVertex = 0;
+		for (OverlayLineBatch batch : batches.values())
+		{
+			int vertexCount = batch.vertexCount();
+			if (vertexCount <= 0)
+			{
+				continue;
+			}
+			draws.add(new OverlayLineDraw(
+				startVertex,
+				vertexCount,
+				channel(batch.argb(), 16),
+				channel(batch.argb(), 8),
+				channel(batch.argb(), 0),
+				channel(batch.argb(), 24)
+			));
+			vertices.addAll(batch.vertices());
+			startVertex += vertexCount;
+		}
+
+		overlayTileDraws = List.copyOf(draws);
+		overlayTileVertexCount = startVertex;
+		GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, overlayTileVbo);
+		if (vertices.size() == 0)
+		{
+			GL33C.glBufferData(GL33C.GL_ARRAY_BUFFER, 0L, GL33C.GL_DYNAMIC_DRAW);
+			GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, 0);
+			return;
+		}
+		FloatBuffer buffer = MemoryUtil.memAllocFloat(vertices.size());
+		try
+		{
+			buffer.put(vertices.array(), 0, vertices.size()).flip();
+			GL33C.glBufferData(GL33C.GL_ARRAY_BUFFER, buffer, GL33C.GL_DYNAMIC_DRAW);
+		}
+		finally
+		{
+			MemoryUtil.memFree(buffer);
+			GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, 0);
+		}
 	}
 
 	private void rebuildPluginOverlayTextAtlas()
@@ -812,7 +1001,7 @@ final class TerrainRenderer
 			{
 				break;
 			}
-			packed.add(new PackedOverlayText(label.position(), text, cursorX, cursorY, width, height));
+			packed.add(new PackedOverlayText(label.position(), text, label.color(), cursorX, cursorY, width, height));
 			cursorX += width;
 			rowHeight = Math.max(rowHeight, height);
 			atlasWidth = Math.max(atlasWidth, cursorX);
@@ -849,7 +1038,7 @@ final class TerrainRenderer
 						g.drawString(label.text(), x + dx, baseline + dy);
 					}
 				}
-				g.setColor(Color.WHITE);
+				g.setColor(label.color());
 				g.drawString(label.text(), label.x() + OVERLAY_TEXT_PADDING_X, baseline);
 			}
 		}
@@ -908,7 +1097,21 @@ final class TerrainRenderer
 			Vector3f position = tileWorldPosition(label.tile(), heightOffset);
 			if (position != null)
 			{
-				candidates.add(new OverlayTextCandidate(position, label.text()));
+					candidates.add(new OverlayTextCandidate(position, label.text(), Color.WHITE));
+			}
+		}
+		for (Map3DTileOverlay overlay : pluginOverlay.tileOverlays())
+		{
+			if (overlay == null || overlay.label().isBlank())
+			{
+				continue;
+			}
+			int stackIndex = labelStackIndex(labelStacks, overlay.tile());
+			float heightOffset = OVERLAY_LABEL_HEIGHT_OFFSET + stackIndex * OVERLAY_LABEL_STACK_SPACING;
+			Vector3f position = tileWorldPosition(overlay.tile(), heightOffset);
+			if (position != null)
+			{
+					candidates.add(new OverlayTextCandidate(position, overlay.label(), overlay.outlineColor()));
 			}
 		}
 		return candidates;
@@ -1000,30 +1203,45 @@ final class TerrainRenderer
 		finally
 		{
 			MemoryUtil.memFree(buffer);
+			GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, 0);
 		}
 
 		GL33C.glUseProgram(textProgram);
-		try (MemoryStack stack = MemoryStack.stackPush())
+		try
 		{
-			FloatBuffer matrixBuffer = stack.mallocFloat(16);
-			GL33C.glUniformMatrix4fv(textMvpLocation, false, mvp.get(matrixBuffer));
+			try (MemoryStack stack = MemoryStack.stackPush())
+			{
+				FloatBuffer matrixBuffer = stack.mallocFloat(16);
+				GL33C.glUniformMatrix4fv(textMvpLocation, false, mvp.get(matrixBuffer));
+			}
+			GL33C.glActiveTexture(GL33C.GL_TEXTURE0);
+			GL33C.glBindTexture(GL33C.GL_TEXTURE_2D, overlayTextTexture);
+			GL33C.glUniform1i(textTextureLocation, 0);
+			GL33C.glBindVertexArray(overlayTextVao);
+			int vertexCount = vertices.size() / OVERLAY_TEXT_FLOATS_PER_VERTEX;
+			if (vertexCount > 0 && vertexCount * OVERLAY_TEXT_FLOATS_PER_VERTEX == vertices.size())
+			{
+				GL33C.glDrawArrays(GL33C.GL_TRIANGLES, 0, vertexCount);
+			}
 		}
-		GL33C.glActiveTexture(GL33C.GL_TEXTURE0);
-		GL33C.glBindTexture(GL33C.GL_TEXTURE_2D, overlayTextTexture);
-		GL33C.glUniform1i(textTextureLocation, 0);
-		GL33C.glBindVertexArray(overlayTextVao);
-		GL33C.glDrawArrays(GL33C.GL_TRIANGLES, 0, vertices.size() / OVERLAY_TEXT_FLOATS_PER_VERTEX);
-		GL33C.glBindVertexArray(0);
-		GL33C.glBindTexture(GL33C.GL_TEXTURE_2D, 0);
-		GL33C.glUseProgram(0);
+		finally
+		{
+			GL33C.glBindVertexArray(0);
+			GL33C.glBindTexture(GL33C.GL_TEXTURE_2D, 0);
+			GL33C.glUseProgram(0);
+		}
 		return 1;
 	}
 
 	private FloatList overlayTextVertices(FreeCamera camera)
 	{
 		Vector3f direction = camera.direction(new Vector3f());
+		if (!isFinite(direction))
+		{
+			return new FloatList();
+		}
 		Vector3f right = direction.cross(new Vector3f(0.0f, 1.0f, 0.0f), new Vector3f());
-		if (right.lengthSquared() < 0.0001f)
+		if (!isFinite(right) || right.lengthSquared() < 0.0001f)
 		{
 			right.set(1.0f, 0.0f, 0.0f);
 		}
@@ -1032,6 +1250,10 @@ final class TerrainRenderer
 			right.normalize();
 		}
 		Vector3f up = new Vector3f(right).cross(direction).normalize();
+		if (!isFinite(up))
+		{
+			return new FloatList();
+		}
 		FloatList vertices = new FloatList();
 		for (OverlayTextLabel label : overlayTextLabels)
 		{
@@ -1044,6 +1266,10 @@ final class TerrainRenderer
 			Vector3f bottomRight = new Vector3f(center).add(halfRight).sub(halfUp);
 			Vector3f topRight = new Vector3f(center).add(halfRight).add(halfUp);
 			Vector3f topLeft = new Vector3f(center).sub(halfRight).add(halfUp);
+			if (!isFinite(bottomLeft) || !isFinite(bottomRight) || !isFinite(topRight) || !isFinite(topLeft))
+			{
+				continue;
+			}
 			addTextVertex(vertices, bottomLeft, label.u0(), label.v1());
 			addTextVertex(vertices, bottomRight, label.u1(), label.v1());
 			addTextVertex(vertices, topRight, label.u1(), label.v0());
@@ -1228,6 +1454,23 @@ final class TerrainRenderer
 		batch.addLine(geometry.southWest(), geometry.northWest());
 	}
 
+	private void addTileFill(Map<Integer, OverlayLineBatch> batches, Tile tile, Color color)
+	{
+		Color fill = color == null ? new Color(0x55FFFFFF, true) : color;
+		if (fill.getAlpha() <= 0)
+		{
+			return;
+		}
+		TileGeometry geometry = tileGeometry(tile, OVERLAY_MARKER_HEIGHT_OFFSET);
+		if (geometry == null)
+		{
+			return;
+		}
+		OverlayLineBatch batch = overlayBatch(batches, fill);
+		batch.addTriangle(geometry.northWest(), geometry.southEast(), geometry.northEast());
+		batch.addTriangle(geometry.northWest(), geometry.southWest(), geometry.southEast());
+	}
+
 	private void addLabelAnchorLines(Map<Integer, OverlayLineBatch> batches, Tile tile, int stackIndex)
 	{
 		Vector3f base = tileWorldPosition(tile, OVERLAY_LABEL_HEIGHT_OFFSET + stackIndex * OVERLAY_LABEL_STACK_SPACING);
@@ -1328,6 +1571,10 @@ final class TerrainRenderer
 		float x = currentScene.offsetX(mesh) + SceneScale.worldXFromTile(localX);
 		float z = currentScene.offsetZ(mesh) + SceneScale.worldZFromTile(localY);
 		float y = mesh.worldHeightAt(clampedPlane, localX, localY) + heightOffset;
+		if (!Float.isFinite(x) || !Float.isFinite(y) || !Float.isFinite(z))
+		{
+			return null;
+		}
 		return new Vector3f(x, y, z);
 	}
 
@@ -1342,6 +1589,30 @@ final class TerrainRenderer
 	private static float channel(int argb, int shift)
 	{
 		return (argb >> shift & 0xFF) / 255.0f;
+	}
+
+	private static boolean isFinite(Vector3f vector)
+	{
+		return vector != null
+			&& Float.isFinite(vector.x)
+			&& Float.isFinite(vector.y)
+			&& Float.isFinite(vector.z);
+	}
+
+	private static boolean validDrawRange(OverlayLineDraw draw, int vertexCount, int primitiveVertices)
+	{
+		return draw != null
+			&& validDrawRange(draw.startVertex(), draw.vertexCount(), vertexCount, primitiveVertices);
+	}
+
+	private static boolean validDrawRange(int startVertex, int drawVertexCount, int vertexCount, int primitiveVertices)
+	{
+		return primitiveVertices > 0
+			&& startVertex >= 0
+			&& drawVertexCount > 0
+			&& drawVertexCount % primitiveVertices == 0
+			&& startVertex <= vertexCount
+			&& drawVertexCount <= vertexCount - startVertex;
 	}
 
 	private float fogEndDistance()
@@ -1875,12 +2146,24 @@ final class TerrainRenderer
 
 		private void addLine(Vector3f start, Vector3f end)
 		{
-			if (vertexCount() + 2 > MAX_OVERLAY_LINE_VERTICES_PER_BATCH)
+			if (!isFinite(start) || !isFinite(end) || vertexCount() + 2 > MAX_OVERLAY_LINE_VERTICES_PER_BATCH)
 			{
 				return;
 			}
 			vertices.add(start.x).add(start.y).add(start.z);
 			vertices.add(end.x).add(end.y).add(end.z);
+		}
+
+		private void addTriangle(Vector3f a, Vector3f b, Vector3f c)
+		{
+			if (!isFinite(a) || !isFinite(b) || !isFinite(c)
+				|| vertexCount() + 3 > MAX_OVERLAY_LINE_VERTICES_PER_BATCH)
+			{
+				return;
+			}
+			vertices.add(a.x).add(a.y).add(a.z);
+			vertices.add(b.x).add(b.y).add(b.z);
+			vertices.add(c.x).add(c.y).add(c.z);
 		}
 	}
 
@@ -1962,19 +2245,29 @@ final class TerrainRenderer
 	private record PackedOverlayText(
 		Vector3f position,
 		String text,
+		Color color,
 		int x,
 		int y,
 		int width,
 		int height
 	)
 	{
+		private PackedOverlayText
+		{
+			color = color == null ? Color.WHITE : color;
+		}
 	}
 
 	private record OverlayTextCandidate(
 		Vector3f position,
-		String text
+		String text,
+		Color color
 	)
 	{
+		private OverlayTextCandidate
+		{
+			color = color == null ? Color.WHITE : color;
+		}
 	}
 
 	private record OverlayTextLabel(

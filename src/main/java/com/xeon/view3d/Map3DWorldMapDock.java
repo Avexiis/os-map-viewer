@@ -52,6 +52,8 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import javax.swing.BoxLayout;
+import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JDialog;
@@ -77,6 +79,8 @@ final class Map3DWorldMapDock extends JDialog
 	private final Consumer<Tile> warpConsumer;
 	private final Timer clampDebounce;
 	private final JComboBox<Integer> planeSelect;
+	private final JCheckBox trackCameraToggle = new JCheckBox("Track camera", true);
+	private final CloseOverlay overlay;
 	private MapViewerPlugin activePlugin;
 	private ComponentAdapter clampListener;
 	private boolean mapPanelDisposed;
@@ -105,12 +109,13 @@ final class Map3DWorldMapDock extends JDialog
 		scrollPane.getViewport().setBackground(Color.BLACK);
 		add(scrollPane, BorderLayout.CENTER);
 
-		CloseOverlay overlay = new CloseOverlay();
+		overlay = new CloseOverlay();
 		getRootPane().setGlassPane(overlay);
 		overlay.setVisible(true);
 		installPlaneSelector();
 
 		mapPanel.setDockShiftDragEnabled(true);
+		mapPanel.setActiveToolLeftClickEnabled(false);
 		installDoubleClickWarp();
 		enableEdgeDragResize(overlay, scrollPane);
 		installOwnerClampListeners();
@@ -130,7 +135,8 @@ final class Map3DWorldMapDock extends JDialog
 	{
 		setVisible(true);
 		clampInsideOwner();
-		focusCameraTile();
+		focusCameraTile(OPEN_ZOOM, true);
+		overlay.repaint();
 		toFront();
 	}
 
@@ -156,9 +162,31 @@ final class Map3DWorldMapDock extends JDialog
 		}
 	}
 
+	void setMapBackgroundColor(Color color)
+	{
+		Color background = color == null ? Color.BLACK : color;
+		mapPanel.setMapBackgroundColor(background);
+		mapPanel.repaintVisible();
+		overlay.repaint();
+	}
+
 	void repaintMap()
 	{
 		mapPanel.repaintVisible();
+		overlay.repaint();
+	}
+
+	void updateCameraTile()
+	{
+		if (mapPanelDisposed)
+		{
+			return;
+		}
+		if (trackCameraToggle.isSelected())
+		{
+			focusCameraTile(null, false);
+		}
+		overlay.repaint();
 	}
 
 	@Override
@@ -178,10 +206,11 @@ final class Map3DWorldMapDock extends JDialog
 		}
 		mapPanelDisposed = true;
 		mapPanel.setDockShiftDragEnabled(false);
+		mapPanel.setActiveToolLeftClickEnabled(true);
 		mapPanel.dispose();
 	}
 
-	private void focusCameraTile()
+	private void focusCameraTile(Double targetZoom, boolean force)
 	{
 		Tile tile = focusTileSupplier == null ? null : focusTileSupplier.get();
 		if (tile == null)
@@ -189,7 +218,12 @@ final class Map3DWorldMapDock extends JDialog
 			return;
 		}
 		Tile focusTile = new Tile(tile.x, tile.y, selectedPlane);
-		SwingUtilities.invokeLater(() -> mapPanel.focusTile(focusTile, OPEN_ZOOM));
+		Tile center = mapPanel.getCenterTile();
+		if (!force && center != null && center.x == focusTile.x && center.y == focusTile.y && center.z == focusTile.z)
+		{
+			return;
+		}
+		mapPanel.focusTile(focusTile, targetZoom);
 	}
 
 	private void installPlaneSelector()
@@ -202,8 +236,25 @@ final class Map3DWorldMapDock extends JDialog
 			{
 				selectedPlane = Math.max(0, Math.min(mapPanel.getPlaneCount() - 1, plane));
 				mapPanel.setPlane(selectedPlane);
+				if (trackCameraToggle.isSelected())
+				{
+					focusCameraTile(null, true);
+				}
 				mapPanel.repaintVisible();
+				overlay.repaint();
 			}
+		});
+		trackCameraToggle.setFocusable(false);
+		trackCameraToggle.setForeground(Color.WHITE);
+		trackCameraToggle.setOpaque(false);
+		trackCameraToggle.setAlignmentX(Component.LEFT_ALIGNMENT);
+		trackCameraToggle.setMaximumSize(trackCameraToggle.getPreferredSize());
+		trackCameraToggle.addActionListener(e -> {
+			if (trackCameraToggle.isSelected())
+			{
+				focusCameraTile(null, true);
+			}
+			overlay.repaint();
 		});
 	}
 
@@ -522,7 +573,7 @@ final class Map3DWorldMapDock extends JDialog
 		private static final int BTN_SIZE = 20;
 		private static final int PAD = 8;
 		private static final int ARC = 6;
-		private final JPanel planePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 3));
+		private final JPanel planePanel = new JPanel();
 
 		CloseOverlay()
 		{
@@ -530,10 +581,17 @@ final class Map3DWorldMapDock extends JDialog
 			setLayout(null);
 			planePanel.setOpaque(true);
 			planePanel.setBackground(new Color(0, 0, 0, 165));
+			planePanel.setLayout(new BoxLayout(planePanel, BoxLayout.Y_AXIS));
+			JPanel planeRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 3));
+			planeRow.setOpaque(false);
+			planeRow.setAlignmentX(Component.LEFT_ALIGNMENT);
 			JLabel label = new JLabel("Plane");
 			label.setForeground(Color.WHITE);
-			planePanel.add(label);
-			planePanel.add(planeSelect);
+			planeRow.add(label);
+			planeRow.add(planeSelect);
+			trackCameraToggle.setAlignmentX(Component.LEFT_ALIGNMENT);
+			planePanel.add(planeRow);
+			planePanel.add(trackCameraToggle);
 			add(planePanel);
 			addMouseListener(new MouseAdapter()
 			{
@@ -586,6 +644,7 @@ final class Map3DWorldMapDock extends JDialog
 			try
 			{
 				g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+				drawCameraCrosshair(g);
 				Rectangle r = closeRect();
 				g.setColor(new Color(0, 0, 0, 165));
 				g.fillRoundRect(r.x, r.y, r.width, r.height, ARC, ARC);
@@ -607,6 +666,39 @@ final class Map3DWorldMapDock extends JDialog
 			return planePanel.getBounds().contains(x, y)
 				|| closeRect().contains(x, y)
 				|| Map3DWorldMapDock.this.hitTest(x, y) != 0;
+		}
+
+		private void drawCameraCrosshair(Graphics2D g)
+		{
+			Tile cameraTile = focusTileSupplier == null ? null : focusTileSupplier.get();
+			if (cameraTile == null)
+			{
+				return;
+			}
+			Tile mapTile = new Tile(cameraTile.x, cameraTile.y, selectedPlane);
+			Point mapPoint = mapPanel.tileCenterPoint(mapTile);
+			if (!mapPanel.getVisibleRect().contains(mapPoint))
+			{
+				return;
+			}
+			Point point = SwingUtilities.convertPoint(mapPanel, mapPoint, this);
+			int size = Math.max(7, Math.min(28, (int) Math.round(5.0 + mapPanel.getEffectiveZoom() * 2.0)));
+			int gap = Math.max(2, size / 4);
+			float stroke = Math.max(1.2f, Math.min(3.5f, (float) (mapPanel.getEffectiveZoom() * 0.65)));
+			g.setStroke(new BasicStroke(stroke + 2.0f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+			g.setColor(new Color(0, 0, 0, 210));
+			drawCrosshairLines(g, point.x, point.y, size, gap);
+			g.setStroke(new BasicStroke(stroke, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+			g.setColor(new Color(255, 242, 80, 235));
+			drawCrosshairLines(g, point.x, point.y, size, gap);
+		}
+
+		private void drawCrosshairLines(Graphics2D g, int x, int y, int size, int gap)
+		{
+			g.drawLine(x - size, y, x - gap, y);
+			g.drawLine(x + gap, y, x + size, y);
+			g.drawLine(x, y - size, x, y - gap);
+			g.drawLine(x, y + gap, x, y + size);
 		}
 	}
 

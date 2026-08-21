@@ -57,6 +57,8 @@ public final class ViewerSettings
 	private static final String KEY_3D_AA_SAMPLES = "viewer3d.state.antialiasingSamples";
 	private static final String KEY_3D_VIEW_DISTANCE_REGIONS = "viewer3d.state.viewDistanceRegions";
 	private static final String KEY_3D_PLUGIN_OVERLAYS_ON_TOP = "viewer3d.state.pluginOverlaysOnTop";
+	private static final String KEY_3D_CACHE_ASK_ON_OPEN = "viewer3d.cache.askOnOpen";
+	private static final String KEY_3D_CACHE_AUTO_DETECT = "viewer3d.cache.autoDetect";
 	private static final String FIELD_WORLD_TILE_X = "worldTileX";
 	private static final String FIELD_WORLD_TILE_Y = "worldTileY";
 	private static final String FIELD_CAMERA_Y = "cameraY";
@@ -242,6 +244,22 @@ public final class ViewerSettings
 			Viewer3DState.clampViewDistanceRegions(state.viewDistanceRegions()));
 		object.addProperty(FIELD_PLUGIN_OVERLAYS_ON_TOP, state.pluginOverlaysOnTop());
 		configManager.setElement(CORE, KEY_3D_STATE, object);
+	}
+
+	public boolean viewer3DCacheAskOnOpen()
+	{
+		return configManager.getBoolean(CORE, KEY_3D_CACHE_ASK_ON_OPEN, true);
+	}
+
+	public boolean viewer3DCacheAutoDetect()
+	{
+		return configManager.getBoolean(CORE, KEY_3D_CACHE_AUTO_DETECT, true);
+	}
+
+	public void setViewer3DCachePrompt(boolean askOnOpen, boolean autoDetect)
+	{
+		configManager.setBoolean(CORE, KEY_3D_CACHE_ASK_ON_OPEN, askOnOpen);
+		configManager.setBoolean(CORE, KEY_3D_CACHE_AUTO_DETECT, autoDetect);
 	}
 
 	private Viewer3DState viewer3DStateObject()

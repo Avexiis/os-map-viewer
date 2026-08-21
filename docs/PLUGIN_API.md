@@ -159,6 +159,11 @@ Available methods:
 - `frame()` returns the main `JFrame`, useful as the parent for dialogs.
 - `owner()` returns the same window as a generic `Window`.
 - `mapPanel()` gives access to the public `MapView` API for the map viewer.
+- `is3DViewerActive()` reports whether the 3D viewer is currently open.
+- `centerTile()` returns the 2D map center or the 3D camera tile.
+- `focusTile(tile, zoom)` focuses the 2D map or warps the 3D camera, depending on the active mode.
+- `repaintVisible()` repaints 2D plugin layers and refreshes 3D plugin overlays.
+- `invoke3DRenderLater(task)` queues work for the 3D render path when the 3D viewer is active.
 - `setStatus(String message)` writes to the status bar.
 - `promptLoadPluginJar()` opens the core plugin loader.
 - `config()` returns persistent settings scoped to this plugin id.
@@ -186,6 +191,40 @@ Common methods:
 - `visibleViewRect()` returns the current viewport rectangle in component coordinates, useful for fixed-position overlays.
 - `currentVisibleRegionIds()` returns the visible regions.
 - `repaintTile(tile)`, `repaintRegion(regionId)`, and `repaintVisible()` request redraws.
+
+## 3D Plugin API
+
+Plugins can support the 3D viewer by implementing `com.xeon.view3d.Map3DLayer` in addition to the normal 2D interfaces.
+
+```java
+public final class MyPlugin implements MapViewerPlugin, MapLayer, MapTool, Map3DLayer {
+    @Override
+    public Map3DOverlay overlay(Map3DRenderContext context) {
+        return Map3DOverlay.empty();
+    }
+}
+```
+
+`Map3DLayer` methods:
+
+- `overlay(context)` returns immutable data for in-world 3D drawing.
+- `tileActions(event)` returns right-click context menu actions for a 3D tile.
+- `clickWarpTarget(event)` can return a tile for simple left-click 3D warp actions.
+- `controlHints()` returns rows shown in the 3D `View Controls` overlay.
+
+`Map3DRenderContext` includes:
+
+- `cameraTile()`: the current 3D camera tile.
+- `visibleRegionIds()`: regions that are loaded in the 3D scene. Plugins should use this to avoid drawing overlays for unloaded regions.
+
+`Map3DOverlay` can contain:
+
+- `Map3DPathSegment`: terrain-height-aware line segments. Dashed segments are represented in 3D as directional transport arrows.
+- `Map3DMarker`: tile outline markers.
+- `Map3DLabel`: billboarded text labels, optionally with a warp target.
+- `Map3DTileOverlay`: filled tile overlays with an outline and optional label.
+
+Keep `overlay(context)` data-only and fast. If a Swing event changes plugin state, call `context.repaintVisible()` or `context.invoke3DRenderLater(...)` so the 3D renderer refreshes safely.
 
 ## Map Area Metadata
 

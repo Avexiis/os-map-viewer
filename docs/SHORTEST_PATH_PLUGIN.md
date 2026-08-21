@@ -4,10 +4,8 @@
 
 The built-in `Shortest Path` plugin can draw a route from one tile to another over the viewer map.
 
-It is adapted from the RuneLite plugin hub `shortest-path` plugin for use on a 2D only map.
+It is adapted from the RuneLite plugin hub `shortest-path` plugin for use in the 2D map and 3D viewer.
 It can also use public OSRS WikiSync profile data for account-aware skill and quest filtering.
-
-This plugin is experimental only.
 
 ## Enable The Plugin
 
@@ -23,6 +21,7 @@ When enabled, the plugin adds:
 - Route import/export, color, collision-map, and transport-type controls.
 - A Shortest Path button in the left rail.
 - A map overlay for the calculated path and a left route-step table.
+- 3D route overlays when the 3D viewer is open.
 
 ## Create A Route
 
@@ -50,6 +49,19 @@ Use `Draw collision map` to show movement-blocking collision edges at readable z
 Use `Export` to save the current route as JSON with `start`, ordered `steps`, and optional `target` tile objects. Use `Import` to load that JSON back into the viewer.
 
 The route can draw across the full logical atlas range, including northern regions that the in-game vanilla world map does not show, such as quest areas and undergrounds.
+
+## 3D Viewer
+
+With Shortest Path enabled in 3D mode:
+
+- Right-click a tile in the 3D scene to set the start, add a step, remove a route point, or set the end.
+- Right-click a tile in the floating world map to use the same route actions.
+- Double-click a tile in the floating world map to warp the 3D camera there.
+- Walk segments draw as lines above the terrain.
+- Transport and teleport jumps draw as arrows pointing toward the jump destination.
+- Transport labels draw over supported transport objects or tiles.
+- The route is also drawn on the minimap and floating world map.
+- Clicking a route step in the left sidebar warps the 3D camera to that step.
 
 ## WikiSync Profile Lookup
 

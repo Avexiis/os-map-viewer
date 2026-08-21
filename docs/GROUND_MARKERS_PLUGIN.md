@@ -37,6 +37,8 @@ The importer supports RuneLite config files, HDOS profile files, and JSON files 
 With the Ground Markers plugin enabled:
 
 - Click a tile to select it.
+- Right-click a tile and choose `Add marker` to create one quickly.
+- Right-click an existing marker to select it, set its label, set its color, or delete it.
 - Use the right panel to set the label, color, and alpha.
 - Click `Add Marker` to create a marker.
 - Select an existing marker, edit the fields, then click `Update Marker`.
@@ -50,7 +52,19 @@ The marker list on the left has three tabs:
 - `Visible Area`: markers in the visible map area and current plane.
 - `New Tiles`: markers created in this app session that were not imported from RuneLite or HDOS config files.
 
-Clicking a marker in the list zooms in and centers it on the map.
+Clicking a marker in the list zooms in and centers it on the map. In 3D mode, it warps the camera to that marker.
+
+## Ground Markers In 3D
+
+Ground markers work in 3D mode when the plugin is active.
+
+- Markers in loaded 3D regions draw as tile overlays.
+- Marker color, alpha, plane, and label are respected.
+- Markers are not drawn in 3D regions that have not loaded yet.
+- The minimap and floating world map draw markers the same way the 2D map does.
+- Right-click a tile in the 3D scene to add or edit a marker.
+
+RuneLite, HDOS, and JSON imports use the saved marker location data, so imported markers appear in both 2D and 3D.
 
 ## Region Selection For Export
 

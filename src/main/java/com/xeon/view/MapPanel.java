@@ -186,6 +186,7 @@ public class MapPanel extends JComponent implements MapView
 	private boolean showMapFeatureTooltips = true;
 	private boolean mapLocked = false;
 	private boolean dockShiftDragEnabled = false;
+	private boolean activeToolLeftClickEnabled = true;
 	private boolean regionSelectionActive = false;
 	private Color mapBackgroundColor = Color.BLACK;
 	private int currentPlane = 0;
@@ -387,6 +388,11 @@ public class MapPanel extends JComponent implements MapView
 	public void setDockShiftDragEnabled(boolean value)
 	{
 		dockShiftDragEnabled = value;
+	}
+
+	public void setActiveToolLeftClickEnabled(boolean value)
+	{
+		activeToolLeftClickEnabled = value;
 	}
 
 	public Color getMapBackgroundColor()
@@ -649,6 +655,15 @@ public class MapPanel extends JComponent implements MapView
 		return new Rectangle((int) Math.round(px), (int) Math.round(py),
 			Math.max(1, (int) Math.ceil(pw)),
 			Math.max(1, (int) Math.ceil(ph)));
+	}
+
+	public Point tileCenterPoint(Tile tile)
+	{
+		Rectangle rect = tileToRect(tile);
+		double scale = effZoom();
+		int x = contentOriginX() + (int) Math.round(rect.getCenterX() * scale);
+		int y = contentOriginY() + (int) Math.round(rect.getCenterY() * scale);
+		return new Point(x, y);
 	}
 
 	public Rectangle regionToRect(int regionId)
@@ -1044,7 +1059,10 @@ public class MapPanel extends JComponent implements MapView
 					return;
 				}
 				updateRegionSelectionActive(e.isShiftDown());
-				activeTool.mouseClicked(toMapMouseEvent(e));
+				if (activeToolLeftClickEnabled)
+				{
+					activeTool.mouseClicked(toMapMouseEvent(e));
+				}
 			}
 
 			@Override
