@@ -32,7 +32,6 @@ final class SceneScale
 	static final float SCENE_TO_WORLD = 1.0f / SCENE_UNITS_PER_TILE;
 	static final float CAMERA_NEAR_PLANE = 0.5f;
 	static final float CAMERA_FAR_PLANE = 260.0f;
-	static final boolean MIRRORS_WORLD_Z = true;
 
 	private SceneScale()
 	{

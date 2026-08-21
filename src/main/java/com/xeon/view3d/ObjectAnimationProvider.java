@@ -96,7 +96,7 @@ final class ObjectAnimationProvider
 		{
 			return null;
 		}
-		if (baseModel.packedVertexGroups == null || baseModel.packedVertexGroups.length == 0)
+		if (!hasAnimationGroups(baseModel))
 		{
 			return null;
 		}
@@ -120,7 +120,14 @@ final class ObjectAnimationProvider
 		ModelDefinition model = copyModel(baseModel);
 		try
 		{
-			model.computeAnimationTables();
+			if (!hasExpandedAnimationGroups(model))
+			{
+				model.computeAnimationTables();
+			}
+			if (!hasExpandedAnimationGroups(model))
+			{
+				return null;
+			}
 			boolean animated = false;
 			for (int i = 0; i < translatorCount; i++)
 			{
@@ -291,11 +298,34 @@ final class ObjectAnimationProvider
 		copy.textureRenderTypes = copy(source.textureRenderTypes);
 		copy.packedVertexGroups = copy(source.packedVertexGroups);
 		copy.packedTransparencyVertexGroups = copy(source.packedTransparencyVertexGroups);
+		copy.setVertexGroups(copy(source.getVertexGroups()));
 		copy.priority = source.priority;
 		copy.animayaGroups = copy(source.animayaGroups);
 		copy.animayaScales = copy(source.animayaScales);
 		copy.maxPriority = source.maxPriority;
 		return copy;
+	}
+
+	private static boolean hasAnimationGroups(ModelDefinition model)
+	{
+		if (model == null)
+		{
+			return false;
+		}
+
+		return hasExpandedAnimationGroups(model)
+			|| model.packedVertexGroups != null && model.packedVertexGroups.length > 0;
+	}
+
+	private static boolean hasExpandedAnimationGroups(ModelDefinition model)
+	{
+		if (model == null)
+		{
+			return false;
+		}
+
+		int[][] vertexGroups = model.getVertexGroups();
+		return vertexGroups != null && vertexGroups.length > 0;
 	}
 
 	private static int[] copy(int[] value)

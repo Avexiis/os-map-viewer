@@ -52,15 +52,13 @@ final class ObjectMeshBuilder
 	private static final int HALF_DIAGONAL_TURN = 256;
 	private static final int DEFAULT_RGB = 0x8A8170;
 	private static final int SPECIAL_FACE_RGB = 0x808080;
-	private static final int MODEL_LIGHT_X = -50;
-	private static final int MODEL_LIGHT_Y = -10;
-	private static final int MODEL_LIGHT_Z = -50;
+	private static final int MODEL_LIGHT_X = -42;
+	private static final int MODEL_LIGHT_Y = 82;
+	private static final int MODEL_LIGHT_Z = -58;
 	private static final int MODEL_BASE_AMBIENT = 64;
 	private static final int MODEL_BASE_CONTRAST = 768;
 	private static final int NORMAL_SCALE = 256;
 	private static final float MIN_VISIBLE_ALPHA = 1.0f / 255.0f;
-	private static final float FALLBACK_FACE_DEPTH_BIAS_STEP = 0.125f;
-	private static final int FALLBACK_FACE_DEPTH_BIAS_MASK = 3;
 
 	private ObjectMeshBuilder()
 	{
@@ -498,7 +496,7 @@ final class ObjectMeshBuilder
 			int a = model.faceIndices1[face];
 			int b = model.faceIndices2[face];
 			int c = model.faceIndices3[face];
-			boolean swapped = transformed.inverted() ^ SceneScale.MIRRORS_WORLD_Z;
+			boolean swapped = transformed.inverted();
 			if (swapped)
 			{
 				int tmp = a;
@@ -707,7 +705,7 @@ final class ObjectMeshBuilder
 		{
 			return model.faceZOffsets[face] & 0xFF;
 		}
-		return (face & FALLBACK_FACE_DEPTH_BIAS_MASK) * FALLBACK_FACE_DEPTH_BIAS_STEP;
+		return 0.0f;
 	}
 
 	private static int faceRgb(

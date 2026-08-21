@@ -31,10 +31,10 @@ final class TerrainLightMap
 {
 	private static final int BASE_LIGHT = 96;
 	private static final int DIFFUSION = 768;
-	private static final int LIGHT_X = -50;
-	private static final int LIGHT_Y = -10;
-	private static final int LIGHT_Z = -50;
-	private static final float FLAT_LIGHT = 84.0f;
+	private static final int LIGHT_X = -42;
+	private static final int LIGHT_Y = 82;
+	private static final int LIGHT_Z = -58;
+	private static final float FLAT_LIGHT = 160.0f;
 	private static final float MIN_MULTIPLIER = 0.62f;
 	private static final float MAX_MULTIPLIER = 1.32f;
 

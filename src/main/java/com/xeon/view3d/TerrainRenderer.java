@@ -82,7 +82,7 @@ final class TerrainRenderer
 			vTextureLayer = aTextureLayer;
 			vTextureAlphaCutoff = aTextureAlphaCutoff;
 			gl_Position = uMvp * worldPosition;
-			gl_Position.z += aDepthBias / 128.0;
+			gl_Position.z -= aDepthBias / 2048.0;
 		}
 		""";
 	private static final String TERRAIN_FRAGMENT_SHADER = """
@@ -103,9 +103,11 @@ final class TerrainRenderer
 		void main()
 		{
 			vec3 normal = normalize(vNormal);
-			vec3 lightDirection = normalize(vec3(-0.45, 0.88, 0.36));
+			vec3 lightDirection = normalize(vec3(-0.36, 0.78, -0.52));
 			float diffuse = max(dot(normal, lightDirection), 0.0);
-			float shade = 0.42 + diffuse * 0.62;
+			float skyFill = 0.18 * max(normal.y, 0.0);
+			float groundFill = 0.08 * max(-normal.y, 0.0);
+			float shade = clamp(0.50 + diffuse * 0.46 + skyFill + groundFill, 0.46, 1.08);
 			vec3 baseColor = vColor;
 			float alpha = vAlpha;
 			if (vTextureLayer > 0.5 && vTextureLayer < uTextureLayerCount)
@@ -1398,21 +1400,36 @@ final class TerrainRenderer
 			}
 			int cycle = Math.max(0, (int) (timeSeconds / 0.02f) + phaseOffset);
 			int totalLength = totalLength(0, frames.length);
-			if (cycle < totalLength || frameStep <= 0 || frameStep > frames.length)
+			if (cycle > totalLength)
 			{
-				return frameForCycle(cycle < totalLength ? cycle : 0, 0, frames.length);
+				int restartFrame = frames.length - frameStep;
+				if (restartFrame < 0 || restartFrame >= frames.length)
+				{
+					restartFrame = 0;
+				}
+
+				int restartCycle = totalLength(0, restartFrame);
+				int loopLength = totalLength(restartFrame, frames.length);
+				cycle = loopLength <= 0
+					? 0
+					: restartCycle + Math.floorMod(cycle - restartCycle, loopLength);
 			}
 
-			int loopStart = frames.length - frameStep;
-			int loopLength = totalLength(loopStart, frames.length);
-			if (loopLength <= 0)
+			int frame = 0;
+			while (cycle > frameLength(frame))
 			{
-				return frameForCycle(0, 0, frames.length);
+				cycle -= frameLength(frame);
+				frame++;
+				if (frame >= frames.length)
+				{
+					frame -= frameStep;
+					if (frame < 0 || frame >= frames.length)
+					{
+						frame = 0;
+					}
+				}
 			}
-
-			int loopStartCycle = totalLength(0, loopStart);
-			int loopCycle = Math.floorMod(cycle - loopStartCycle, loopLength);
-			return frameForCycle(loopCycle, loopStart, frames.length);
+			return frame(frame);
 		}
 
 		private int totalLength(int startFrame, int endFrame)
@@ -1425,19 +1442,6 @@ final class TerrainRenderer
 			return totalLength;
 		}
 
-		private UploadedAnimationFrame frameForCycle(int cycle, int startFrame, int endFrame)
-		{
-			for (int i = startFrame; i < endFrame; i++)
-			{
-				cycle -= frameLength(i);
-				if (cycle < 0)
-				{
-					return frame(i);
-				}
-			}
-			return frame(startFrame);
-		}
-
 		private int frameLength(int frame)
 		{
 			int length = frameLengths.length > frame ? frameLengths[frame] : 1;
@@ -1446,7 +1450,28 @@ final class TerrainRenderer
 
 		private UploadedAnimationFrame frame(int frame)
 		{
-			return frames[frame] == null ? UploadedAnimationFrame.EMPTY : frames[frame];
+			UploadedAnimationFrame selected = frames[frame];
+			if (selected != null && selected.vertexCount() > 0)
+			{
+				return selected;
+			}
+			for (int i = frame - 1; i >= 0; i--)
+			{
+				UploadedAnimationFrame fallback = frames[i];
+				if (fallback != null && fallback.vertexCount() > 0)
+				{
+					return fallback;
+				}
+			}
+			for (int i = frame + 1; i < frames.length; i++)
+			{
+				UploadedAnimationFrame fallback = frames[i];
+				if (fallback != null && fallback.vertexCount() > 0)
+				{
+					return fallback;
+				}
+			}
+			return UploadedAnimationFrame.EMPTY;
 		}
 
 		private void delete()
