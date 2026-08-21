@@ -51,6 +51,7 @@ Use `Export` to save the current route as JSON with `start`, ordered `steps`, an
 The route can draw across the full logical atlas range, including northern regions that the in-game vanilla world map does not show, such as quest areas and undergrounds.
 
 ## 3D Viewer
+<img width="1918" height="1046" alt="image" src="https://github.com/user-attachments/assets/73b73dbd-4a7a-4ade-bf62-b37e9e85a5b1" />
 
 With Shortest Path enabled in 3D mode:
 
