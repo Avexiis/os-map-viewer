@@ -1143,11 +1143,23 @@ public class MapViewerController
 		{
 			return;
 		}
+		Path atlasPath;
+		try
+		{
+			atlasPath = AtlasStorage.ensureInstalledAtlas();
+		}
+		catch (IOException ex)
+		{
+			setStatus("Failed to prepare atlas for 3D viewer");
+			Ui.error("Failed to prepare atlas for the 3D minimap/world map: " + ex.getMessage());
+			return;
+		}
 		saveLastViewState();
 		clearWorkspaceFor3D();
 		mapScrollHorizontalPolicy = mapScrollPane.getHorizontalScrollBarPolicy();
 		mapScrollVerticalPolicy = mapScrollPane.getVerticalScrollBarPolicy();
-		map3DPanel = new Map3DPanel(cacheDirectory, regionId, this::exit3DViewer);
+		map3DPanel = new Map3DPanel(cacheDirectory, regionId, atlasPath,
+			memoryBudgetBytes(selectedMemoryBudgetMb()), this::exit3DViewer);
 		mapScrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
 		mapScrollPane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER);
 		mapScrollPane.setViewportView(map3DPanel);

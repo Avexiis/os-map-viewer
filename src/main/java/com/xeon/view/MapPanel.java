@@ -42,6 +42,7 @@ import java.awt.KeyboardFocusManager;
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
+import java.awt.Shape;
 import java.awt.Stroke;
 import java.awt.Transparency;
 import java.awt.event.ActionEvent;
@@ -184,6 +185,7 @@ public class MapPanel extends JComponent implements MapView
 	private boolean showMapLabels = true;
 	private boolean showMapFeatureTooltips = true;
 	private boolean mapLocked = false;
+	private boolean dockShiftDragEnabled = false;
 	private boolean regionSelectionActive = false;
 	private Color mapBackgroundColor = Color.BLACK;
 	private int currentPlane = 0;
@@ -380,6 +382,11 @@ public class MapPanel extends JComponent implements MapView
 	public boolean isMapLocked()
 	{
 		return mapLocked;
+	}
+
+	public void setDockShiftDragEnabled(boolean value)
+	{
+		dockShiftDragEnabled = value;
 	}
 
 	public Color getMapBackgroundColor()
@@ -925,6 +932,64 @@ public class MapPanel extends JComponent implements MapView
 		}
 	}
 
+	public void paintMapSnapshot(Graphics2D g0, Rectangle target, Tile centerTile,
+	                             double pixelsPerTile, boolean includeIcons, boolean includeLabels)
+	{
+		if (g0 == null || target == null || target.width <= 0 || target.height <= 0 || pixelsPerTile <= 0.0)
+		{
+			return;
+		}
+
+		Tile tile = centerTile == null
+			? new Tile((Paths.MIN_RX + Paths.MAX_RX + 1) * REGION_TILES / 2,
+				(Paths.MIN_RY + Paths.MAX_RY + 1) * REGION_TILES / 2, currentPlane)
+			: centerTile;
+		int snapshotPlane = Math.max(0, Math.min(maxPlanes - 1, tile.z));
+		Rectangle centerRect = tileToRect(new Tile(tile.x, tile.y, snapshotPlane));
+		double centerX = centerRect.getCenterX();
+		double centerY = centerRect.getCenterY();
+		double scale = Math.max(0.05, pixelsPerTile);
+		double snapshotZoom = scale * HI_PX_PER_TILE;
+		LOD lodNow = LOD.forZoom(snapshotZoom);
+		int originX = (int) Math.round(target.getCenterX() - centerX * scale);
+		int originY = (int) Math.round(target.getCenterY() - centerY * scale);
+		Rectangle visibleMap = visibleMapPixelRect(target, originX, originY, scale, 2);
+
+		Graphics2D g = (Graphics2D) g0.create();
+		int previousPlane = currentPlane;
+		int previousBudget = paintLoadBudgetRemaining;
+		try
+		{
+			currentPlane = snapshotPlane;
+			paintLoadBudgetRemaining = maxLoadsPerPaint(lodNow);
+			g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_SPEED);
+			g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+			g.setRenderingHint(RenderingHints.KEY_ALPHA_INTERPOLATION, RenderingHints.VALUE_ALPHA_INTERPOLATION_SPEED);
+			g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
+
+			Shape previousClip = g.getClip();
+			g.clip(target);
+			g.setColor(mapBackgroundColor);
+			g.fillRect(target.x, target.y, target.width, target.height);
+			drawTilesLODProgressive(g, lodNow, visibleMap, AtlasLayerType.BASE, target, originX, originY, scale, snapshotZoom);
+			if (includeIcons)
+			{
+				drawTilesLODProgressive(g, lodNow, visibleMap, AtlasLayerType.ICONS, target, originX, originY, scale, snapshotZoom);
+			}
+			if (includeLabels)
+			{
+				drawTilesLODProgressive(g, lodNow, visibleMap, AtlasLayerType.LABELS, target, originX, originY, scale, snapshotZoom);
+			}
+			g.setClip(previousClip);
+		}
+		finally
+		{
+			currentPlane = previousPlane;
+			paintLoadBudgetRemaining = previousBudget;
+			g.dispose();
+		}
+	}
+
 	private void installMouseHandlers()
 	{
 		addMouseListener(new MouseAdapter()
@@ -984,6 +1049,12 @@ public class MapPanel extends JComponent implements MapView
 					dragStartMouse = null;
 					return;
 				}
+				if (dockShiftDragEnabled && SwingUtilities.isLeftMouseButton(e) && e.isShiftDown())
+				{
+					dragStartView = null;
+					dragStartMouse = null;
+					return;
+				}
 				JViewport viewport = getViewport();
 				if (viewport != null)
 				{
@@ -1037,6 +1108,12 @@ public class MapPanel extends JComponent implements MapView
 					return;
 				}
 				if (mapLocked)
+				{
+					dragStartView = null;
+					dragStartMouse = null;
+					return;
+				}
+				if (dockShiftDragEnabled && e.isShiftDown())
 				{
 					dragStartView = null;
 					dragStartMouse = null;
@@ -1239,14 +1316,26 @@ public class MapPanel extends JComponent implements MapView
 
 	private void drawTilesLODProgressive(Graphics2D g, LOD targetLod, Rectangle visibleMap, AtlasLayerType layerKind)
 	{
-		final int plane = currentPlane;
-		final int layer = store.layerIndex(layerKind, plane);
-		if (layer < 0)
+		JViewport viewport = getViewport();
+		if (viewport == null)
 		{
 			return;
 		}
-		JViewport viewport = getViewport();
-		if (viewport == null)
+		drawTilesLODProgressive(g, targetLod, visibleMap, layerKind, viewport.getViewRect(),
+			contentOriginX(), contentOriginY(), effZoom(), zoom);
+	}
+
+	private void drawTilesLODProgressive(Graphics2D g, LOD targetLod, Rectangle visibleMap, AtlasLayerType layerKind,
+	                                     Rectangle view, int originX, int originY, double scale, double zoomUi)
+	{
+		if (g == null || targetLod == null || visibleMap == null || visibleMap.isEmpty()
+			|| view == null || view.width <= 0 || view.height <= 0 || scale <= 0.0)
+		{
+			return;
+		}
+		final int plane = currentPlane;
+		final int layer = store.layerIndex(layerKind, plane);
+		if (layer < 0)
 		{
 			return;
 		}
@@ -1257,14 +1346,10 @@ public class MapPanel extends JComponent implements MapView
 		}
 		final long epoch = requestEpoch.get();
 
-		Rectangle view = viewport.getViewRect();
-		double viewW = view.width / effZoom();
-		double viewH = view.height / effZoom();
-		double margin = prefetchMarginLogical(zoom);
+		double viewW = view.width / scale;
+		double viewH = view.height / scale;
+		double margin = prefetchMarginLogical(zoomUi);
 
-		int originX = contentOriginX();
-		int originY = contentOriginY();
-		double scale = effZoom();
 		int lx1 = (int) Math.floor((view.x - originX) / scale - margin);
 		int ly1 = (int) Math.floor((view.y - originY) / scale - margin);
 		int lx2 = (int) Math.ceil(lx1 + viewW + margin * 2);
@@ -1287,8 +1372,8 @@ public class MapPanel extends JComponent implements MapView
 		int tY2 = Math.floorDiv(Math.max(fullY2 - 1, 0), tilePx * targetLod.subsample);
 
 		List<int[]> order = new ArrayList<>();
-		double cx = (view.getX() - originX) / effZoom() + viewW / 2.0;
-		double cy = (view.getY() - originY) / effZoom() + viewH / 2.0;
+		double cx = (view.getX() - originX) / scale + viewW / 2.0;
+		double cy = (view.getY() - originY) / scale + viewH / 2.0;
 		for (int ty = tY1; ty <= tY2; ty++)
 		{
 			for (int tx = tX1; tx <= tX2; tx++)
@@ -1799,21 +1884,25 @@ public class MapPanel extends JComponent implements MapView
 		{
 			return new Rectangle(0, 0, 0, 0);
 		}
-		Rectangle view = viewport.getViewRect();
-		double ez = effZoom();
-		int originX = contentOriginX();
-		int originY = contentOriginY();
-		int sx = (int) Math.floor((view.x - originX) / ez);
-		int sy = (int) Math.floor((view.y - originY) / ez);
-		int ex = (int) Math.ceil((view.x + view.width - originX) / ez);
-		int ey = (int) Math.ceil((view.y + view.height - originY) / ez);
+		return visibleMapPixelRect(viewport.getViewRect(), contentOriginX(), contentOriginY(), effZoom(), 2);
+	}
+
+	private Rectangle visibleMapPixelRect(Rectangle view, int originX, int originY, double scale, int pad)
+	{
+		if (view == null || view.width <= 0 || view.height <= 0 || scale <= 0.0)
+		{
+			return new Rectangle(0, 0, 0, 0);
+		}
+		int sx = (int) Math.floor((view.x - originX) / scale);
+		int sy = (int) Math.floor((view.y - originY) / scale);
+		int ex = (int) Math.ceil((view.x + view.width - originX) / scale);
+		int ey = (int) Math.ceil((view.y + view.height - originY) / scale);
 
 		sx = Math.max(0, Math.min(sx, totalW));
 		sy = Math.max(0, Math.min(sy, totalH));
 		ex = Math.max(0, Math.min(ex, totalW));
 		ey = Math.max(0, Math.min(ey, totalH));
 
-		int pad = 2;
 		sx = Math.max(0, sx - pad);
 		sy = Math.max(0, sy - pad);
 		ex = Math.min(totalW, ex + pad);

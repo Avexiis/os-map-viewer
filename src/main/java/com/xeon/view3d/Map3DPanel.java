@@ -25,6 +25,11 @@
  */
 package com.xeon.view3d;
 
+import com.xeon.atlas.AtlasStorage;
+import com.xeon.io.Paths;
+import com.xeon.model.Tile;
+import com.xeon.view.MapPanel;
+
 import java.awt.BorderLayout;
 import java.awt.Canvas;
 import java.awt.Color;
@@ -40,6 +45,8 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionAdapter;
 import java.awt.event.MouseWheelEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.awt.geom.AffineTransform;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -82,6 +89,9 @@ public final class Map3DPanel extends JPanel
 	private static final int DEFAULT_ANTIALIASING_SAMPLES = 4;
 	private static final int MIN_FOV_DEGREES = 35;
 	private static final int MAX_FOV_DEGREES = 100;
+	private static final long DEFAULT_MAP_CACHE_BUDGET_BYTES = 512L * 1024L * 1024L;
+	private static final long MINIMAP_CACHE_BUDGET_BYTES = 128L * 1024L * 1024L;
+	private static final float WARP_CAMERA_HEIGHT_TILES = 22.0f;
 
 	private final TerrainRegionLoader loader = new TerrainRegionLoader();
 	private final TerrainRenderer renderer = new TerrainRenderer();
@@ -89,6 +99,8 @@ public final class Map3DPanel extends JPanel
 	private final Canvas canvas;
 	private final JLayeredPane sceneLayer;
 	private final Path cacheDirectory;
+	private final Path atlasPath;
+	private final long mapCacheBudgetBytes;
 	private final int regionId;
 	private final int originRegionX;
 	private final int originRegionY;
@@ -113,6 +125,7 @@ public final class Map3DPanel extends JPanel
 	private final JLabel tileHud = new JLabel("Tile --");
 	private final JLabel fovHud = new JLabel();
 	private final JLabel debugOverlay = new JLabel();
+	private final Map3DMinimapOverlay minimapOverlay;
 	private final Timer renderTimer;
 	private final Runnable exitAction;
 	private volatile TerrainRegionLoader.Session loaderSession;
@@ -136,11 +149,19 @@ public final class Map3DPanel extends JPanel
 	private double lastFrameMillis;
 	private double lastRenderMillis;
 	private int antialiasingSamples = DEFAULT_ANTIALIASING_SAMPLES;
+	private Map3DWorldMapDock worldMapDock;
 
 	public Map3DPanel(Path cacheDirectory, int regionId, Runnable exitAction)
 	{
+		this(cacheDirectory, regionId, installedAtlasPath(), DEFAULT_MAP_CACHE_BUDGET_BYTES, exitAction);
+	}
+
+	public Map3DPanel(Path cacheDirectory, int regionId, Path atlasPath, long mapCacheBudgetBytes, Runnable exitAction)
+	{
 		super(new BorderLayout());
 		this.cacheDirectory = cacheDirectory;
+		this.atlasPath = atlasPath;
+		this.mapCacheBudgetBytes = mapCacheBudgetBytes <= 0L ? DEFAULT_MAP_CACHE_BUDGET_BYTES : mapCacheBudgetBytes;
 		this.regionId = regionId;
 		this.originRegionX = TerrainScene.regionX(regionId);
 		this.originRegionY = TerrainScene.regionY(regionId);
@@ -154,6 +175,7 @@ public final class Map3DPanel extends JPanel
 		canvas.setBackground(Color.BLACK);
 		canvas.setFocusable(true);
 		canvas.setIgnoreRepaint(true);
+		minimapOverlay = createMinimapOverlay();
 		sceneLayer = buildSceneLayer();
 
 		add(buildToolbar(), BorderLayout.NORTH);
@@ -172,6 +194,15 @@ public final class Map3DPanel extends JPanel
 		regionLoaderExecutor.shutdownNow();
 		closeLoaderSession();
 		releaseLoadedMeshes();
+		if (worldMapDock != null)
+		{
+			worldMapDock.dispose();
+			worldMapDock = null;
+		}
+		if (minimapOverlay != null)
+		{
+			minimapOverlay.dispose();
+		}
 		try
 		{
 			if (renderer.isInitialized() && glContextReady && awtContext != null)
@@ -284,16 +315,192 @@ public final class Map3DPanel extends JPanel
 			{
 				Dimension size = getSize();
 				canvas.setBounds(0, 0, size.width, size.height);
+				int debugTop = 10;
+				if (minimapOverlay != null)
+				{
+					Dimension minimapSize = minimapOverlay.getPreferredSize();
+					int minimapX = Math.max(8, size.width - minimapSize.width - 12);
+					minimapOverlay.setBounds(minimapX, 12, minimapSize.width, minimapSize.height);
+					debugTop = minimapOverlay.getY() + minimapOverlay.getHeight() + 8;
+				}
 				Dimension preferredSize = debugOverlay.getPreferredSize();
 				int x = Math.max(8, size.width - preferredSize.width - 10);
-				debugOverlay.setBounds(x, 10, preferredSize.width, preferredSize.height);
+				debugOverlay.setBounds(x, debugTop, preferredSize.width, preferredSize.height);
 			}
 		};
 		layeredPane.setOpaque(true);
 		layeredPane.setBackground(Color.BLACK);
 		layeredPane.add(canvas, JLayeredPane.DEFAULT_LAYER);
+		if (minimapOverlay != null)
+		{
+			layeredPane.add(minimapOverlay, JLayeredPane.PALETTE_LAYER);
+		}
 		layeredPane.add(debugOverlay, JLayeredPane.PALETTE_LAYER);
 		return layeredPane;
+	}
+
+	private Map3DMinimapOverlay createMinimapOverlay()
+	{
+		if (atlasPath == null)
+		{
+			return null;
+		}
+		try
+		{
+			MapPanel minimapPanel = new MapPanel(atlasPath, minimapBudgetBytes(mapCacheBudgetBytes));
+			minimapPanel.setShowMapFeatureTooltips(false);
+			return new Map3DMinimapOverlay(minimapPanel, this::cameraTile, this::cameraHeadingRadians, this::openWorldMapDock);
+		}
+		catch (RuntimeException ex)
+		{
+			System.err.println("Failed to initialize 3D minimap: " + rootMessage(ex));
+			return null;
+		}
+	}
+
+	private void openWorldMapDock()
+	{
+		if (atlasPath == null)
+		{
+			detail.setText("World map atlas unavailable");
+			return;
+		}
+		if (worldMapDock != null && worldMapDock.isDisplayable())
+		{
+			worldMapDock.open();
+			return;
+		}
+
+		try
+		{
+			MapPanel worldMapPanel = new MapPanel(atlasPath, mapCacheBudgetBytes);
+			worldMapDock = new Map3DWorldMapDock(sceneLayer, worldMapPanel, this::cameraTile, this::warpCameraToTile);
+			worldMapDock.addWindowListener(new WindowAdapter()
+			{
+				@Override
+				public void windowClosed(WindowEvent e)
+				{
+					worldMapDock = null;
+				}
+			});
+			worldMapDock.open();
+		}
+		catch (RuntimeException ex)
+		{
+			detail.setText("Failed to open world map: " + rootMessage(ex));
+			System.err.println("Failed to open 3D world map dock: " + rootMessage(ex));
+		}
+	}
+
+	private Tile cameraTile()
+	{
+		if (!cameraInitialized)
+		{
+			return new Tile(
+				originRegionX * TerrainScene.REGION_SIZE + TerrainScene.REGION_SIZE / 2,
+				originRegionY * TerrainScene.REGION_SIZE + TerrainScene.REGION_SIZE / 2,
+				0
+			);
+		}
+		int worldX = (int) Math.floor(
+			camera.position().x() + originRegionX * TerrainScene.REGION_SIZE + SceneScale.REGION_CENTER_TILES
+		);
+		int worldY = (int) Math.floor(
+			originRegionY * TerrainScene.REGION_SIZE + SceneScale.REGION_CENTER_TILES - camera.position().z()
+		);
+		return new Tile(worldX, worldY, 0);
+	}
+
+	private double cameraHeadingRadians()
+	{
+		Vector3f direction = camera.direction(new Vector3f());
+		double heading = Math.atan2(direction.x, -direction.z);
+		return heading < 0.0 ? heading + Math.PI * 2.0 : heading;
+	}
+
+	private void warpCameraToTile(Tile tile)
+	{
+		if (!isValidWorldTile(tile))
+		{
+			detail.setText("Tile outside atlas bounds");
+			return;
+		}
+
+		int targetRegionId = regionIdForTile(tile);
+		float worldX = tile.x - originRegionX * TerrainScene.REGION_SIZE - SceneScale.REGION_CENTER_TILES + 0.5f;
+		float worldZ = originRegionY * TerrainScene.REGION_SIZE + SceneScale.REGION_CENTER_TILES - tile.y - 0.5f;
+		float worldY = warpCameraHeight(tile, targetRegionId);
+		camera.setPosition(new Vector3f(worldX, worldY, worldZ));
+		if (!cameraInitialized)
+		{
+			cameraInitialized = true;
+			title.setText("3D Region Stream");
+		}
+		streamCenterRegionId = targetRegionId;
+		updateStreamedRegions();
+		updateCompassHud();
+		detail.setText("Warped to tile " + tile.x + "," + tile.y + "," + tile.z);
+		if (minimapOverlay != null)
+		{
+			minimapOverlay.repaint();
+		}
+		canvas.requestFocusInWindow();
+	}
+
+	private float warpCameraHeight(Tile tile, int targetRegionId)
+	{
+		TerrainMesh mesh = loadedRegionIds.contains(targetRegionId) ? loadedMeshes.get(targetRegionId) : null;
+		if (mesh == null)
+		{
+			return Math.max(camera.position().y(), WARP_CAMERA_HEIGHT_TILES);
+		}
+
+		float localX = Math.floorMod(tile.x, TerrainScene.REGION_SIZE) + 0.5f;
+		float localY = Math.floorMod(tile.y, TerrainScene.REGION_SIZE) + 0.5f;
+		int plane = Math.max(0, Math.min(3, tile.z));
+		return mesh.worldHeightAt(plane, localX, localY) + WARP_CAMERA_HEIGHT_TILES;
+	}
+
+	private static boolean isValidWorldTile(Tile tile)
+	{
+		if (tile == null || tile.z < 0 || tile.z > 3)
+		{
+			return false;
+		}
+		int minX = Paths.MIN_RX * TerrainScene.REGION_SIZE;
+		int maxX = (Paths.MAX_RX + 1) * TerrainScene.REGION_SIZE - 1;
+		int minY = Paths.MIN_RY * TerrainScene.REGION_SIZE;
+		int maxY = (Paths.MAX_RY + 1) * TerrainScene.REGION_SIZE - 1;
+		return tile.x >= minX && tile.x <= maxX && tile.y >= minY && tile.y <= maxY;
+	}
+
+	private static int regionIdForTile(Tile tile)
+	{
+		return TerrainScene.regionId(
+			Math.floorDiv(tile.x, TerrainScene.REGION_SIZE),
+			Math.floorDiv(tile.y, TerrainScene.REGION_SIZE)
+		);
+	}
+
+	private static long minimapBudgetBytes(long configuredBudget)
+	{
+		if (configuredBudget <= 0L || configuredBudget == Long.MAX_VALUE)
+		{
+			return MINIMAP_CACHE_BUDGET_BYTES;
+		}
+		return Math.max(16L * 1024L * 1024L, Math.min(configuredBudget, MINIMAP_CACHE_BUDGET_BYTES));
+	}
+
+	private static Path installedAtlasPath()
+	{
+		try
+		{
+			return AtlasStorage.ensureInstalledAtlas();
+		}
+		catch (IOException ex)
+		{
+			throw new IllegalStateException("Failed to prepare installed atlas: " + ex.getMessage(), ex);
+		}
 	}
 
 	private void installInputHandlers()
@@ -842,6 +1049,10 @@ public final class Map3DPanel extends JPanel
 		}
 		updateStreamedRegions();
 		updateCompassHud();
+		if (minimapOverlay != null)
+		{
+			minimapOverlay.repaint();
+		}
 		if (!ensureContext())
 		{
 			updateDebugOverlay();
