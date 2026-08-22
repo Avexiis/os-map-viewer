@@ -47,6 +47,9 @@ final class TerrainMeshBuilder
 		UnderlayManager underlays,
 		OverlayManager overlays,
 		ObjectManager objectManager,
+		NpcSpawnIndex npcSpawnIndex,
+		NpcDefinitionProvider npcDefinitionProvider,
+		NpcWanderCollisionMap npcCollisionMap,
 		ObjectModelProvider modelProvider,
 		ObjectAnimationProvider animationProvider,
 		RSTextureProvider textureProvider,
@@ -118,6 +121,17 @@ final class TerrainMeshBuilder
 				textureSet
 			);
 		}
+		List<NpcMesh> npcMeshes = NpcMeshBuilder.build(
+			region,
+			heightMaps,
+			npcSpawnIndex,
+			npcDefinitionProvider,
+			npcCollisionMap,
+			modelProvider,
+			animationProvider,
+			textureProvider,
+			textureSet
+		);
 
 		return new TerrainMesh(
 			region.getRegionID(),
@@ -128,6 +142,7 @@ final class TerrainMeshBuilder
 			data.toArray(),
 			data.size() / TerrainMesh.FLOATS_PER_VERTEX,
 			animatedObjects,
+			npcMeshes,
 			textureSet,
 			sceneHeights,
 			renderableTiles,

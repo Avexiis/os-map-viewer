@@ -2,11 +2,11 @@
 <img width="1917" height="1048" alt="image" src="https://github.com/user-attachments/assets/5558f01c-c0bd-4244-af9a-2ea187ec7c10" /> 
 OS Map Viewer is a desktop map viewer for the Old School RuneScape world map.
 
-The app includes a 2D world map, a 3D cache-backed scene viewer, and built-in plugins for RuneLite/HDOS ground markers and shortest-path routing.
+The app includes a 2D world map, a 3D cache-backed scene viewer, cache-backed NPC spawns, and built-in plugins for RuneLite/HDOS ground markers and shortest-path routing.
 
 ## 3D Mode
 
-When the app opens, choose either `2D Map` or `3D Viewer`. You can also open 3D mode later from the Options menu. 3D mode reads your local OSRS cache and renders nearby regions around a free camera.
+When the app opens, choose either `2D Map` or `3D Viewer`. You can also open 3D mode later from the Options menu. 3D mode reads your local OSRS cache and renders nearby regions, objects, and NPCs around a free camera.
 
 Preview:
 <img width="1917" height="1047" alt="image" src="https://github.com/user-attachments/assets/ed9c3708-1f3e-46dc-80ed-3982a5482b96" />
@@ -28,6 +28,7 @@ The Options menu includes a map printer that uses the RuneLite cache library to 
 - Choose 2D or 3D mode on startup.
 - Pan and zoom the map.
 - Fly around the game world in 3D with a free camera.
+- See NPCs at known OSRS spawn locations, with idle or walk animation when cache data supports it.
 - Use the 3D minimap, floating world map, and area search to navigate.
 - Change map planes.
 - Search for map areas by name.

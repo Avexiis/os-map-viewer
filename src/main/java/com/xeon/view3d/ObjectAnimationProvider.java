@@ -77,6 +77,30 @@ final class ObjectAnimationProvider
 		return sequence == null || sequence.frameIDs == null ? 0 : sequence.frameIDs.length;
 	}
 
+	int effectiveFrameCount(SequenceDefinition sequence)
+	{
+		if (sequence == null)
+		{
+			return 0;
+		}
+		int classicFrames = frameCount(sequence);
+		if (sequence.animMayaID >= 0)
+		{
+			int duration = sequence.animMayaEnd - sequence.animMayaStart;
+			return Math.max(Math.max(1, duration), classicFrames);
+		}
+		if (classicFrames > 0)
+		{
+			return classicFrames;
+		}
+		return 0;
+	}
+
+	boolean isMayaSequence(SequenceDefinition sequence)
+	{
+		return sequence != null && sequence.animMayaID >= 0;
+	}
+
 	int[] frameLengths(SequenceDefinition sequence)
 	{
 		int frameCount = frameCount(sequence);
@@ -271,7 +295,7 @@ final class ObjectAnimationProvider
 		}
 	}
 
-	private static ModelDefinition copyModel(ModelDefinition source)
+	static ModelDefinition copyModel(ModelDefinition source)
 	{
 		ModelDefinition copy = new ModelDefinition();
 		copy.id = source.id;

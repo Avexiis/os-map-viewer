@@ -82,6 +82,9 @@ public final class TerrainRegionLoader
 				underlays,
 				overlays,
 				objects,
+				NpcSpawnIndex.loadDefault(),
+				new NpcDefinitionProvider(store),
+				NpcWanderCollisionMap.loadDefault(),
 				new ObjectModelProvider(store),
 				new ObjectAnimationProvider(store),
 				textures.textureProvider(),
@@ -159,6 +162,9 @@ public final class TerrainRegionLoader
 		private final UnderlayManager underlays;
 		private final OverlayManager overlays;
 		private final ObjectManager objects;
+		private final NpcSpawnIndex npcSpawnIndex;
+		private final NpcDefinitionProvider npcDefinitionProvider;
+		private final NpcWanderCollisionMap npcCollisionMap;
 		private final ObjectModelProvider modelProvider;
 		private final ObjectAnimationProvider animationProvider;
 		private final RSTextureProvider textureProvider;
@@ -171,6 +177,9 @@ public final class TerrainRegionLoader
 			UnderlayManager underlays,
 			OverlayManager overlays,
 			ObjectManager objects,
+			NpcSpawnIndex npcSpawnIndex,
+			NpcDefinitionProvider npcDefinitionProvider,
+			NpcWanderCollisionMap npcCollisionMap,
 			ObjectModelProvider modelProvider,
 			ObjectAnimationProvider animationProvider,
 			RSTextureProvider textureProvider,
@@ -183,6 +192,9 @@ public final class TerrainRegionLoader
 			this.underlays = underlays;
 			this.overlays = overlays;
 			this.objects = objects;
+			this.npcSpawnIndex = npcSpawnIndex;
+			this.npcDefinitionProvider = npcDefinitionProvider;
+			this.npcCollisionMap = npcCollisionMap;
 			this.modelProvider = modelProvider;
 			this.animationProvider = animationProvider;
 			this.textureProvider = textureProvider;
@@ -229,6 +241,9 @@ public final class TerrainRegionLoader
 					underlays,
 					overlays,
 					objects,
+					npcSpawnIndex,
+					npcDefinitionProvider,
+					npcCollisionMap,
 					modelProvider,
 					animationProvider,
 					textureProvider,

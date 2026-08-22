@@ -48,3 +48,9 @@ This file is not published by RuneLite, however it is simply their Cache module 
 8. Rebuild OS Map Viewer from your IDE or Gradle tool window to verify the updated bundled JAR.
 
 The inclusion of this Gradle script is purely an open-source measure. OS Map Viewer will bump the cache module version as game updates roll out.
+
+## 3D Cache Decoding
+
+The 3D viewer should keep cache-specific renderer extensions in `com.xeon.view3d`. Do not import bundled plugin packages into core viewer code, and do not modify the RuneLite cache module for viewer-only fields.
+
+NPC rendering follows that rule. `view3d` owns the extra NPC definition decoding, spawn index loading, Maya-sequence approximation, and NPC wander collision helper used by the renderer. NPC wander may use the bundled 2D collision resource, but camera collision must not use that map because it is tile-based and has no object mesh height.

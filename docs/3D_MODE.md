@@ -2,7 +2,7 @@
 
 <img width="1917" height="1047" alt="image" src="https://github.com/user-attachments/assets/15bab20b-39f8-4ea7-8655-f78098bc854d" />
 
-3D Mode shows the OSRS map scene with a free camera. It reads nearby regions from your local OSRS cache and does **not** modify game files.
+3D Mode shows the OSRS map scene with a free camera. It reads nearby regions, objects, textures, and NPC definitions from your local OSRS cache and does **not** modify game files.
 
 ## Open 3D Mode
 
@@ -21,6 +21,7 @@ The viewer resumes your last 3D camera position. If no saved 3D state exists, it
 - The main map area becomes the 3D scene.
 - Plugin sidebars stay available when the active plugin supports 3D.
 - Nearby regions stream in as you move.
+- NPCs appear at known OSRS spawn locations. They use idle animations when available, and NPCs with walk animations can wander near their spawn tile.
 - The minimap stays in the top-right corner and can be hidden.
 - `Open World Map` opens a movable floating world map.
 - The area search box stays below the 3D viewer.

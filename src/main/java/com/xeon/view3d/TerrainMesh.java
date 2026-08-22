@@ -49,6 +49,7 @@ public final class TerrainMesh
 	private final float minY;
 	private final float maxY;
 	private final List<AnimatedObjectMesh> animatedObjects;
+	private final List<NpcMesh> npcMeshes;
 	private final SceneTextureSet textureSet;
 	private final int[] sceneHeights;
 	private final boolean[] renderableTiles;
@@ -66,6 +67,7 @@ public final class TerrainMesh
 			true,
 			new float[0],
 			0,
+			List.of(),
 			List.of(),
 			SceneTextureSet.empty(),
 			new int[Region.Z * HEIGHTS_PER_PLANE],
@@ -85,6 +87,7 @@ public final class TerrainMesh
 		float[] vertexData,
 		int vertexCount,
 		List<AnimatedObjectMesh> animatedObjects,
+		List<NpcMesh> npcMeshes,
 		SceneTextureSet textureSet,
 		int[] sceneHeights,
 		boolean[] renderableTiles,
@@ -101,7 +104,8 @@ public final class TerrainMesh
 		this.vertexData = vertexData == null ? new float[0] : vertexData;
 		this.vertexCount = vertexCount;
 		this.animatedObjects = animatedObjects == null ? List.of() : List.copyOf(animatedObjects);
-		float[] bounds = heightBounds(this.vertexData, this.animatedObjects);
+		this.npcMeshes = npcMeshes == null ? List.of() : List.copyOf(npcMeshes);
+		float[] bounds = heightBounds(this.vertexData, this.animatedObjects, this.npcMeshes);
 		this.minY = bounds[0];
 		this.maxY = bounds[1];
 		this.textureSet = textureSet == null ? SceneTextureSet.empty() : textureSet;
@@ -154,6 +158,10 @@ public final class TerrainMesh
 		{
 			animatedObject.releaseVertexData();
 		}
+		for (NpcMesh npcMesh : npcMeshes)
+		{
+			npcMesh.releaseVertexData();
+		}
 	}
 
 	public int vertexCount()
@@ -179,6 +187,11 @@ public final class TerrainMesh
 	List<AnimatedObjectMesh> animatedObjects()
 	{
 		return animatedObjects;
+	}
+
+	List<NpcMesh> npcMeshes()
+	{
+		return npcMeshes;
 	}
 
 	float worldHeightAt(int samplePlane, float x, float y)
@@ -310,7 +323,11 @@ public final class TerrainMesh
 		return Math.max(min, Math.min(max, value));
 	}
 
-	private static float[] heightBounds(float[] vertexData, List<AnimatedObjectMesh> animatedObjects)
+	private static float[] heightBounds(
+		float[] vertexData,
+		List<AnimatedObjectMesh> animatedObjects,
+		List<NpcMesh> npcMeshes
+	)
 	{
 		float minY = Float.POSITIVE_INFINITY;
 		float maxY = Float.NEGATIVE_INFINITY;
@@ -328,6 +345,33 @@ public final class TerrainMesh
 				bounds = heightBounds(frame.rawVertexData(), minY, maxY);
 				minY = bounds[0];
 				maxY = bounds[1];
+			}
+		}
+		for (NpcMesh npcMesh : npcMeshes)
+		{
+			float npcMinY = Float.POSITIVE_INFINITY;
+			float npcMaxY = Float.NEGATIVE_INFINITY;
+			for (AnimatedObjectMesh.Frame frame : npcMesh.frames())
+			{
+				if (frame == null)
+				{
+					continue;
+				}
+				bounds = heightBounds(frame.rawVertexData(), npcMinY, npcMaxY);
+				npcMinY = bounds[0];
+				npcMaxY = bounds[1];
+			}
+			if (!Float.isFinite(npcMinY) || !Float.isFinite(npcMaxY))
+			{
+				continue;
+			}
+			for (NpcMesh.Instance instance : npcMesh.instances())
+			{
+				for (float baseY : instance.y())
+				{
+					minY = Math.min(minY, baseY + npcMinY);
+					maxY = Math.max(maxY, baseY + npcMaxY);
+				}
 			}
 		}
 		if (!Float.isFinite(minY) || !Float.isFinite(maxY))

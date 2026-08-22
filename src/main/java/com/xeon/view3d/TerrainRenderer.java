@@ -67,6 +67,7 @@ final class TerrainRenderer
 		layout(location = 9) in float aTextureAlphaCutoff;
 
 		uniform mat4 uMvp;
+		uniform mat4 uModelMatrix;
 		uniform vec3 uCameraPosition;
 		uniform vec3 uRegionOffset;
 		uniform float uTimeSeconds;
@@ -81,10 +82,11 @@ final class TerrainRenderer
 
 		void main()
 		{
-			vec3 position = aPosition + uRegionOffset;
+			vec3 modelPosition = (uModelMatrix * vec4(aPosition, 1.0)).xyz;
+			vec3 position = modelPosition + uRegionOffset;
 			vec4 worldPosition = vec4(position, 1.0);
 			vColor = aColor;
-			vNormal = aNormal;
+			vNormal = normalize(mat3(uModelMatrix) * aNormal);
 			vAlpha = aAlpha;
 			vDistance = distance(position, uCameraPosition);
 			vec2 animation = vec2(aTextureAnimU, aTextureAnimV);
@@ -233,6 +235,7 @@ final class TerrainRenderer
 	private final Matrix4f projection = new Matrix4f();
 	private final Matrix4f view = new Matrix4f();
 	private final Matrix4f mvp = new Matrix4f();
+	private final Matrix4f modelMatrix = new Matrix4f();
 	private final FrustumIntersection frustum = new FrustumIntersection();
 	private final Map<Integer, UploadedRegion> uploadedRegions = new HashMap<>();
 	private final Map<Integer, TerrainMesh> pendingUploadRegions = new LinkedHashMap<>();
@@ -242,6 +245,7 @@ final class TerrainRenderer
 	private HoveredTile hoveredTile;
 	private int terrainProgram;
 	private int terrainMvpLocation;
+	private int terrainModelMatrixLocation;
 	private int terrainCameraLocation;
 	private int terrainRegionOffsetLocation;
 	private int terrainTimeLocation;
@@ -320,6 +324,7 @@ final class TerrainRenderer
 
 		terrainProgram = createProgram(TERRAIN_VERTEX_SHADER, TERRAIN_FRAGMENT_SHADER);
 		terrainMvpLocation = GL33C.glGetUniformLocation(terrainProgram, "uMvp");
+		terrainModelMatrixLocation = GL33C.glGetUniformLocation(terrainProgram, "uModelMatrix");
 		terrainCameraLocation = GL33C.glGetUniformLocation(terrainProgram, "uCameraPosition");
 		terrainRegionOffsetLocation = GL33C.glGetUniformLocation(terrainProgram, "uRegionOffset");
 		terrainTimeLocation = GL33C.glGetUniformLocation(terrainProgram, "uTimeSeconds");
@@ -554,7 +559,7 @@ final class TerrainRenderer
 		int verticesDrawn = 0;
 		for (UploadedRegion region : uploadedRegions.values())
 		{
-			if (region.vertexCount() <= 0 && region.animatedObjects().isEmpty())
+			if (region.vertexCount() <= 0 && region.animatedObjects().isEmpty() && region.npcMeshes().isEmpty())
 			{
 				continue;
 			}
@@ -564,6 +569,7 @@ final class TerrainRenderer
 				continue;
 			}
 			GL33C.glUniform3f(terrainRegionOffsetLocation, region.offsetX(), 0.0f, region.offsetZ());
+			setTerrainIdentityModelMatrix();
 			if (region.vertexCount() > 0)
 			{
 				GL33C.glBindVertexArray(region.vao());
@@ -582,13 +588,63 @@ final class TerrainRenderer
 				drawCalls++;
 				verticesDrawn += frame.vertexCount();
 			}
+			for (UploadedNpcMesh npcMesh : region.npcMeshes())
+			{
+				for (NpcMesh.Instance instance : npcMesh.instances())
+				{
+					NpcMesh.Transform transform = instance.transformAt(timeSeconds);
+					if (npcMesh.walkingAnimation() != transform.walking())
+					{
+						continue;
+					}
+					UploadedAnimationFrame frame = npcMesh.frameAt(timeSeconds, instance.phaseOffset());
+					if (frame.vertexCount() <= 0)
+					{
+						continue;
+					}
+					setTerrainModelMatrix(transform);
+					GL33C.glBindVertexArray(frame.vao());
+					GL33C.glDrawArrays(GL33C.GL_TRIANGLES, 0, frame.vertexCount());
+					drawCalls++;
+					verticesDrawn += frame.vertexCount();
+				}
+			}
 			visibleRegions++;
 			verticesDrawn += region.vertexCount();
 		}
+		setTerrainIdentityModelMatrix();
 		GL33C.glBindVertexArray(0);
 		GL33C.glBindTexture(GL33C.GL_TEXTURE_2D_ARRAY, 0);
 		GL33C.glUseProgram(0);
 		return new RenderCounts(drawCalls, visibleRegions, culledRegions, verticesDrawn);
+	}
+
+	private void setTerrainIdentityModelMatrix()
+	{
+		modelMatrix.identity();
+		uploadTerrainModelMatrix(modelMatrix);
+	}
+
+	private void setTerrainModelMatrix(NpcMesh.Transform transform)
+	{
+		modelMatrix
+			.identity()
+			.translation(transform.x(), transform.y(), transform.z())
+			.rotateY(transform.yawRadians());
+		uploadTerrainModelMatrix(modelMatrix);
+	}
+
+	private void uploadTerrainModelMatrix(Matrix4f matrix)
+	{
+		if (terrainModelMatrixLocation < 0)
+		{
+			return;
+		}
+		try (MemoryStack stack = MemoryStack.stackPush())
+		{
+			FloatBuffer matrixBuffer = stack.mallocFloat(16);
+			GL33C.glUniformMatrix4fv(terrainModelMatrixLocation, false, matrix.get(matrixBuffer));
+		}
 	}
 
 	private int renderHoveredTile()
@@ -1582,7 +1638,7 @@ final class TerrainRenderer
 	{
 		UploadedRegion region = uploadedRegions.get(regionId);
 		return region != null
-			&& (region.vertexCount() > 0 || !region.animatedObjects().isEmpty())
+			&& (region.vertexCount() > 0 || !region.animatedObjects().isEmpty() || !region.npcMeshes().isEmpty())
 			&& isVisible(region);
 	}
 
@@ -1678,7 +1734,7 @@ final class TerrainRenderer
 		for (TerrainMesh mesh : scene.meshes())
 		{
 			UploadedRegion uploadedRegion = uploadedRegions.get(mesh.regionId());
-			if (mesh.vertexCount() == 0 && mesh.animatedObjects().isEmpty())
+			if (mesh.vertexCount() == 0 && mesh.animatedObjects().isEmpty() && mesh.npcMeshes().isEmpty())
 			{
 				if (uploadedRegion == null)
 				{
@@ -1691,7 +1747,9 @@ final class TerrainRenderer
 			}
 
 			if (uploadedRegion == null
-				|| uploadedRegion.vertexCount() == 0 && uploadedRegion.animatedObjects().isEmpty())
+				|| uploadedRegion.vertexCount() == 0
+				&& uploadedRegion.animatedObjects().isEmpty()
+				&& uploadedRegion.npcMeshes().isEmpty())
 			{
 				pendingUploadRegions.putIfAbsent(mesh.regionId(), mesh);
 			}
@@ -1753,7 +1811,8 @@ final class TerrainRenderer
 		TerrainMesh mesh,
 		int vao,
 		int vbo,
-		List<UploadedAnimatedObject> animatedObjects
+		List<UploadedAnimatedObject> animatedObjects,
+		List<UploadedNpcMesh> npcMeshes
 	)
 	{
 		float offsetX = scene.offsetX(mesh);
@@ -1775,7 +1834,8 @@ final class TerrainRenderer
 			maxX,
 			mesh.maxY(),
 			maxZ,
-			animatedObjects
+			animatedObjects,
+			npcMeshes
 		);
 	}
 
@@ -2351,7 +2411,8 @@ final class TerrainRenderer
 		float maxX,
 		float maxY,
 		float maxZ,
-		List<UploadedAnimatedObject> animatedObjects
+		List<UploadedAnimatedObject> animatedObjects,
+		List<UploadedNpcMesh> npcMeshes
 	)
 	{
 		private static UploadedRegion empty(int regionId, float offsetX, float offsetZ)
@@ -2369,8 +2430,15 @@ final class TerrainRenderer
 				0.0f,
 				0.0f,
 				0.0f,
+				List.of(),
 				List.of()
 			);
+		}
+
+		private UploadedRegion
+		{
+			animatedObjects = animatedObjects == null ? List.of() : List.copyOf(animatedObjects);
+			npcMeshes = npcMeshes == null ? List.of() : List.copyOf(npcMeshes);
 		}
 
 		private void delete()
@@ -2387,6 +2455,10 @@ final class TerrainRenderer
 			{
 				animatedObject.delete();
 			}
+			for (UploadedNpcMesh npcMesh : npcMeshes)
+			{
+				npcMesh.delete();
+			}
 		}
 	}
 
@@ -2396,10 +2468,12 @@ final class TerrainRenderer
 		private final TerrainMesh mesh;
 		private final float[] vertexData;
 		private final List<AnimatedObjectUploadTask> animatedTasks = new ArrayList<>();
+		private final List<NpcMeshUploadTask> npcTasks = new ArrayList<>();
 		private final int vao;
 		private final int vbo;
 		private int uploadedFloats;
 		private int animatedTaskIndex;
+		private int npcTaskIndex;
 		private boolean cancelled;
 
 		private RegionUploadTask(TerrainScene scene, TerrainMesh mesh)
@@ -2429,6 +2503,13 @@ final class TerrainRenderer
 					animatedTasks.add(new AnimatedObjectUploadTask(animatedObject));
 				}
 			}
+			for (NpcMesh npcMesh : mesh.npcMeshes())
+			{
+				if (npcMesh.frameCount() > 0 && !npcMesh.instances().isEmpty())
+				{
+					npcTasks.add(new NpcMeshUploadTask(npcMesh));
+				}
+			}
 		}
 
 		private int regionId()
@@ -2450,7 +2531,7 @@ final class TerrainRenderer
 			int remaining = vertexData.length - uploadedFloats;
 			if (remaining <= 0)
 			{
-				return uploadAnimationChunk(budget);
+				return uploadAnimationChunk(budget) && uploadNpcChunk(budget);
 			}
 
 			int floats = budget.take(remaining);
@@ -2470,7 +2551,9 @@ final class TerrainRenderer
 				MemoryUtil.memFree(buffer);
 			}
 			uploadedFloats += floats;
-			return uploadedFloats >= vertexData.length && uploadAnimationChunk(budget);
+			return uploadedFloats >= vertexData.length
+				&& uploadAnimationChunk(budget)
+				&& uploadNpcChunk(budget);
 		}
 
 		private UploadedRegion finish()
@@ -2480,7 +2563,12 @@ final class TerrainRenderer
 			{
 				animatedObjects.add(task.finish());
 			}
-			return uploadedRegion(scene, mesh, vao, vbo, List.copyOf(animatedObjects));
+			List<UploadedNpcMesh> npcMeshes = new ArrayList<>(npcTasks.size());
+			for (NpcMeshUploadTask task : npcTasks)
+			{
+				npcMeshes.add(task.finish());
+			}
+			return uploadedRegion(scene, mesh, vao, vbo, List.copyOf(animatedObjects), List.copyOf(npcMeshes));
 		}
 
 		private void cancel(boolean releaseVertexData)
@@ -2491,6 +2579,10 @@ final class TerrainRenderer
 				mesh.releaseVertexData();
 			}
 			for (AnimatedObjectUploadTask task : animatedTasks)
+			{
+				task.cancel(releaseVertexData);
+			}
+			for (NpcMeshUploadTask task : npcTasks)
 			{
 				task.cancel(releaseVertexData);
 			}
@@ -2522,6 +2614,25 @@ final class TerrainRenderer
 			}
 			return true;
 		}
+
+		private boolean uploadNpcChunk(UploadBudget budget)
+		{
+			while (npcTaskIndex < npcTasks.size())
+			{
+				if (!budget.hasRemaining())
+				{
+					return false;
+				}
+				NpcMeshUploadTask task = npcTasks.get(npcTaskIndex);
+				if (task.uploadChunk(budget))
+				{
+					npcTaskIndex++;
+					continue;
+				}
+				return false;
+			}
+			return true;
+		}
 	}
 
 	private final class AnimatedObjectUploadTask
@@ -2544,6 +2655,12 @@ final class TerrainRenderer
 				if (activeFrameTask == null)
 				{
 					AnimatedObjectMesh.Frame frame = mesh.frames()[frameIndex];
+					if (frame == null)
+					{
+						uploadedFrames[frameIndex] = UploadedAnimationFrame.EMPTY;
+						frameIndex++;
+						continue;
+					}
 					if (frame.vertexCount() > 0 && !budget.hasRemaining())
 					{
 						return false;
@@ -2572,6 +2689,81 @@ final class TerrainRenderer
 				uploadedFrames
 			);
 		}
+
+		private void cancel(boolean releaseVertexData)
+		{
+			if (activeFrameTask != null)
+			{
+				activeFrameTask.cancel(releaseVertexData);
+				activeFrameTask = null;
+			}
+			for (UploadedAnimationFrame frame : uploadedFrames)
+			{
+				if (frame != null)
+				{
+					frame.delete();
+				}
+			}
+		}
+	}
+
+	private final class NpcMeshUploadTask
+	{
+		private final NpcMesh mesh;
+		private final UploadedAnimationFrame[] uploadedFrames;
+		private AnimationFrameUploadTask activeFrameTask;
+		private int frameIndex;
+
+		private NpcMeshUploadTask(NpcMesh mesh)
+		{
+			this.mesh = mesh;
+			this.uploadedFrames = new UploadedAnimationFrame[mesh.frameCount()];
+		}
+
+		private boolean uploadChunk(UploadBudget budget)
+		{
+			while (frameIndex < uploadedFrames.length)
+			{
+				if (activeFrameTask == null)
+				{
+					AnimatedObjectMesh.Frame frame = mesh.frames()[frameIndex];
+					if (frame == null)
+					{
+						uploadedFrames[frameIndex] = UploadedAnimationFrame.EMPTY;
+						frameIndex++;
+						continue;
+					}
+					if (frame.vertexCount() > 0 && !budget.hasRemaining())
+					{
+						return false;
+					}
+					activeFrameTask = new AnimationFrameUploadTask(frame);
+				}
+				if (activeFrameTask.uploadChunk(budget))
+				{
+					uploadedFrames[frameIndex] = activeFrameTask.finish();
+					activeFrameTask = null;
+					frameIndex++;
+					continue;
+				}
+				return false;
+			}
+			return true;
+		}
+
+			private UploadedNpcMesh finish()
+			{
+				return new UploadedNpcMesh(
+					mesh.npcId(),
+					mesh.name(),
+					mesh.sequenceId(),
+					mesh.walkingAnimation(),
+					mesh.frameLengths(),
+					mesh.frameStep(),
+					uploadedFrames,
+					mesh.instances()
+				);
+			}
 
 		private void cancel(boolean releaseVertexData)
 		{
@@ -2711,6 +2903,76 @@ final class TerrainRenderer
 				return UploadedAnimationFrame.EMPTY;
 			}
 			return frame(AnimatedObjectMesh.frameIndexAt(frames.length, frameLengths, frameStep, phaseOffset, timeSeconds));
+		}
+
+		private UploadedAnimationFrame frame(int frame)
+		{
+			UploadedAnimationFrame selected = frames[frame];
+			if (selected != null && selected.vertexCount() > 0)
+			{
+				return selected;
+			}
+			for (int i = frame - 1; i >= 0; i--)
+			{
+				UploadedAnimationFrame fallback = frames[i];
+				if (fallback != null && fallback.vertexCount() > 0)
+				{
+					return fallback;
+				}
+			}
+			for (int i = frame + 1; i < frames.length; i++)
+			{
+				UploadedAnimationFrame fallback = frames[i];
+				if (fallback != null && fallback.vertexCount() > 0)
+				{
+					return fallback;
+				}
+			}
+			return UploadedAnimationFrame.EMPTY;
+		}
+
+		private void delete()
+		{
+			for (UploadedAnimationFrame frame : frames)
+			{
+				if (frame != null)
+				{
+					frame.delete();
+				}
+			}
+		}
+	}
+
+	private record UploadedNpcMesh(
+		int npcId,
+		String name,
+		int sequenceId,
+		boolean walkingAnimation,
+		int[] frameLengths,
+		int frameStep,
+		UploadedAnimationFrame[] frames,
+		List<NpcMesh.Instance> instances
+	)
+	{
+		private UploadedNpcMesh
+		{
+			frameLengths = frameLengths == null ? new int[0] : frameLengths.clone();
+			frames = frames == null ? new UploadedAnimationFrame[0] : frames.clone();
+			instances = instances == null ? List.of() : List.copyOf(instances);
+		}
+
+		private UploadedAnimationFrame frameAt(float timeSeconds, int phaseOffset)
+		{
+			if (frames.length == 0)
+			{
+				return UploadedAnimationFrame.EMPTY;
+			}
+			int frame = AnimatedObjectMesh.frameIndexAt(frames.length, frameLengths, frameStep, phaseOffset, timeSeconds);
+			if (frame < 0 || frame >= frames.length)
+			{
+				frame = 0;
+			}
+			return frame(frame);
 		}
 
 		private UploadedAnimationFrame frame(int frame)

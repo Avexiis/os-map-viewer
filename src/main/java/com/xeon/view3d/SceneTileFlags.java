@@ -78,7 +78,7 @@ final class SceneTileFlags
 			&& renderOnLowerPlane(region, lowerSourcePlane, x, y);
 	}
 
-	private static boolean isBridge(Region region, int x, int y)
+	static boolean isBridge(Region region, int x, int y)
 	{
 		return (tileSetting(region, 1, x, y) & BRIDGE_TILE) != 0;
 	}

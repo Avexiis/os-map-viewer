@@ -4,7 +4,9 @@
 
 - The experimental map printer contains code derived from RuneLite cache tooling.
 
-- The 3D viewer uses the RuneLite cache module to read local cache map data. Parts of its terrain color and cache interpretation logic are adapted from RuneLite.
+- The 3D viewer uses the RuneLite cache module to read local cache map data. Parts of its terrain color, NPC definition decoding, and cache interpretation logic are adapted from RuneLite.
+
+- 3D NPC spawn placement and animation behavior were implemented with reference to the dennisdev map viewer.
 
 - The Shortest Path plugin for this application includes data and adapted pathfinding/collision map code from the RuneLite hub plugin `shortest-path` of the same name.
 
