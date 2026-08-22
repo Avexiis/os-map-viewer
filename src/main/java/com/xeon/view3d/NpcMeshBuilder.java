@@ -190,11 +190,13 @@ final class NpcMeshBuilder
 				meshes.add(new NpcMesh(
 					entry.npcId,
 					entry.name,
+					entry.combatLevel,
 					entry.sequenceId,
 					entry.walkingAnimation,
 					entry.frameLengths,
 					entry.frameStep,
 					entry.frames,
+					entry.bounds,
 					entry.instances
 				));
 			}
@@ -284,14 +286,16 @@ final class NpcMeshBuilder
 	)
 	{
 		FrameSet frameSet = frameSet(definition, baseModel, sequence, animationProvider, textureProvider, textureSet, walking);
-			return new NpcMeshEntry(
-				definition.id,
-				definition.name,
-				sequenceId,
-				walking,
-				frameSet.frameLengths(),
-				frameSet.frameStep(),
-				frameSet.frames()
+		return new NpcMeshEntry(
+			definition.id,
+			definition.name,
+			definition.combatLevel,
+			sequenceId,
+			walking,
+			frameSet.frameLengths(),
+			frameSet.frameStep(),
+			frameSet.frames(),
+			frameSet.bounds()
 		);
 	}
 
@@ -308,6 +312,7 @@ final class NpcMeshBuilder
 		int effectiveFrameCount = animationProvider == null ? 0 : animationProvider.effectiveFrameCount(sequence);
 		int bakedFrameCount = effectiveFrameCount <= 0 ? 1 : Math.min(effectiveFrameCount, MAX_NPC_ANIMATION_FRAMES);
 		AnimatedObjectMesh.Frame[] frames = new AnimatedObjectMesh.Frame[bakedFrameCount];
+		BoundsBuilder bounds = new BoundsBuilder();
 		for (int frame = 0; frame < bakedFrameCount; frame++)
 		{
 			int sourceFrame = effectiveFrameCount <= 0
@@ -316,15 +321,18 @@ final class NpcMeshBuilder
 			ModelDefinition model = frameModel(definition, baseModel, sequence, animationProvider, sourceFrame, walking);
 			SceneMeshBuffer frameData = new SceneMeshBuffer(Math.max(256, model.faceCount * 3 * TerrainMesh.FLOATS_PER_VERTEX));
 			appendFrameModel(frameData, definition, model, textureProvider, textureSet);
+			float[] rawVertexData = frameData.toArray();
+			bounds.include(rawVertexData);
 			frames[frame] = new AnimatedObjectMesh.Frame(
-				frameData.toArray(),
+				rawVertexData,
 				frameData.size() / TerrainMesh.FLOATS_PER_VERTEX
 			);
 		}
 		return new FrameSet(
 			frameLengths(sequence, animationProvider, effectiveFrameCount, bakedFrameCount),
 			frameStep(sequence, effectiveFrameCount, bakedFrameCount),
-			frames
+			frames,
+			bounds.build()
 		);
 	}
 
@@ -719,7 +727,7 @@ final class NpcMeshBuilder
 		}
 		int units = Math.max(1, Math.round(delta * ROTATION_UNITS / (float) (Math.PI * 2.0)));
 		int speed = Math.max(1, rotationSpeed);
-		return Math.max(0.08f, units / (float) speed * 0.02f);
+		return Math.max(0.04f, units / (float) speed * 0.01f);
 	}
 
 	private static float shortestAngleDelta(float startYaw, float endYaw)
@@ -1435,6 +1443,54 @@ final class NpcMeshBuilder
 		}
 	}
 
+	private static final class BoundsBuilder
+	{
+		private float minX = Float.POSITIVE_INFINITY;
+		private float minY = Float.POSITIVE_INFINITY;
+		private float minZ = Float.POSITIVE_INFINITY;
+		private float maxX = Float.NEGATIVE_INFINITY;
+		private float maxY = Float.NEGATIVE_INFINITY;
+		private float maxZ = Float.NEGATIVE_INFINITY;
+
+		private void include(float[] vertexData)
+		{
+			if (vertexData == null)
+			{
+				return;
+			}
+			for (int offset = 0; offset + 2 < vertexData.length; offset += TerrainMesh.FLOATS_PER_VERTEX)
+			{
+				float x = vertexData[offset];
+				float y = vertexData[offset + 1];
+				float z = vertexData[offset + 2];
+				if (!Float.isFinite(x) || !Float.isFinite(y) || !Float.isFinite(z))
+				{
+					continue;
+				}
+				minX = Math.min(minX, x);
+				minY = Math.min(minY, y);
+				minZ = Math.min(minZ, z);
+				maxX = Math.max(maxX, x);
+				maxY = Math.max(maxY, y);
+				maxZ = Math.max(maxZ, z);
+			}
+		}
+
+		private NpcMesh.Bounds build()
+		{
+			if (!Float.isFinite(minX)
+				|| !Float.isFinite(minY)
+				|| !Float.isFinite(minZ)
+				|| !Float.isFinite(maxX)
+				|| !Float.isFinite(maxY)
+				|| !Float.isFinite(maxZ))
+			{
+				return NpcMesh.Bounds.fallback();
+			}
+			return new NpcMesh.Bounds(minX, minY, minZ, maxX, maxY, maxZ);
+		}
+	}
+
 	private static int clamp(int value, int min, int max)
 	{
 		return Math.max(min, Math.min(max, value));
@@ -1448,7 +1504,8 @@ final class NpcMeshBuilder
 	private record FrameSet(
 		int[] frameLengths,
 		int frameStep,
-		AnimatedObjectMesh.Frame[] frames
+		AnimatedObjectMesh.Frame[] frames,
+		NpcMesh.Bounds bounds
 	)
 	{
 	}
@@ -1457,30 +1514,36 @@ final class NpcMeshBuilder
 	{
 		private final int npcId;
 		private final String name;
+		private final int combatLevel;
 		private final int sequenceId;
 		private final boolean walkingAnimation;
 		private final int[] frameLengths;
 		private final int frameStep;
 		private final AnimatedObjectMesh.Frame[] frames;
+		private final NpcMesh.Bounds bounds;
 		private final List<NpcMesh.Instance> instances = new ArrayList<>();
 
 		private NpcMeshEntry(
 			int npcId,
 			String name,
+			int combatLevel,
 			int sequenceId,
 			boolean walkingAnimation,
 			int[] frameLengths,
 			int frameStep,
-			AnimatedObjectMesh.Frame[] frames
+			AnimatedObjectMesh.Frame[] frames,
+			NpcMesh.Bounds bounds
 		)
 		{
 			this.npcId = npcId;
 			this.name = name;
+			this.combatLevel = combatLevel;
 			this.sequenceId = sequenceId;
 			this.walkingAnimation = walkingAnimation;
 			this.frameLengths = frameLengths;
 			this.frameStep = frameStep;
 			this.frames = frames;
+			this.bounds = bounds == null ? NpcMesh.Bounds.fallback() : bounds;
 		}
 
 		private int totalFrameLength()

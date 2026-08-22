@@ -46,6 +46,7 @@ import org.joml.FrustumIntersection;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector3fc;
+import org.joml.Vector4f;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL33C;
 import org.lwjgl.system.MemoryStack;
@@ -231,11 +232,16 @@ final class TerrainRenderer
 	private static final int MAX_OVERLAY_PATH_INTERVAL_SAMPLES = 384;
 	private static final int MAX_OVERLAY_LINE_VERTICES_PER_BATCH = 120_000;
 	private static final float REGION_CULL_PADDING = 2.0f;
+	private static final float NPC_PICK_PADDING = 0.10f;
+	private static final int MAX_NPC_OUTLINE_PIXELS = 500_000;
+	private static final int NPC_OUTLINE_STAMP_RADIUS = 1;
+	private static final float NPC_OUTLINE_DEPTH_BIAS = 0.0005f;
 
 	private final Matrix4f projection = new Matrix4f();
 	private final Matrix4f view = new Matrix4f();
 	private final Matrix4f mvp = new Matrix4f();
 	private final Matrix4f modelMatrix = new Matrix4f();
+	private final Matrix4f npcOutlineMvp = new Matrix4f();
 	private final FrustumIntersection frustum = new FrustumIntersection();
 	private final Map<Integer, UploadedRegion> uploadedRegions = new HashMap<>();
 	private final Map<Integer, TerrainMesh> pendingUploadRegions = new LinkedHashMap<>();
@@ -264,6 +270,8 @@ final class TerrainRenderer
 	private int uploadedTextureLayerCount;
 	private int outlineVao;
 	private int outlineVbo;
+	private int npcOutlineEdgeVao;
+	private int npcOutlineEdgeVbo;
 	private int overlayLineVao;
 	private int overlayLineVbo;
 	private int overlayLineVertexCount;
@@ -279,6 +287,8 @@ final class TerrainRenderer
 	private int sceneFboWidth = -1;
 	private int sceneFboHeight = -1;
 	private int sceneFboSamples = -1;
+	private int renderWidth = 1;
+	private int renderHeight = 1;
 	private String glVendor = "Unavailable";
 	private String glRenderer = "Unavailable";
 	private String glVersion = "Unavailable";
@@ -287,12 +297,18 @@ final class TerrainRenderer
 	private List<OverlayLineDraw> overlayLineDraws = List.of();
 	private List<OverlayLineDraw> overlayTileDraws = List.of();
 	private List<OverlayTextLabel> overlayTextLabels = List.of();
+	private HoverRay hoverRay;
+	private HoveredNpcDraw hoveredNpcDraw;
+	private NpcHoverInfo hoveredNpcInfo;
 	private boolean initialized;
 	private int antialiasingSamples = 4;
 	private int viewDistanceRegions = 3;
 	private long startNanos;
 	private boolean pluginOverlayDirty = true;
 	private boolean pluginOverlayOnTop;
+	private boolean npcsVisible = true;
+	private boolean npcOutlinesEnabled = true;
+	private boolean npcHoverTextEnabled = true;
 	private float backgroundRed = 0.0f;
 	private float backgroundGreen = 0.0f;
 	private float backgroundBlue = 0.0f;
@@ -374,6 +390,45 @@ final class TerrainRenderer
 		this.pluginOverlayOnTop = pluginOverlayOnTop;
 	}
 
+	void setHoverRay(Vector3fc origin, Vector3fc direction)
+	{
+		if (origin == null || direction == null || direction.lengthSquared() <= 0.000001f)
+		{
+			hoverRay = null;
+			return;
+		}
+		hoverRay = new HoverRay(new Vector3f(origin), new Vector3f(direction).normalize());
+	}
+
+	NpcHoverInfo hoveredNpcInfo()
+	{
+		return hoveredNpcInfo;
+	}
+
+	void setNpcsVisible(boolean npcsVisible)
+	{
+		this.npcsVisible = npcsVisible;
+		if (!npcsVisible)
+		{
+			hoveredNpcDraw = null;
+			hoveredNpcInfo = null;
+		}
+	}
+
+	void setNpcOutlinesEnabled(boolean npcOutlinesEnabled)
+	{
+		this.npcOutlinesEnabled = npcOutlinesEnabled;
+	}
+
+	void setNpcHoverTextEnabled(boolean npcHoverTextEnabled)
+	{
+		this.npcHoverTextEnabled = npcHoverTextEnabled;
+		if (!npcHoverTextEnabled)
+		{
+			hoveredNpcInfo = null;
+		}
+	}
+
 	void setBackgroundColor(Color color)
 	{
 		Color background = color == null ? Color.BLACK : color;
@@ -419,6 +474,8 @@ final class TerrainRenderer
 
 		int safeWidth = Math.max(1, width);
 		int safeHeight = Math.max(1, height);
+		renderWidth = safeWidth;
+		renderHeight = safeHeight;
 		int defaultFramebuffer = GL33C.glGetInteger(GL33C.GL_DRAW_FRAMEBUFFER_BINDING);
 		int renderFramebuffer = prepareRenderTarget(safeWidth, safeHeight, defaultFramebuffer);
 		GL33C.glBindFramebuffer(GL33C.GL_FRAMEBUFFER, renderFramebuffer);
@@ -433,7 +490,9 @@ final class TerrainRenderer
 		{
 			uploadPendingRegions();
 			prepareMatrices(camera, safeWidth / (float) safeHeight);
-			renderCounts = renderTerrain(camera);
+			float timeSeconds = animationTimeSeconds();
+			renderCounts = renderTerrain(camera, timeSeconds);
+			updateHoveredNpc(timeSeconds);
 			overlayDrawCalls = renderSceneOverlays(camera);
 		}
 		else
@@ -469,6 +528,16 @@ final class TerrainRenderer
 		{
 			GL33C.glDeleteVertexArrays(outlineVao);
 			outlineVao = 0;
+		}
+		if (npcOutlineEdgeVbo != 0)
+		{
+			GL33C.glDeleteBuffers(npcOutlineEdgeVbo);
+			npcOutlineEdgeVbo = 0;
+		}
+		if (npcOutlineEdgeVao != 0)
+		{
+			GL33C.glDeleteVertexArrays(npcOutlineEdgeVao);
+			npcOutlineEdgeVao = 0;
 		}
 		if (overlayLineVbo != 0)
 		{
@@ -533,7 +602,7 @@ final class TerrainRenderer
 		frustum.set(mvp);
 	}
 
-	private RenderCounts renderTerrain(FreeCamera camera)
+	private RenderCounts renderTerrain(FreeCamera camera, float timeSeconds)
 	{
 		Vector3fc cameraPosition = camera.position();
 		GL33C.glUseProgram(terrainProgram);
@@ -543,7 +612,6 @@ final class TerrainRenderer
 			GL33C.glUniformMatrix4fv(terrainMvpLocation, false, mvp.get(matrixBuffer));
 		}
 		GL33C.glUniform3f(terrainCameraLocation, cameraPosition.x(), cameraPosition.y(), cameraPosition.z());
-		float timeSeconds = animationTimeSeconds();
 		GL33C.glUniform1f(terrainTimeLocation, timeSeconds);
 		GL33C.glUniform1f(terrainTextureLayerCountLocation, uploadedTextureLayerCount);
 		float fogEnd = fogEndDistance();
@@ -588,6 +656,12 @@ final class TerrainRenderer
 				drawCalls++;
 				verticesDrawn += frame.vertexCount();
 			}
+			if (!npcsVisible)
+			{
+				visibleRegions++;
+				verticesDrawn += region.vertexCount();
+				continue;
+			}
 			for (UploadedNpcMesh npcMesh : region.npcMeshes())
 			{
 				for (NpcMesh.Instance instance : npcMesh.instances())
@@ -617,6 +691,172 @@ final class TerrainRenderer
 		GL33C.glBindTexture(GL33C.GL_TEXTURE_2D_ARRAY, 0);
 		GL33C.glUseProgram(0);
 		return new RenderCounts(drawCalls, visibleRegions, culledRegions, verticesDrawn);
+	}
+
+	private void updateHoveredNpc(float timeSeconds)
+	{
+		HoverRay ray = hoverRay;
+		if (!npcsVisible || ray == null || (!npcOutlinesEnabled && !npcHoverTextEnabled))
+		{
+			hoveredNpcDraw = null;
+			hoveredNpcInfo = null;
+			return;
+		}
+
+		HoveredNpcDraw best = null;
+		float bestDistance = Float.POSITIVE_INFINITY;
+		for (UploadedRegion region : uploadedRegions.values())
+		{
+			if (region.npcMeshes().isEmpty() || !isVisible(region))
+			{
+				continue;
+			}
+			for (UploadedNpcMesh npcMesh : region.npcMeshes())
+			{
+				for (NpcMesh.Instance instance : npcMesh.instances())
+				{
+					NpcMesh.Transform transform = instance.transformAt(timeSeconds);
+					if (npcMesh.walkingAnimation() != transform.walking())
+					{
+						continue;
+					}
+					UploadedAnimationFrame frame = npcMesh.frameAt(timeSeconds, instance.phaseOffset());
+					if (frame.vertexCount() <= 0)
+					{
+						continue;
+					}
+					float distance = npcIntersectionDistance(region, npcMesh.bounds(), transform, ray);
+					if (distance < bestDistance)
+					{
+						bestDistance = distance;
+						best = new HoveredNpcDraw(region, npcMesh, transform, frame, distance);
+					}
+				}
+			}
+		}
+		hoveredNpcDraw = best;
+		hoveredNpcInfo = best == null || !npcHoverTextEnabled
+			? null
+			: new NpcHoverInfo(best.mesh().name(), best.mesh().combatLevel(), best.mesh().npcId());
+	}
+
+	private static float npcIntersectionDistance(UploadedRegion region, NpcMesh.Bounds bounds,
+	                                             NpcMesh.Transform transform, HoverRay ray)
+	{
+		if (region == null || bounds == null || !bounds.valid() || transform == null || ray == null)
+		{
+			return Float.POSITIVE_INFINITY;
+		}
+
+		float yaw = transform.yawRadians();
+		float cos = (float) Math.cos(yaw);
+		float sin = (float) Math.sin(yaw);
+		float originX = ray.origin().x() - (region.offsetX() + transform.x());
+		float originY = ray.origin().y() - transform.y();
+		float originZ = ray.origin().z() - (region.offsetZ() + transform.z());
+		float localOriginX = cos * originX - sin * originZ;
+		float localOriginZ = sin * originX + cos * originZ;
+		float localDirectionX = cos * ray.direction().x() - sin * ray.direction().z();
+		float localDirectionZ = sin * ray.direction().x() + cos * ray.direction().z();
+		return rayAabbIntersection(
+			localOriginX,
+			originY,
+			localOriginZ,
+			localDirectionX,
+			ray.direction().y(),
+			localDirectionZ,
+			bounds.minX() - NPC_PICK_PADDING,
+			bounds.minY() - NPC_PICK_PADDING,
+			bounds.minZ() - NPC_PICK_PADDING,
+			bounds.maxX() + NPC_PICK_PADDING,
+			bounds.maxY() + NPC_PICK_PADDING,
+			bounds.maxZ() + NPC_PICK_PADDING
+		);
+	}
+
+	private static float rayAabbIntersection(float originX, float originY, float originZ,
+	                                         float directionX, float directionY, float directionZ,
+	                                         float minX, float minY, float minZ,
+	                                         float maxX, float maxY, float maxZ)
+	{
+		float tMin = 0.0f;
+		float tMax = Float.POSITIVE_INFINITY;
+
+		float dir = directionX;
+		if (Math.abs(dir) < 0.000001f)
+		{
+			if (originX < minX || originX > maxX)
+			{
+				return Float.POSITIVE_INFINITY;
+			}
+		}
+		else
+		{
+			float t1 = (minX - originX) / dir;
+			float t2 = (maxX - originX) / dir;
+			if (t1 > t2)
+			{
+				float tmp = t1;
+				t1 = t2;
+				t2 = tmp;
+			}
+			tMin = Math.max(tMin, t1);
+			tMax = Math.min(tMax, t2);
+			if (tMin > tMax)
+			{
+				return Float.POSITIVE_INFINITY;
+			}
+		}
+
+		dir = directionY;
+		if (Math.abs(dir) < 0.000001f)
+		{
+			if (originY < minY || originY > maxY)
+			{
+				return Float.POSITIVE_INFINITY;
+			}
+		}
+		else
+		{
+			float t1 = (minY - originY) / dir;
+			float t2 = (maxY - originY) / dir;
+			if (t1 > t2)
+			{
+				float tmp = t1;
+				t1 = t2;
+				t2 = tmp;
+			}
+			tMin = Math.max(tMin, t1);
+			tMax = Math.min(tMax, t2);
+			if (tMin > tMax)
+			{
+				return Float.POSITIVE_INFINITY;
+			}
+		}
+
+		dir = directionZ;
+		if (Math.abs(dir) < 0.000001f)
+		{
+			if (originZ < minZ || originZ > maxZ)
+			{
+				return Float.POSITIVE_INFINITY;
+			}
+		}
+		else
+		{
+			float t1 = (minZ - originZ) / dir;
+			float t2 = (maxZ - originZ) / dir;
+			if (t1 > t2)
+			{
+				float tmp = t1;
+				t1 = t2;
+				t2 = tmp;
+			}
+			tMin = Math.max(tMin, t1);
+			tMax = Math.min(tMax, t2);
+		}
+
+		return tMin <= tMax ? tMin : Float.POSITIVE_INFINITY;
 	}
 
 	private void setTerrainIdentityModelMatrix()
@@ -714,7 +954,8 @@ final class TerrainRenderer
 		try
 		{
 			int hoverDrawCalls = hoveredTileCoveredByPluginOverlay() ? 0 : renderHoveredTile();
-			return hoverDrawCalls + renderPluginOverlay(camera);
+			int pluginDrawCalls = renderPluginOverlay(camera);
+			return hoverDrawCalls + pluginDrawCalls + renderHoveredNpcOutline(camera);
 		}
 		finally
 		{
@@ -722,6 +963,405 @@ final class TerrainRenderer
 			{
 				GL33C.glEnable(GL33C.GL_DEPTH_TEST);
 			}
+		}
+	}
+
+	private int renderHoveredNpcOutline(FreeCamera camera)
+	{
+		HoveredNpcDraw hovered = hoveredNpcDraw;
+		if (!npcsVisible || !npcOutlinesEnabled || hovered == null || hovered.frame().outlineGeometry().isEmpty())
+		{
+			return 0;
+		}
+
+		FloatList vertices = npcOutlineLineVertices(hovered);
+		int vertexCount = vertices.size() / OVERLAY_LINE_POSITION_FLOATS;
+		if (vertexCount <= 0 || vertexCount * OVERLAY_LINE_POSITION_FLOATS != vertices.size())
+		{
+			return 0;
+		}
+
+		ensureNpcOutlineEdgeBuffers();
+		float[] data = vertices.array();
+		FloatBuffer buffer = MemoryUtil.memAllocFloat(data.length);
+		boolean cullEnabled = GL33C.glIsEnabled(GL33C.GL_CULL_FACE);
+		boolean depthMask = GL33C.glGetBoolean(GL33C.GL_DEPTH_WRITEMASK);
+		GL33C.glDepthMask(false);
+		GL33C.glDisable(GL33C.GL_CULL_FACE);
+		try
+		{
+			buffer.put(data).flip();
+			GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, npcOutlineEdgeVbo);
+			GL33C.glBufferData(GL33C.GL_ARRAY_BUFFER, buffer, GL33C.GL_DYNAMIC_DRAW);
+			GL33C.glUseProgram(outlineProgram);
+			uploadScreenOutlineMatrix();
+			GL33C.glBindVertexArray(npcOutlineEdgeVao);
+			GL33C.glUniform4f(outlineColorLocation, 0.0f, 0.0f, 0.0f, 0.80f);
+			GL33C.glLineWidth(4.0f);
+			GL33C.glDrawArrays(GL33C.GL_LINES, 0, vertexCount);
+			GL33C.glUniform4f(outlineColorLocation, 1.0f, 0.92f, 0.12f, 0.98f);
+			GL33C.glLineWidth(2.0f);
+			GL33C.glDrawArrays(GL33C.GL_LINES, 0, vertexCount);
+			return 2;
+		}
+		finally
+		{
+			MemoryUtil.memFree(buffer);
+			GL33C.glLineWidth(1.0f);
+			GL33C.glBindVertexArray(0);
+			GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, 0);
+			GL33C.glUseProgram(0);
+			GL33C.glDepthMask(depthMask);
+			if (cullEnabled)
+			{
+				GL33C.glEnable(GL33C.GL_CULL_FACE);
+			}
+		}
+	}
+
+	private FloatList npcOutlineLineVertices(HoveredNpcDraw hovered)
+	{
+		FloatList vertices = new FloatList();
+		NpcOutlineGeometry geometry = hovered.frame().outlineGeometry();
+		float[] triangleData = geometry.triangleData();
+		if (triangleData.length == 0 || renderWidth <= 0 || renderHeight <= 0)
+		{
+			return vertices;
+		}
+		ProjectedNpcOutline outline = projectedNpcOutline(hovered, triangleData);
+		if (outline == null || outline.coverage().length == 0)
+		{
+			return vertices;
+		}
+
+		boolean[] coverage = outline.coverage();
+		float[] depth = outline.depth();
+		int originX = outline.originX();
+		int originY = outline.originY();
+		int width = outline.width();
+		int height = outline.height();
+		boolean[] outlineMask = new boolean[coverage.length];
+		float[] outlineDepth = new float[coverage.length];
+		java.util.Arrays.fill(outlineDepth, Float.POSITIVE_INFINITY);
+		for (int y = 0; y < height; y++)
+		{
+			int rowOffset = y * width;
+			for (int x = 0; x < width; x++)
+			{
+				int index = rowOffset + x;
+				if (!coverage[index])
+				{
+					continue;
+				}
+				if (isNpcOutlineBoundaryPixel(coverage, x, y, width, height))
+				{
+					applyNpcOutlineStamp(outlineMask, outlineDepth, coverage, x, y, Math.min(1.0f, depth[index] + NPC_OUTLINE_DEPTH_BIAS), width, height);
+				}
+			}
+		}
+		addNpcOutlineMaskSpans(vertices, outlineMask, outlineDepth, originX, originY, width, height);
+		return vertices;
+	}
+
+	private ProjectedNpcOutline projectedNpcOutline(HoveredNpcDraw hovered, float[] triangleData)
+	{
+		Matrix4f transform = new Matrix4f()
+			.translation(hovered.region().offsetX(), 0.0f, hovered.region().offsetZ())
+			.translate(hovered.transform().x(), hovered.transform().y(), hovered.transform().z())
+			.rotateY(hovered.transform().yawRadians());
+		Matrix4f projectionMatrix = new Matrix4f(mvp).mul(transform);
+		List<ProjectedTriangle> triangles = new ArrayList<>(Math.max(16, triangleData.length / 9));
+		Vector4f clipA = new Vector4f();
+		Vector4f clipB = new Vector4f();
+		Vector4f clipC = new Vector4f();
+		float minProjectedX = Float.POSITIVE_INFINITY;
+		float minProjectedY = Float.POSITIVE_INFINITY;
+		float maxProjectedX = Float.NEGATIVE_INFINITY;
+		float maxProjectedY = Float.NEGATIVE_INFINITY;
+		for (int offset = 0; offset + 8 < triangleData.length; offset += 9)
+		{
+			if (!projectOutlineVertex(projectionMatrix, triangleData, offset, clipA)
+				|| !projectOutlineVertex(projectionMatrix, triangleData, offset + 3, clipB)
+				|| !projectOutlineVertex(projectionMatrix, triangleData, offset + 6, clipC))
+			{
+				continue;
+			}
+			float ax = screenX(clipA.x);
+			float ay = screenY(clipA.y);
+			float bx = screenX(clipB.x);
+			float by = screenY(clipB.y);
+			float cx = screenX(clipC.x);
+			float cy = screenY(clipC.y);
+			float determinant = ax * (by - cy) + bx * (cy - ay) + cx * (ay - by);
+			if (!Float.isFinite(determinant) || Math.abs(determinant) <= 0.01f)
+			{
+				continue;
+			}
+			ProjectedTriangle triangle = new ProjectedTriangle(ax, ay, clipA.z, bx, by, clipB.z, cx, cy, clipC.z);
+			triangles.add(triangle);
+			minProjectedX = Math.min(minProjectedX, triangle.minX());
+			minProjectedY = Math.min(minProjectedY, triangle.minY());
+			maxProjectedX = Math.max(maxProjectedX, triangle.maxX());
+			maxProjectedY = Math.max(maxProjectedY, triangle.maxY());
+		}
+		if (triangles.isEmpty() || !Float.isFinite(minProjectedX) || !Float.isFinite(minProjectedY)
+			|| !Float.isFinite(maxProjectedX) || !Float.isFinite(maxProjectedY))
+		{
+			return null;
+		}
+		int originX = clamp((int) Math.floor(minProjectedX) - 2, 0, renderWidth - 1);
+		int originY = clamp((int) Math.floor(minProjectedY) - 2, 0, renderHeight - 1);
+		int maxX = clamp((int) Math.ceil(maxProjectedX) + 2, 0, renderWidth - 1);
+		int maxY = clamp((int) Math.ceil(maxProjectedY) + 2, 0, renderHeight - 1);
+		if (originX > maxX || originY > maxY)
+		{
+			return null;
+		}
+		int width = maxX - originX + 1;
+		int height = maxY - originY + 1;
+		long pixelCountLong = (long) width * height;
+		if (pixelCountLong <= 0L || pixelCountLong > MAX_NPC_OUTLINE_PIXELS)
+		{
+			return null;
+		}
+		int pixelCount = (int) pixelCountLong;
+		float[] depth = new float[pixelCount];
+		boolean[] coverage = new boolean[pixelCount];
+		java.util.Arrays.fill(depth, Float.POSITIVE_INFINITY);
+		boolean hasCoverage = false;
+		for (ProjectedTriangle triangle : triangles)
+		{
+			if (rasterizeProjectedTriangle(triangle, depth, coverage, originX, originY, width, height))
+			{
+				hasCoverage = true;
+			}
+		}
+		return hasCoverage ? new ProjectedNpcOutline(originX, originY, width, height, depth, coverage) : null;
+	}
+
+	private boolean projectOutlineVertex(Matrix4f matrix, float[] triangleData, int offset, Vector4f clip)
+	{
+		clip.set(triangleData[offset], triangleData[offset + 1], triangleData[offset + 2], 1.0f);
+		matrix.transform(clip);
+		if (!Float.isFinite(clip.x) || !Float.isFinite(clip.y) || !Float.isFinite(clip.z) || !Float.isFinite(clip.w)
+			|| clip.w <= 0.0001f)
+		{
+			return false;
+		}
+		float invW = 1.0f / clip.w;
+		clip.set(clip.x * invW, clip.y * invW, clip.z * invW, 1.0f);
+		return Float.isFinite(clip.x) && Float.isFinite(clip.y) && Float.isFinite(clip.z)
+			&& clip.z >= -1.0f && clip.z <= 1.0f;
+	}
+
+	private boolean rasterizeProjectedTriangle(ProjectedTriangle triangle, float[] depth, boolean[] coverage,
+	                                           int originX, int originY, int width, int height)
+	{
+		int minY = clamp((int) Math.ceil(triangle.minY() - 0.5f), originY, originY + height - 1);
+		int maxY = clamp((int) Math.floor(triangle.maxY() - 0.5f), originY, originY + height - 1);
+		if (minY > maxY)
+		{
+			return false;
+		}
+		boolean wrote = false;
+		float[] intersections = new float[3];
+		for (int y = minY; y <= maxY; y++)
+		{
+			float sampleY = y + 0.5f;
+			int count = 0;
+			count = addScanlineIntersection(sampleY, triangle.ax(), triangle.ay(), triangle.bx(), triangle.by(), intersections, count);
+			count = addScanlineIntersection(sampleY, triangle.bx(), triangle.by(), triangle.cx(), triangle.cy(), intersections, count);
+			count = addScanlineIntersection(sampleY, triangle.cx(), triangle.cy(), triangle.ax(), triangle.ay(), intersections, count);
+			if (count < 2)
+			{
+				continue;
+			}
+			float left = intersections[0];
+			float right = intersections[0];
+			for (int i = 1; i < count; i++)
+			{
+				left = Math.min(left, intersections[i]);
+				right = Math.max(right, intersections[i]);
+			}
+			int minX = clamp((int) Math.ceil(left - 0.5f), originX, originX + width - 1);
+			int maxX = clamp((int) Math.floor(right - 0.5f), originX, originX + width - 1);
+			if (minX > maxX)
+			{
+				continue;
+			}
+			float sampleX = minX + 0.5f;
+			float z = triangle.depthAt(sampleX, sampleY);
+			int index = (y - originY) * width + (minX - originX);
+			for (int x = minX; x <= maxX; x++)
+			{
+				if (z < depth[index])
+				{
+					depth[index] = z;
+					coverage[index] = true;
+					wrote = true;
+				}
+				z += triangle.depthPlaneX();
+				index++;
+			}
+		}
+		return wrote;
+	}
+
+	private static int addScanlineIntersection(float sampleY, float x1, float y1, float x2, float y2,
+	                                           float[] intersections, int count)
+	{
+		if (count >= intersections.length || y1 == y2)
+		{
+			return count;
+		}
+		float minY = Math.min(y1, y2);
+		float maxY = Math.max(y1, y2);
+		if (sampleY < minY || sampleY >= maxY)
+		{
+			return count;
+		}
+		float t = (sampleY - y1) / (y2 - y1);
+		intersections[count++] = x1 + (x2 - x1) * t;
+		return count;
+	}
+
+	private static boolean isNpcOutlineBoundaryPixel(boolean[] coverage, int x, int y, int width, int height)
+	{
+		for (int dy = -1; dy <= 1; dy++)
+		{
+			for (int dx = -1; dx <= 1; dx++)
+			{
+				if (dx == 0 && dy == 0)
+				{
+					continue;
+				}
+				int neighborX = x + dx;
+				int neighborY = y + dy;
+				if (neighborX < 0 || neighborY < 0 || neighborX >= width || neighborY >= height)
+				{
+					return true;
+				}
+				if (!coverage[neighborY * width + neighborX])
+				{
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	private static void applyNpcOutlineStamp(boolean[] outlineMask, float[] outlineDepth, boolean[] coverage,
+	                                         int centerX, int centerY, float z, int width, int height)
+	{
+		for (int dy = -NPC_OUTLINE_STAMP_RADIUS; dy <= NPC_OUTLINE_STAMP_RADIUS; dy++)
+		{
+			for (int dx = -NPC_OUTLINE_STAMP_RADIUS; dx <= NPC_OUTLINE_STAMP_RADIUS; dx++)
+			{
+				if (dx == 0 && dy == 0)
+				{
+					continue;
+				}
+				int x = centerX + dx;
+				int y = centerY + dy;
+				if (x < 0 || y < 0 || x >= width || y >= height)
+				{
+					continue;
+				}
+				int index = y * width + x;
+				if (coverage[index])
+				{
+					continue;
+				}
+				outlineMask[index] = true;
+				outlineDepth[index] = Math.min(outlineDepth[index], z);
+			}
+		}
+	}
+
+	private void addNpcOutlineMaskSpans(FloatList vertices, boolean[] outlineMask, float[] outlineDepth,
+	                                    int originX, int originY, int width, int height)
+	{
+		for (int y = 0; y < height; y++)
+		{
+			int rowOffset = y * width;
+			int x = 0;
+			while (x < width)
+			{
+				if (!outlineMask[rowOffset + x])
+				{
+					x++;
+					continue;
+				}
+				int startX = x;
+				float z = outlineDepth[rowOffset + x];
+				while (x < width && outlineMask[rowOffset + x])
+				{
+					z = Math.min(z, outlineDepth[rowOffset + x]);
+					x++;
+				}
+				if (Float.isFinite(z))
+				{
+					addScreenLine(vertices, originX + startX, originY + y + 0.5f, originX + x, originY + y + 0.5f, z);
+				}
+			}
+		}
+	}
+
+	private void addScreenLine(FloatList vertices, float x1, float y1, float x2, float y2, float z)
+	{
+		if (vertices.size() / OVERLAY_LINE_POSITION_FLOATS + 2 > MAX_OVERLAY_LINE_VERTICES_PER_BATCH)
+		{
+			return;
+		}
+		vertices
+			.add(ndcX(x1)).add(ndcY(y1)).add(z)
+			.add(ndcX(x2)).add(ndcY(y2)).add(z);
+	}
+
+	private float screenX(float ndcX)
+	{
+		return (ndcX * 0.5f + 0.5f) * renderWidth;
+	}
+
+	private float screenY(float ndcY)
+	{
+		return (1.0f - (ndcY * 0.5f + 0.5f)) * renderHeight;
+	}
+
+	private float ndcX(float screenX)
+	{
+		return screenX / Math.max(1.0f, renderWidth) * 2.0f - 1.0f;
+	}
+
+	private float ndcY(float screenY)
+	{
+		return 1.0f - screenY / Math.max(1.0f, renderHeight) * 2.0f;
+	}
+
+	private void ensureNpcOutlineEdgeBuffers()
+	{
+		if (npcOutlineEdgeVao != 0 && npcOutlineEdgeVbo != 0)
+		{
+			return;
+		}
+		npcOutlineEdgeVao = GL33C.glGenVertexArrays();
+		npcOutlineEdgeVbo = GL33C.glGenBuffers();
+		GL33C.glBindVertexArray(npcOutlineEdgeVao);
+		GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, npcOutlineEdgeVbo);
+		GL33C.glEnableVertexAttribArray(0);
+		GL33C.glVertexAttribPointer(0, OVERLAY_LINE_POSITION_FLOATS, GL33C.GL_FLOAT, false,
+			OVERLAY_LINE_POSITION_FLOATS * Float.BYTES, 0L);
+		GL33C.glBindVertexArray(0);
+		GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, 0);
+	}
+
+	private void uploadScreenOutlineMatrix()
+	{
+		npcOutlineMvp.identity();
+		try (MemoryStack stack = MemoryStack.stackPush())
+		{
+			FloatBuffer matrixBuffer = stack.mallocFloat(16);
+			GL33C.glUniformMatrix4fv(outlineMvpLocation, false, npcOutlineMvp.get(matrixBuffer));
 		}
 	}
 
@@ -1655,6 +2295,46 @@ final class TerrainRenderer
 			&& Float.isFinite(vector.z);
 	}
 
+	private static NpcOutlineGeometry buildNpcOutlineGeometry(float[] vertexData, int vertexCount)
+	{
+		if (vertexData == null || vertexData.length == 0 || vertexCount < 3)
+		{
+			return NpcOutlineGeometry.EMPTY;
+		}
+		FloatList data = new FloatList();
+		int stride = TerrainMesh.FLOATS_PER_VERTEX;
+		int maxFloats = Math.min(vertexData.length, vertexCount * stride);
+		for (int offset = 0; offset + stride * 3 <= maxFloats; offset += stride * 3)
+		{
+			int a = offset;
+			int b = offset + stride;
+			int c = offset + stride * 2;
+			if (!finiteVertex(vertexData, a) || !finiteVertex(vertexData, b) || !finiteVertex(vertexData, c))
+			{
+				continue;
+			}
+			data
+				.add(vertexData[a]).add(vertexData[a + 1]).add(vertexData[a + 2])
+				.add(vertexData[b]).add(vertexData[b + 1]).add(vertexData[b + 2])
+				.add(vertexData[c]).add(vertexData[c + 1]).add(vertexData[c + 2]);
+		}
+		return data.size() == 0 ? NpcOutlineGeometry.EMPTY : new NpcOutlineGeometry(data.array());
+	}
+
+	private static boolean finiteVertex(float[] vertexData, int offset)
+	{
+		return offset >= 0
+			&& offset + 2 < vertexData.length
+			&& Float.isFinite(vertexData[offset])
+			&& Float.isFinite(vertexData[offset + 1])
+			&& Float.isFinite(vertexData[offset + 2]);
+	}
+
+	private static int clamp(int value, int min, int max)
+	{
+		return Math.max(min, Math.min(max, value));
+	}
+
 	private static boolean validDrawRange(OverlayLineDraw draw, int vertexCount, int primitiveVertices)
 	{
 		return draw != null
@@ -2286,6 +2966,134 @@ final class TerrainRenderer
 	{
 	}
 
+	private record ProjectedTriangle(
+		float ax,
+		float ay,
+		float az,
+		float bx,
+		float by,
+		float bz,
+		float cx,
+		float cy,
+		float cz,
+		float minX,
+		float minY,
+		float maxX,
+		float maxY,
+		float depthPlaneX,
+		float depthPlaneY,
+		float depthPlaneOffset
+	)
+	{
+		private ProjectedTriangle(float ax, float ay, float az, float bx, float by, float bz, float cx, float cy, float cz)
+		{
+			this(
+				ax,
+				ay,
+				az,
+				bx,
+				by,
+				bz,
+				cx,
+				cy,
+				cz,
+				Math.min(ax, Math.min(bx, cx)),
+				Math.min(ay, Math.min(by, cy)),
+				Math.max(ax, Math.max(bx, cx)),
+				Math.max(ay, Math.max(by, cy)),
+				depthPlaneX(ax, ay, az, bx, by, bz, cx, cy, cz),
+				depthPlaneY(ax, ay, az, bx, by, bz, cx, cy, cz),
+				depthPlaneOffset(ax, ay, az, bx, by, bz, cx, cy, cz)
+			);
+		}
+
+		private float depthAt(float x, float y)
+		{
+			return depthPlaneX * x + depthPlaneY * y + depthPlaneOffset;
+		}
+
+		private static float determinant(float ax, float ay, float bx, float by, float cx, float cy)
+		{
+			return ax * (by - cy) + bx * (cy - ay) + cx * (ay - by);
+		}
+
+		private static float depthPlaneX(float ax, float ay, float az, float bx, float by, float bz,
+		                                 float cx, float cy, float cz)
+		{
+			float inverse = 1.0f / determinant(ax, ay, bx, by, cx, cy);
+			return (az * (by - cy) + bz * (cy - ay) + cz * (ay - by)) * inverse;
+		}
+
+		private static float depthPlaneY(float ax, float ay, float az, float bx, float by, float bz,
+		                                 float cx, float cy, float cz)
+		{
+			float inverse = 1.0f / determinant(ax, ay, bx, by, cx, cy);
+			return (az * (cx - bx) + bz * (ax - cx) + cz * (bx - ax)) * inverse;
+		}
+
+		private static float depthPlaneOffset(float ax, float ay, float az, float bx, float by, float bz,
+		                                      float cx, float cy, float cz)
+		{
+			float inverse = 1.0f / determinant(ax, ay, bx, by, cx, cy);
+			return (az * (bx * cy - cx * by) + bz * (cx * ay - ax * cy) + cz * (ax * by - bx * ay)) * inverse;
+		}
+	}
+
+	private record ProjectedNpcOutline(
+		int originX,
+		int originY,
+		int width,
+		int height,
+		float[] depth,
+		boolean[] coverage
+	)
+	{
+	}
+
+	private record NpcOutlineGeometry(float[] triangleData)
+	{
+		private static final NpcOutlineGeometry EMPTY = new NpcOutlineGeometry(new float[0]);
+
+		private NpcOutlineGeometry
+		{
+			triangleData = triangleData == null ? new float[0] : triangleData;
+		}
+
+		private boolean isEmpty()
+		{
+			return triangleData.length == 0;
+		}
+	}
+
+	private record HoverRay(
+		Vector3f origin,
+		Vector3f direction
+	)
+	{
+	}
+
+	record NpcHoverInfo(
+		String name,
+		int combatLevel,
+		int npcId
+	)
+	{
+		boolean hasCombatLevel()
+		{
+			return combatLevel >= 0;
+		}
+	}
+
+	private record HoveredNpcDraw(
+		UploadedRegion region,
+		UploadedNpcMesh mesh,
+		NpcMesh.Transform transform,
+		UploadedAnimationFrame frame,
+		float distance
+	)
+	{
+	}
+
 	private record LineInterval(
 		double start,
 		double end
@@ -2488,14 +3296,14 @@ final class TerrainRenderer
 			}
 			else
 			{
-				vao = GL33C.glGenVertexArrays();
-				vbo = GL33C.glGenBuffers();
-				GL33C.glBindVertexArray(vao);
-				GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, vbo);
-				GL33C.glBufferData(GL33C.GL_ARRAY_BUFFER, (long) vertexData.length * Float.BYTES, GL33C.GL_STATIC_DRAW);
-				installTerrainAttributes();
-				GL33C.glBindVertexArray(0);
-			}
+			vao = GL33C.glGenVertexArrays();
+			vbo = GL33C.glGenBuffers();
+			GL33C.glBindVertexArray(vao);
+			GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, vbo);
+			GL33C.glBufferData(GL33C.GL_ARRAY_BUFFER, (long) vertexData.length * Float.BYTES, GL33C.GL_STATIC_DRAW);
+			installTerrainAttributes();
+			GL33C.glBindVertexArray(0);
+		}
 			for (AnimatedObjectMesh animatedObject : mesh.animatedObjects())
 			{
 				if (animatedObject.frameCount() > 0)
@@ -2665,7 +3473,7 @@ final class TerrainRenderer
 					{
 						return false;
 					}
-					activeFrameTask = new AnimationFrameUploadTask(frame);
+					activeFrameTask = new AnimationFrameUploadTask(frame, false);
 				}
 				if (activeFrameTask.uploadChunk(budget))
 				{
@@ -2737,7 +3545,7 @@ final class TerrainRenderer
 					{
 						return false;
 					}
-					activeFrameTask = new AnimationFrameUploadTask(frame);
+					activeFrameTask = new AnimationFrameUploadTask(frame, true);
 				}
 				if (activeFrameTask.uploadChunk(budget))
 				{
@@ -2751,19 +3559,21 @@ final class TerrainRenderer
 			return true;
 		}
 
-			private UploadedNpcMesh finish()
-			{
-				return new UploadedNpcMesh(
-					mesh.npcId(),
-					mesh.name(),
-					mesh.sequenceId(),
-					mesh.walkingAnimation(),
-					mesh.frameLengths(),
-					mesh.frameStep(),
-					uploadedFrames,
-					mesh.instances()
-				);
-			}
+		private UploadedNpcMesh finish()
+		{
+			return new UploadedNpcMesh(
+				mesh.npcId(),
+				mesh.name(),
+				mesh.combatLevel(),
+				mesh.sequenceId(),
+				mesh.walkingAnimation(),
+				mesh.frameLengths(),
+				mesh.frameStep(),
+				uploadedFrames,
+				mesh.bounds(),
+				mesh.instances()
+			);
+		}
 
 		private void cancel(boolean releaseVertexData)
 		{
@@ -2786,14 +3596,16 @@ final class TerrainRenderer
 	{
 		private final AnimatedObjectMesh.Frame frame;
 		private final float[] vertexData;
+		private final NpcOutlineGeometry outlineGeometry;
 		private final int vao;
 		private final int vbo;
 		private int uploadedFloats;
 
-		private AnimationFrameUploadTask(AnimatedObjectMesh.Frame frame)
+		private AnimationFrameUploadTask(AnimatedObjectMesh.Frame frame, boolean buildOutlineEdges)
 		{
 			this.frame = frame;
 			this.vertexData = frame.rawVertexData();
+			this.outlineGeometry = buildOutlineEdges ? buildNpcOutlineGeometry(vertexData, frame.vertexCount()) : NpcOutlineGeometry.EMPTY;
 			if (frame.vertexCount() <= 0 || vertexData.length == 0)
 			{
 				vao = 0;
@@ -2801,14 +3613,14 @@ final class TerrainRenderer
 				return;
 			}
 
-			vao = GL33C.glGenVertexArrays();
-			vbo = GL33C.glGenBuffers();
-			GL33C.glBindVertexArray(vao);
-			GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, vbo);
-			GL33C.glBufferData(GL33C.GL_ARRAY_BUFFER, (long) vertexData.length * Float.BYTES, GL33C.GL_STATIC_DRAW);
-			installTerrainAttributes();
-			GL33C.glBindVertexArray(0);
-		}
+				vao = GL33C.glGenVertexArrays();
+				vbo = GL33C.glGenBuffers();
+				GL33C.glBindVertexArray(vao);
+				GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, vbo);
+				GL33C.glBufferData(GL33C.GL_ARRAY_BUFFER, (long) vertexData.length * Float.BYTES, GL33C.GL_STATIC_DRAW);
+				installTerrainAttributes();
+				GL33C.glBindVertexArray(0);
+			}
 
 		private boolean uploadChunk(UploadBudget budget)
 		{
@@ -2840,7 +3652,7 @@ final class TerrainRenderer
 
 		private UploadedAnimationFrame finish()
 		{
-			return new UploadedAnimationFrame(vao, vbo, frame.vertexCount());
+			return new UploadedAnimationFrame(vao, vbo, frame.vertexCount(), outlineGeometry);
 		}
 
 		private void cancel(boolean releaseVertexData)
@@ -2946,11 +3758,13 @@ final class TerrainRenderer
 	private record UploadedNpcMesh(
 		int npcId,
 		String name,
+		int combatLevel,
 		int sequenceId,
 		boolean walkingAnimation,
 		int[] frameLengths,
 		int frameStep,
 		UploadedAnimationFrame[] frames,
+		NpcMesh.Bounds bounds,
 		List<NpcMesh.Instance> instances
 	)
 	{
@@ -2958,6 +3772,7 @@ final class TerrainRenderer
 		{
 			frameLengths = frameLengths == null ? new int[0] : frameLengths.clone();
 			frames = frames == null ? new UploadedAnimationFrame[0] : frames.clone();
+			bounds = bounds == null ? NpcMesh.Bounds.fallback() : bounds;
 			instances = instances == null ? List.of() : List.copyOf(instances);
 		}
 
@@ -3016,10 +3831,16 @@ final class TerrainRenderer
 	private record UploadedAnimationFrame(
 		int vao,
 		int vbo,
-		int vertexCount
+		int vertexCount,
+		NpcOutlineGeometry outlineGeometry
 	)
 	{
-		private static final UploadedAnimationFrame EMPTY = new UploadedAnimationFrame(0, 0, 0);
+		private static final UploadedAnimationFrame EMPTY = new UploadedAnimationFrame(0, 0, 0, NpcOutlineGeometry.EMPTY);
+
+		private UploadedAnimationFrame
+		{
+			outlineGeometry = outlineGeometry == null ? NpcOutlineGeometry.EMPTY : outlineGeometry;
+		}
 
 		private void delete()
 		{

@@ -57,6 +57,9 @@ public final class ViewerSettings
 	private static final String KEY_3D_AA_SAMPLES = "viewer3d.state.antialiasingSamples";
 	private static final String KEY_3D_VIEW_DISTANCE_REGIONS = "viewer3d.state.viewDistanceRegions";
 	private static final String KEY_3D_PLUGIN_OVERLAYS_ON_TOP = "viewer3d.state.pluginOverlaysOnTop";
+	private static final String KEY_3D_NPCS_VISIBLE = "viewer3d.state.npcsVisible";
+	private static final String KEY_3D_NPC_OUTLINES_VISIBLE = "viewer3d.state.npcOutlinesVisible";
+	private static final String KEY_3D_NPC_HOVER_TEXT_VISIBLE = "viewer3d.state.npcHoverTextVisible";
 	private static final String KEY_3D_CACHE_ASK_ON_OPEN = "viewer3d.cache.askOnOpen";
 	private static final String KEY_3D_CACHE_AUTO_DETECT = "viewer3d.cache.autoDetect";
 	private static final String FIELD_WORLD_TILE_X = "worldTileX";
@@ -69,6 +72,9 @@ public final class ViewerSettings
 	private static final String FIELD_AA_SAMPLES = "antialiasingSamples";
 	private static final String FIELD_VIEW_DISTANCE_REGIONS = "viewDistanceRegions";
 	private static final String FIELD_PLUGIN_OVERLAYS_ON_TOP = "pluginOverlaysOnTop";
+	private static final String FIELD_NPCS_VISIBLE = "npcsVisible";
+	private static final String FIELD_NPC_OUTLINES_VISIBLE = "npcOutlinesVisible";
+	private static final String FIELD_NPC_HOVER_TEXT_VISIBLE = "npcHoverTextVisible";
 	private static final String DEFAULT_BACKGROUND = "#000000";
 	private static final int DEFAULT_MEMORY_BUDGET_MB = 512;
 
@@ -213,7 +219,10 @@ public final class ViewerSettings
 			(float) configManager.getDouble(CORE, KEY_3D_FOV, 68.0),
 			configManager.getInt(CORE, KEY_3D_AA_SAMPLES, 4),
 			configManager.getInt(CORE, KEY_3D_VIEW_DISTANCE_REGIONS, Viewer3DState.DEFAULT_VIEW_DISTANCE_REGIONS),
-			configManager.getBoolean(CORE, KEY_3D_PLUGIN_OVERLAYS_ON_TOP, false)
+			configManager.getBoolean(CORE, KEY_3D_PLUGIN_OVERLAYS_ON_TOP, false),
+			configManager.getBoolean(CORE, KEY_3D_NPCS_VISIBLE, true),
+			configManager.getBoolean(CORE, KEY_3D_NPC_OUTLINES_VISIBLE, true),
+			configManager.getBoolean(CORE, KEY_3D_NPC_HOVER_TEXT_VISIBLE, true)
 		);
 		return state.isValid() ? state : null;
 	}
@@ -243,6 +252,9 @@ public final class ViewerSettings
 		object.addProperty(FIELD_VIEW_DISTANCE_REGIONS,
 			Viewer3DState.clampViewDistanceRegions(state.viewDistanceRegions()));
 		object.addProperty(FIELD_PLUGIN_OVERLAYS_ON_TOP, state.pluginOverlaysOnTop());
+		object.addProperty(FIELD_NPCS_VISIBLE, state.npcsVisible());
+		object.addProperty(FIELD_NPC_OUTLINES_VISIBLE, state.npcOutlinesVisible());
+		object.addProperty(FIELD_NPC_HOVER_TEXT_VISIBLE, state.npcHoverTextVisible());
 		configManager.setElement(CORE, KEY_3D_STATE, object);
 	}
 
@@ -281,7 +293,10 @@ public final class ViewerSettings
 			(float) jsonDouble(object, FIELD_FOV, 68.0),
 			jsonInt(object, FIELD_AA_SAMPLES, 4),
 			jsonInt(object, FIELD_VIEW_DISTANCE_REGIONS, Viewer3DState.DEFAULT_VIEW_DISTANCE_REGIONS),
-			jsonBoolean(object, FIELD_PLUGIN_OVERLAYS_ON_TOP, false)
+			jsonBoolean(object, FIELD_PLUGIN_OVERLAYS_ON_TOP, false),
+			jsonBoolean(object, FIELD_NPCS_VISIBLE, true),
+			jsonBoolean(object, FIELD_NPC_OUTLINES_VISIBLE, true),
+			jsonBoolean(object, FIELD_NPC_HOVER_TEXT_VISIBLE, true)
 		);
 		return state.isValid() ? state : null;
 	}

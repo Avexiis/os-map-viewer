@@ -56,6 +56,7 @@ final class NpcDefinition3D
 	int heightScale = 128;
 	int ambient;
 	int contrast;
+	int combatLevel = -1;
 	int rotationSpeed = 32;
 	int[] configs;
 	int varbitId = -1;

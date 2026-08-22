@@ -38,12 +38,19 @@ import com.xeon.view.MapPanel;
 import java.awt.BorderLayout;
 import java.awt.Canvas;
 import java.awt.Color;
+import java.awt.Component;
+import java.awt.Container;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
+import java.awt.FontMetrics;
+import java.awt.Graphics;
 import java.awt.GraphicsConfiguration;
+import java.awt.Graphics2D;
+import java.awt.GridLayout;
 import java.awt.Insets;
 import java.awt.Point;
+import java.awt.RenderingHints;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
@@ -70,7 +77,11 @@ import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 import javax.swing.AbstractButton;
 import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
+import javax.swing.JComponent;
 import javax.swing.JComboBox;
 import javax.swing.JLayeredPane;
 import javax.swing.JLabel;
@@ -78,10 +89,13 @@ import javax.swing.JMenuItem;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
 import javax.swing.JProgressBar;
+import javax.swing.JSeparator;
 import javax.swing.JSlider;
+import javax.swing.SwingConstants;
 import javax.swing.JToggleButton;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
+import javax.swing.border.Border;
 import net.runelite.rlawt.AWTContext;
 import org.joml.Vector3f;
 import org.joml.Vector3fc;
@@ -92,7 +106,14 @@ public final class Map3DPanel extends JPanel
 	public static final String CACHE_LOAD_FAILURE_PREFIX = "CACHE_LOAD_FAILURE:";
 
 	private static final int FRAME_DELAY_MS = 16;
-	private static final int TOOLBAR_HEIGHT = 40;
+	private static final int CONTROLS_EXPANDED_WIDTH = 330;
+	private static final int CONTROLS_COLLAPSED_SIZE = 44;
+	private static final int CONTROLS_MINIMAP_GAP = 16;
+	private static final int CONTROLS_INNER_WIDTH = 308;
+	private static final int CONTROLS_ACTION_BUTTON_WIDTH = 102;
+	private static final int CONTROLS_ACTION_GRID_GAP = 24;
+	private static final int CONTROLS_ACTION_GRID_WIDTH = CONTROLS_ACTION_BUTTON_WIDTH * 2 + CONTROLS_ACTION_GRID_GAP;
+	private static final int CONTROLS_FULL_BUTTON_WIDTH = 252;
 	private static final double SLOW_FRAME_MILLIS = 33.4;
 	private static final double SLOW_RENDER_MILLIS = 20.0;
 	private static final int HIGH_DRAW_CALLS = 128;
@@ -140,6 +161,10 @@ public final class Map3DPanel extends JPanel
 	private final JToggleButton viewControlsButton = new JToggleButton("View Controls");
 	private final JToggleButton minimapButton = new JToggleButton("Hide Minimap");
 	private final JToggleButton overlayPriorityButton = new JToggleButton();
+	private final JCheckBox npcVisibleCheckBox = new JCheckBox("NPCs", true);
+	private final JCheckBox npcOutlinesCheckBox = new JCheckBox("Outlines", true);
+	private final JCheckBox npcHoverTextCheckBox = new JCheckBox("Hover Text", true);
+	private final JButton collapseControlsButton = new JButton(">");
 	private final JComboBox<AntialiasingScale> antialiasingScale = new JComboBox<>(AntialiasingScale.values());
 	private final JComboBox<ViewDistanceOption> viewDistanceSelect = new JComboBox<>(ViewDistanceOption.values());
 	private final JSlider fovSlider = new JSlider(MIN_FOV_DEGREES, MAX_FOV_DEGREES, Math.round(camera.fovDegrees()));
@@ -148,12 +173,25 @@ public final class Map3DPanel extends JPanel
 	private final JLabel compassHud = new JLabel("Heading --");
 	private final JLabel tileHud = new JLabel("Tile --");
 	private final JLabel fovHud = new JLabel();
+	private final JLabel viewDistanceHud = new JLabel("View Distance --");
 	private final JLabel debugOverlay = new JLabel();
 	private final JPanel loadingOverlay;
 	private final Map3DMinimapOverlay minimapOverlay;
 	private final MapPanel areaSearchMapPanel;
 	private final MapAreaSearchPanel areaSearchPanel;
 	private final Map3DControlsOverlay controlsOverlay = new Map3DControlsOverlay();
+	private final NpcHoverTextOverlay npcHoverOverlay = new NpcHoverTextOverlay();
+	private final JPanel controlsBody = new JPanel(new BorderLayout(0, 8));
+	private final Border controlsExpandedBorder = BorderFactory.createCompoundBorder(
+		BorderFactory.createLineBorder(new Color(65, 65, 65)),
+		BorderFactory.createEmptyBorder(10, 10, 10, 10)
+	);
+	private final Border controlsCollapsedBorder = BorderFactory.createCompoundBorder(
+		BorderFactory.createLineBorder(new Color(65, 65, 65)),
+		BorderFactory.createEmptyBorder(4, 4, 4, 4)
+	);
+	private final JPanel controlsHeader = new JPanel(new BorderLayout(8, 0));
+	private final JPanel controlsPanel;
 	private final Timer renderTimer;
 	private final Runnable exitAction;
 	private final Consumer<String> failureAction;
@@ -169,6 +207,10 @@ public final class Map3DPanel extends JPanel
 	private boolean glFailureReported;
 	private boolean middleMouseLook;
 	private boolean cameraLocked;
+	private boolean controlsCollapsed;
+	private boolean npcsVisible = true;
+	private boolean npcOutlinesVisible = true;
+	private boolean npcHoverTextVisible = true;
 	private boolean cameraInitialized;
 	private boolean hoverPickErrorLogged;
 	private int streamCenterRegionId;
@@ -240,11 +282,11 @@ public final class Map3DPanel extends JPanel
 		areaSearchMapPanel = areaSearch.mapPanel();
 		areaSearchPanel = areaSearch.searchPanel();
 		loadingOverlay = buildLoadingOverlay();
+		controlsPanel = buildControlsPanel();
 		sceneLayer = buildSceneLayer();
 		setMapBackgroundColor(settings == null ? Color.BLACK : settings.mapBackgroundColor());
 		setActivePlugin(activePlugin);
 
-		add(buildToolbar(), BorderLayout.NORTH);
 		add(sceneLayer, BorderLayout.CENTER);
 		JPanel footer = buildFooterPanel();
 		if (footer != null)
@@ -390,23 +432,32 @@ public final class Map3DPanel extends JPanel
 		}
 	}
 
-	private JPanel buildToolbar()
+	private JPanel buildControlsPanel()
 	{
-		JPanel toolbar = new JPanel(new BorderLayout(12, 0));
-		toolbar.setPreferredSize(new Dimension(0, TOOLBAR_HEIGHT));
-		toolbar.setBorder(BorderFactory.createCompoundBorder(
-			BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(55, 55, 55)),
-			BorderFactory.createEmptyBorder(4, 8, 4, 8)
-		));
+		JPanel panel = new JPanel(new BorderLayout())
+		{
+			@Override
+			public Dimension getPreferredSize()
+			{
+				if (controlsCollapsed)
+				{
+					return new Dimension(CONTROLS_COLLAPSED_SIZE, CONTROLS_COLLAPSED_SIZE);
+				}
+				Dimension preferred = super.getPreferredSize();
+				return new Dimension(CONTROLS_EXPANDED_WIDTH, preferred.height);
+			}
+		};
+		panel.setOpaque(true);
+		panel.setBorder(controlsExpandedBorder);
 
+		title.setText("3D Map Controls");
 		title.setForeground(new Color(225, 225, 225));
+		title.setFont(title.getFont().deriveFont(Font.BOLD, 13f));
 		detail.setForeground(new Color(165, 165, 165));
 		compassHud.setForeground(new Color(220, 220, 220));
 		tileHud.setForeground(new Color(220, 220, 220));
-		JPanel labels = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 6));
-		labels.setOpaque(false);
-		labels.add(title);
-		toolbar.add(labels, BorderLayout.WEST);
+		fovHud.setForeground(new Color(220, 220, 220));
+		viewDistanceHud.setForeground(new Color(220, 220, 220));
 
 		styleToolbarButton(lockCameraButton);
 		lockCameraButton.addActionListener(e -> cameraLocked = lockCameraButton.isSelected());
@@ -419,42 +470,6 @@ public final class Map3DPanel extends JPanel
 			}
 			sceneLayer.repaint();
 		});
-		JLabel aaLabel = toolbarLabel("AA");
-		antialiasingScale.setFocusable(false);
-		antialiasingScale.addActionListener(e -> applyAntialiasingSelection());
-		JLabel viewDistanceLabel = toolbarLabel("View");
-		viewDistanceSelect.setFocusable(false);
-		viewDistanceSelect.addActionListener(e -> applyViewDistanceSelection());
-		styleToolbarButton(overlayPriorityButton);
-		updateOverlayPriorityButtonText();
-		overlayPriorityButton.addActionListener(e -> applyOverlayPrioritySelection());
-		JLabel fovLabel = toolbarLabel("FOV");
-		fovHud.setForeground(new Color(220, 220, 220));
-		fovSlider.setOpaque(false);
-		fovSlider.setFocusable(false);
-		fovSlider.setPreferredSize(new Dimension(120, 28));
-		fovSlider.addChangeListener(e -> {
-			camera.setFovDegrees(fovSlider.getValue());
-			updateFovHud();
-			scheduleStateSave();
-		});
-		updateFovHud();
-		JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
-		controls.setOpaque(false);
-		controls.add(lockCameraButton);
-		controls.add(debugOverlayButton);
-		controls.add(aaLabel);
-		controls.add(antialiasingScale);
-		controls.add(viewDistanceLabel);
-		controls.add(viewDistanceSelect);
-		controls.add(overlayPriorityButton);
-		controls.add(fovLabel);
-		controls.add(fovSlider);
-		controls.add(fovHud);
-		controls.add(compassHud);
-		controls.add(tileHud);
-		toolbar.add(controls, BorderLayout.CENTER);
-
 		styleToolbarButton(viewControlsButton);
 		viewControlsButton.addActionListener(e -> {
 			controlsOverlay.setVisible(viewControlsButton.isSelected());
@@ -462,10 +477,13 @@ public final class Map3DPanel extends JPanel
 			sceneLayer.doLayout();
 			sceneLayer.repaint();
 		});
-			styleToolbarButton(minimapButton);
-			minimapButton.setEnabled(minimapOverlay != null);
-			minimapButton.addActionListener(e -> applyMinimapVisibilitySelection());
-			JButton exit = new JButton("Switch to 2D Map");
+		styleToolbarButton(minimapButton);
+		minimapButton.setEnabled(minimapOverlay != null);
+		minimapButton.addActionListener(e -> applyMinimapVisibilitySelection());
+		styleToolbarButton(overlayPriorityButton);
+		updateOverlayPriorityButtonText();
+		overlayPriorityButton.addActionListener(e -> applyOverlayPrioritySelection());
+		JButton exit = new JButton("Switch to 2D Map");
 		styleToolbarButton(exit);
 		exit.addActionListener(e -> {
 			if (exitAction != null)
@@ -473,13 +491,332 @@ public final class Map3DPanel extends JPanel
 				exitAction.run();
 			}
 		});
-		JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 2));
-		actions.setOpaque(false);
-		actions.add(viewControlsButton);
-		actions.add(minimapButton);
-		actions.add(exit);
-		toolbar.add(actions, BorderLayout.EAST);
-		return toolbar;
+
+		antialiasingScale.setFocusable(false);
+		antialiasingScale.addActionListener(e -> applyAntialiasingSelection());
+		viewDistanceSelect.setFocusable(false);
+		viewDistanceSelect.addActionListener(e -> applyViewDistanceSelection());
+		fovSlider.setOpaque(false);
+		fovSlider.setFocusable(false);
+		fovSlider.setPreferredSize(new Dimension(170, 28));
+		fovSlider.addChangeListener(e -> {
+			camera.setFovDegrees(fovSlider.getValue());
+			updateFovHud();
+			scheduleStateSave();
+		});
+		updateFovHud();
+		updateViewDistanceHud();
+
+		styleCheckBox(npcVisibleCheckBox);
+		styleCheckBox(npcOutlinesCheckBox);
+		styleCheckBox(npcHoverTextCheckBox);
+		npcVisibleCheckBox.setSelected(npcsVisible);
+		npcOutlinesCheckBox.setSelected(npcOutlinesVisible);
+		npcHoverTextCheckBox.setSelected(npcHoverTextVisible);
+		npcVisibleCheckBox.addActionListener(e -> applyNpcVisibilitySelection());
+		npcOutlinesCheckBox.addActionListener(e -> applyNpcOverlaySelection());
+		npcHoverTextCheckBox.addActionListener(e -> applyNpcOverlaySelection());
+		updateNpcControlState();
+
+		styleCollapseButton(collapseControlsButton, new Dimension(30, 28));
+		collapseControlsButton.addActionListener(e -> setControlsCollapsed(!controlsCollapsed));
+		controlsHeader.setOpaque(false);
+		controlsHeader.add(title, BorderLayout.WEST);
+		controlsHeader.add(collapseControlsButton, BorderLayout.EAST);
+		panel.add(controlsHeader, BorderLayout.NORTH);
+
+		controlsBody.setOpaque(false);
+		controlsBody.setBorder(BorderFactory.createEmptyBorder(8, 0, 0, 0));
+		JPanel rows = new JPanel();
+		rows.setOpaque(false);
+		rows.setLayout(new BoxLayout(rows, BoxLayout.Y_AXIS));
+		rows.setAlignmentX(Component.LEFT_ALIGNMENT);
+		rows.add(Box.createVerticalStrut(22));
+		rows.add(centeredRow(actionButtonGrid()));
+		rows.add(Box.createVerticalStrut(8));
+		rows.add(centeredButtonRow(exit));
+		rows.add(Box.createVerticalStrut(6));
+		rows.add(centeredButtonRow(overlayPriorityButton));
+		rows.add(sectionSeparator());
+		rows.add(renderingStatusRow());
+		rows.add(Box.createVerticalStrut(8));
+		rows.add(fovRow());
+		rows.add(sectionSeparator());
+		rows.add(sectionTitleRow("NPCs"));
+		rows.add(controlRow(npcVisibleCheckBox, npcOutlinesCheckBox, npcHoverTextCheckBox));
+		Dimension rowSize = new Dimension(CONTROLS_INNER_WIDTH, rows.getPreferredSize().height);
+		rows.setMinimumSize(rowSize);
+		rows.setPreferredSize(rowSize);
+		rows.setMaximumSize(new Dimension(CONTROLS_INNER_WIDTH, Integer.MAX_VALUE));
+		JPanel rowHost = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
+		rowHost.setOpaque(false);
+		rowHost.add(rows);
+		controlsBody.add(rowHost, BorderLayout.CENTER);
+		panel.add(controlsBody, BorderLayout.CENTER);
+		return panel;
+	}
+
+	private JLabel controlSectionTitle(String text)
+	{
+		JLabel label = new JLabel(text);
+		label.setForeground(new Color(235, 235, 235));
+		label.setFont(label.getFont().deriveFont(Font.BOLD, 12f));
+		label.setAlignmentX(Component.LEFT_ALIGNMENT);
+		return label;
+	}
+
+	private JPanel controlRow(Component... components)
+	{
+		JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+		row.setOpaque(false);
+		row.setAlignmentX(Component.LEFT_ALIGNMENT);
+		row.setMinimumSize(new Dimension(CONTROLS_INNER_WIDTH, 26));
+		row.setPreferredSize(new Dimension(CONTROLS_INNER_WIDTH, 26));
+		row.setMaximumSize(new Dimension(CONTROLS_INNER_WIDTH, 26));
+		for (Component component : components)
+		{
+			row.add(component);
+		}
+		return row;
+	}
+
+	private JPanel sectionTitleRow(String text)
+	{
+		JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+		row.setOpaque(false);
+		row.setAlignmentX(Component.LEFT_ALIGNMENT);
+		row.setMinimumSize(new Dimension(CONTROLS_INNER_WIDTH, 18));
+		row.setPreferredSize(new Dimension(CONTROLS_INNER_WIDTH, 18));
+		row.setMaximumSize(new Dimension(CONTROLS_INNER_WIDTH, 18));
+		row.add(controlSectionTitle(text));
+		return row;
+	}
+
+	private JPanel actionButtonGrid()
+	{
+		JPanel grid = new JPanel(new GridLayout(2, 2, CONTROLS_ACTION_GRID_GAP, 6));
+		grid.setOpaque(false);
+		grid.setAlignmentX(Component.CENTER_ALIGNMENT);
+		Dimension size = new Dimension(CONTROLS_ACTION_GRID_WIDTH, 58);
+		grid.setMinimumSize(size);
+		grid.setPreferredSize(size);
+		grid.setMaximumSize(size);
+		Dimension buttonSize = new Dimension(CONTROLS_ACTION_BUTTON_WIDTH, 25);
+		setFixedControlSize(lockCameraButton, buttonSize);
+		setFixedControlSize(debugOverlayButton, buttonSize);
+		setFixedControlSize(viewControlsButton, buttonSize);
+		setFixedControlSize(minimapButton, buttonSize);
+		grid.add(lockCameraButton);
+		grid.add(debugOverlayButton);
+		grid.add(viewControlsButton);
+		grid.add(minimapButton);
+		return grid;
+	}
+
+	private JPanel centeredRow(Component component)
+	{
+		JPanel row = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
+		row.setOpaque(false);
+		row.setAlignmentX(Component.LEFT_ALIGNMENT);
+		int height = component.getPreferredSize().height;
+		row.setMinimumSize(new Dimension(CONTROLS_INNER_WIDTH, height));
+		row.setPreferredSize(new Dimension(CONTROLS_INNER_WIDTH, height));
+		row.setMaximumSize(new Dimension(CONTROLS_INNER_WIDTH, height));
+		row.add(component);
+		return row;
+	}
+
+	private JPanel centeredButtonRow(Component component)
+	{
+		JPanel row = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
+		row.setOpaque(false);
+		row.setAlignmentX(Component.LEFT_ALIGNMENT);
+		Dimension size = new Dimension(CONTROLS_FULL_BUTTON_WIDTH, component.getPreferredSize().height);
+		row.setMinimumSize(new Dimension(CONTROLS_INNER_WIDTH, size.height));
+		row.setPreferredSize(new Dimension(CONTROLS_INNER_WIDTH, size.height));
+		row.setMaximumSize(new Dimension(CONTROLS_INNER_WIDTH, size.height));
+		if (component instanceof AbstractButton button)
+		{
+			setFixedControlSize(button, size);
+		}
+		row.add(component);
+		return row;
+	}
+
+	private Component sectionSeparator()
+	{
+		JPanel row = new JPanel(new BorderLayout());
+		row.setOpaque(false);
+		row.setBorder(BorderFactory.createEmptyBorder(8, 0, 8, 0));
+		row.add(new JSeparator(), BorderLayout.CENTER);
+		row.setAlignmentX(Component.LEFT_ALIGNMENT);
+		row.setMinimumSize(new Dimension(CONTROLS_INNER_WIDTH, 17));
+		row.setPreferredSize(new Dimension(CONTROLS_INNER_WIDTH, 17));
+		row.setMaximumSize(new Dimension(CONTROLS_INNER_WIDTH, 17));
+		return row;
+	}
+
+	private JPanel comboRow(String label, JComboBox<?> comboBox)
+	{
+		JPanel row = new JPanel(new BorderLayout(8, 0));
+		row.setOpaque(false);
+		row.setAlignmentX(Component.LEFT_ALIGNMENT);
+		row.add(toolbarLabel(label), BorderLayout.WEST);
+		row.add(comboBox, BorderLayout.CENTER);
+		return row;
+	}
+
+	private JPanel renderingStatusRow()
+	{
+		JPanel row = new JPanel();
+		row.setOpaque(false);
+		row.setLayout(new FlowLayout(FlowLayout.LEFT, 0, 0));
+		row.setAlignmentX(Component.LEFT_ALIGNMENT);
+		row.setMinimumSize(new Dimension(CONTROLS_INNER_WIDTH, 100));
+		row.setPreferredSize(new Dimension(CONTROLS_INNER_WIDTH, 100));
+		row.setMaximumSize(new Dimension(CONTROLS_INNER_WIDTH, 100));
+
+		JPanel rendering = new JPanel();
+		rendering.setOpaque(false);
+		rendering.setLayout(new BoxLayout(rendering, BoxLayout.Y_AXIS));
+		rendering.setPreferredSize(new Dimension(135, 96));
+		rendering.setMaximumSize(new Dimension(135, 96));
+		rendering.add(controlSectionTitle("Rendering"));
+		rendering.add(Box.createVerticalStrut(8));
+		rendering.add(compactComboRow("AA", antialiasingScale));
+		rendering.add(Box.createVerticalStrut(6));
+		rendering.add(compactComboRow("View", viewDistanceSelect));
+
+		JPanel status = new JPanel();
+		status.setOpaque(false);
+		status.setLayout(new BoxLayout(status, BoxLayout.Y_AXIS));
+		status.setPreferredSize(new Dimension(130, 96));
+		status.setMaximumSize(new Dimension(130, 96));
+		status.add(controlSectionTitle("Status"));
+		status.add(Box.createVerticalStrut(8));
+		status.add(statusLabelRow(compassHud));
+		status.add(Box.createVerticalStrut(5));
+		status.add(statusLabelRow(tileHud));
+		status.add(Box.createVerticalStrut(5));
+		status.add(statusLabelRow(viewDistanceHud));
+
+		JSeparator separator = new JSeparator(SwingConstants.VERTICAL);
+		separator.setPreferredSize(new Dimension(1, 100));
+		separator.setMaximumSize(new Dimension(1, 100));
+
+		row.add(rendering);
+		row.add(Box.createHorizontalStrut(10));
+		row.add(separator);
+		row.add(Box.createHorizontalStrut(14));
+		row.add(status);
+		return row;
+	}
+
+	private JPanel compactComboRow(String label, JComboBox<?> comboBox)
+	{
+		JPanel row = new JPanel(new BorderLayout(6, 0));
+		row.setOpaque(false);
+		row.setAlignmentX(Component.LEFT_ALIGNMENT);
+		JLabel text = toolbarLabel(label);
+		text.setPreferredSize(new Dimension(24, 22));
+		row.add(text, BorderLayout.WEST);
+		comboBox.setPreferredSize(new Dimension(94, 24));
+		comboBox.setMaximumSize(new Dimension(94, 24));
+		row.add(comboBox, BorderLayout.CENTER);
+		return row;
+	}
+
+	private JPanel fovRow()
+	{
+		JPanel row = new JPanel(new BorderLayout(8, 0));
+		row.setOpaque(false);
+		row.setAlignmentX(Component.LEFT_ALIGNMENT);
+		row.setMaximumSize(new Dimension(CONTROLS_INNER_WIDTH, 28));
+		row.add(toolbarLabel("FOV"), BorderLayout.WEST);
+		row.add(fovSlider, BorderLayout.CENTER);
+		return row;
+	}
+
+	private JPanel statusLabelRow(JLabel label)
+	{
+		JPanel row = new JPanel(new BorderLayout());
+		row.setOpaque(false);
+		row.setAlignmentX(Component.LEFT_ALIGNMENT);
+		row.add(label, BorderLayout.CENTER);
+		return row;
+	}
+
+	private void setControlsCollapsed(boolean value)
+	{
+		if (controlsCollapsed == value)
+		{
+			return;
+		}
+		controlsCollapsed = value;
+		controlsBody.setVisible(!controlsCollapsed);
+		title.setVisible(!controlsCollapsed);
+		controlsPanel.setBorder(controlsCollapsed ? controlsCollapsedBorder : controlsExpandedBorder);
+		controlsHeader.removeAll();
+		if (controlsCollapsed)
+		{
+			styleCollapseButton(collapseControlsButton, new Dimension(36, 36));
+			collapseControlsButton.setText("<");
+			controlsHeader.add(collapseControlsButton, BorderLayout.CENTER);
+		}
+		else
+		{
+			styleCollapseButton(collapseControlsButton, new Dimension(30, 28));
+			collapseControlsButton.setText(">");
+			controlsHeader.add(title, BorderLayout.WEST);
+			controlsHeader.add(collapseControlsButton, BorderLayout.EAST);
+		}
+		controlsPanel.revalidate();
+		Container parent = controlsPanel.getParent();
+		if (parent != null)
+		{
+			parent.revalidate();
+			parent.doLayout();
+			parent.repaint();
+		}
+	}
+
+	private void applyNpcVisibilitySelection()
+	{
+		npcsVisible = npcVisibleCheckBox.isSelected();
+		updateNpcControlState();
+		applyNpcRendererSettings();
+		scheduleStateSave();
+	}
+
+	private void applyNpcOverlaySelection()
+	{
+		npcOutlinesVisible = npcOutlinesCheckBox.isSelected();
+		npcHoverTextVisible = npcHoverTextCheckBox.isSelected();
+		updateNpcControlState();
+		applyNpcRendererSettings();
+		scheduleStateSave();
+	}
+
+	private void updateNpcControlState()
+	{
+		npcOutlinesCheckBox.setEnabled(npcsVisible);
+		npcHoverTextCheckBox.setEnabled(npcsVisible);
+	}
+
+	private void applyNpcRendererSettings()
+	{
+		boolean visible = npcsVisible;
+		boolean outlinesVisible = visible && npcOutlinesVisible;
+		boolean hoverTextVisible = visible && npcHoverTextVisible;
+		invokeRenderLater(() -> {
+			renderer.setNpcsVisible(visible);
+			renderer.setNpcOutlinesEnabled(outlinesVisible);
+			renderer.setNpcHoverTextEnabled(hoverTextVisible);
+		});
+		if (!npcsVisible || !npcHoverTextVisible)
+		{
+			npcHoverOverlay.setInfo(null);
+		}
 	}
 
 	private JPanel buildFooterPanel()
@@ -508,24 +845,34 @@ public final class Map3DPanel extends JPanel
 			{
 				Dimension size = getSize();
 				canvas.setBounds(0, 0, size.width, size.height);
-				int debugTop = 10;
-				int rightAnchor = size.width - 12;
+				Dimension controlSize = controlsPanel.getPreferredSize();
+				int controlsX = Math.max(8, size.width - controlSize.width - 12);
+				controlsPanel.setBounds(controlsX, 12, controlSize.width, controlSize.height);
+				int overlayRightAnchor = Math.max(8, controlsX - CONTROLS_MINIMAP_GAP);
+				int debugTop = 12;
+				int overlayColumnRight = overlayRightAnchor;
+				if (npcHoverOverlay.isVisible())
+				{
+					Dimension hoverSize = npcHoverOverlay.getPreferredSize();
+					npcHoverOverlay.setBounds(12, 12, hoverSize.width, hoverSize.height);
+				}
 				if (minimapOverlay != null && minimapOverlay.isVisible())
 				{
 					Dimension minimapSize = minimapOverlay.getPreferredSize();
-					int minimapX = Math.max(8, rightAnchor - minimapSize.width);
+					int minimapX = Math.max(8, overlayRightAnchor - minimapSize.width);
 					minimapOverlay.setBounds(minimapX, 12, minimapSize.width, minimapSize.height);
 					debugTop = minimapOverlay.getY() + minimapOverlay.getHeight() + 8;
+					overlayColumnRight = minimapOverlay.getX() + minimapOverlay.getWidth();
 				}
 				if (controlsOverlay.isVisible())
 				{
 					Dimension controlsSize = controlsOverlay.getPreferredSize();
-					int controlsX = Math.max(8, rightAnchor - controlsSize.width);
-					controlsOverlay.setBounds(controlsX, debugTop, controlsSize.width, controlsSize.height);
+					int controlsOverlayX = Math.max(8, overlayColumnRight - controlsSize.width);
+					controlsOverlay.setBounds(controlsOverlayX, debugTop, controlsSize.width, controlsSize.height);
 					debugTop = controlsOverlay.getY() + controlsOverlay.getHeight() + 8;
 				}
 				Dimension preferredSize = debugOverlay.getPreferredSize();
-				int x = Math.max(8, size.width - preferredSize.width - 10);
+				int x = Math.max(8, overlayRightAnchor - preferredSize.width);
 				debugOverlay.setBounds(x, debugTop, preferredSize.width, preferredSize.height);
 				if (loadingOverlay.isVisible())
 				{
@@ -543,6 +890,9 @@ public final class Map3DPanel extends JPanel
 		{
 			layeredPane.add(minimapOverlay, JLayeredPane.PALETTE_LAYER);
 		}
+		layeredPane.add(controlsPanel, JLayeredPane.PALETTE_LAYER);
+		npcHoverOverlay.setVisible(false);
+		layeredPane.add(npcHoverOverlay, JLayeredPane.PALETTE_LAYER);
 		controlsOverlay.setVisible(false);
 		layeredPane.add(controlsOverlay, JLayeredPane.PALETTE_LAYER);
 		layeredPane.add(debugOverlay, JLayeredPane.PALETTE_LAYER);
@@ -637,11 +987,16 @@ public final class Map3DPanel extends JPanel
 			antialiasingScale.setSelectedItem(scale);
 			streamGridSize = Viewer3DState.clampViewDistanceRegions(state.viewDistanceRegions());
 			viewDistanceSelect.setSelectedItem(ViewDistanceOption.forGridSize(streamGridSize));
+			updateViewDistanceHud();
 			renderer.setViewDistanceRegions(streamGridSize);
 			pluginOverlaysOnTop = state.pluginOverlaysOnTop();
 			overlayPriorityButton.setSelected(pluginOverlaysOnTop);
 			updateOverlayPriorityButtonText();
 			renderer.setPluginOverlayOnTop(pluginOverlaysOnTop);
+			npcsVisible = state.npcsVisible();
+			npcOutlinesVisible = state.npcOutlinesVisible();
+			npcHoverTextVisible = state.npcHoverTextVisible();
+			applyNpcRendererSettings();
 			return;
 		}
 		AntialiasingScale scale = AntialiasingScale.forSamples(DEFAULT_ANTIALIASING_SAMPLES);
@@ -649,11 +1004,16 @@ public final class Map3DPanel extends JPanel
 		antialiasingScale.setSelectedItem(scale);
 		streamGridSize = Viewer3DState.DEFAULT_VIEW_DISTANCE_REGIONS;
 		viewDistanceSelect.setSelectedItem(ViewDistanceOption.forGridSize(streamGridSize));
+		updateViewDistanceHud();
 		renderer.setViewDistanceRegions(streamGridSize);
 		pluginOverlaysOnTop = false;
 		overlayPriorityButton.setSelected(false);
 		updateOverlayPriorityButtonText();
 		renderer.setPluginOverlayOnTop(false);
+		npcsVisible = true;
+		npcOutlinesVisible = true;
+		npcHoverTextVisible = true;
+		applyNpcRendererSettings();
 	}
 
 	private void openWorldMapDock()
@@ -669,15 +1029,15 @@ public final class Map3DPanel extends JPanel
 			return;
 		}
 
-			try
+		try
+		{
+			MapPanel worldMapPanel = new MapPanel(atlasPath, mapCacheBudgetBytes);
+			if (settings != null)
 			{
-				MapPanel worldMapPanel = new MapPanel(atlasPath, mapCacheBudgetBytes);
-				if (settings != null)
-				{
-					worldMapPanel.setMapBackgroundColor(settings.mapBackgroundColor());
-				}
-				worldMapDock = new Map3DWorldMapDock(sceneLayer, worldMapPanel, this::cameraTile, this::warpCameraToTile);
-				worldMapDock.setPlugin(activePlugin);
+				worldMapPanel.setMapBackgroundColor(settings.mapBackgroundColor());
+			}
+			worldMapDock = new Map3DWorldMapDock(sceneLayer, worldMapPanel, this::cameraTile, this::warpCameraToTile);
+			worldMapDock.setPlugin(activePlugin);
 			worldMapDock.addWindowListener(new WindowAdapter()
 			{
 				@Override
@@ -749,7 +1109,6 @@ public final class Map3DPanel extends JPanel
 		if (!cameraInitialized)
 		{
 			cameraInitialized = true;
-			title.setText("3D Region Stream");
 			hideLoadingOverlay();
 		}
 		streamCenterRegionId = targetRegionId;
@@ -806,7 +1165,6 @@ public final class Map3DPanel extends JPanel
 		}
 
 		cameraInitialized = true;
-		title.setText("3D Region Stream");
 		hideLoadingOverlay();
 		saveViewerStateNow();
 		canvas.requestFocusInWindow();
@@ -881,7 +1239,10 @@ public final class Map3DPanel extends JPanel
 			camera.fovDegrees(),
 			antialiasingSamples,
 			streamGridSize,
-			pluginOverlaysOnTop
+			pluginOverlaysOnTop,
+			npcsVisible,
+			npcOutlinesVisible,
+			npcHoverTextVisible
 		);
 		if (!state.equals(lastSavedState))
 		{
@@ -1038,6 +1399,8 @@ public final class Map3DPanel extends JPanel
 			{
 				hoveredTile = null;
 				renderer.setHoveredTile(null);
+				renderer.setHoverRay(null, null);
+				npcHoverOverlay.setInfo(null);
 				updateTileHud();
 			}
 		});
@@ -1218,6 +1581,8 @@ public final class Map3DPanel extends JPanel
 		{
 			hoveredTile = null;
 			renderer.setHoveredTile(null);
+			renderer.setHoverRay(null, null);
+			npcHoverOverlay.setInfo(null);
 			updateTileHud();
 			return;
 		}
@@ -1233,6 +1598,7 @@ public final class Map3DPanel extends JPanel
 				renderHeight(),
 				new Vector3f()
 			);
+			renderer.setHoverRay(camera.position(), rayDirection);
 			hoveredTile = currentScene.pickTile(camera.position(), rayDirection);
 			renderer.setHoveredTile(hoveredTile);
 			updateTileHud();
@@ -1241,6 +1607,8 @@ public final class Map3DPanel extends JPanel
 		{
 			hoveredTile = null;
 			renderer.setHoveredTile(null);
+			renderer.setHoverRay(null, null);
+			npcHoverOverlay.setInfo(null);
 			updateTileHud();
 			if (!hoverPickErrorLogged)
 			{
@@ -1278,6 +1646,11 @@ public final class Map3DPanel extends JPanel
 		fovHud.setText(Math.round(camera.fovDegrees()) + " deg");
 	}
 
+	private void updateViewDistanceHud()
+	{
+		viewDistanceHud.setText("View Distance " + ViewDistanceOption.forGridSize(streamGridSize));
+	}
+
 	private void applyAntialiasingSelection()
 	{
 		Object selected = antialiasingScale.getSelectedItem();
@@ -1301,6 +1674,7 @@ public final class Map3DPanel extends JPanel
 		}
 
 		streamGridSize = option.gridSize();
+		updateViewDistanceHud();
 		renderer.setViewDistanceRegions(streamGridSize);
 		updateStreamedRegions();
 		requestPluginOverlayRefresh();
@@ -1347,6 +1721,8 @@ public final class Map3DPanel extends JPanel
 	{
 		hoveredTile = null;
 		renderer.setHoveredTile(null);
+		renderer.setHoverRay(null, null);
+		npcHoverOverlay.setInfo(null);
 		renderer.setScene(currentScene);
 		updateTileHud();
 		detail.setText("Loading region " + regionId + "...");
@@ -1769,21 +2145,22 @@ public final class Map3DPanel extends JPanel
 		updatePluginOverlayContext();
 		updateCompassHud();
 		maybeSaveViewerState(now);
-			if (minimapOverlay != null)
-			{
-				minimapOverlay.repaint();
-			}
-			if (worldMapDock != null)
-			{
-				worldMapDock.updateCameraTile();
-			}
-			if (!ensureContext())
-			{
-				updateDebugOverlay();
+		if (minimapOverlay != null)
+		{
+			minimapOverlay.repaint();
+		}
+		if (worldMapDock != null)
+		{
+			worldMapDock.updateCameraTile();
+		}
+		if (!ensureContext())
+		{
+			updateDebugOverlay();
 			return;
 		}
 		long renderStartNanos = System.nanoTime();
 		boolean rendered = false;
+		TerrainRenderer.NpcHoverInfo npcHoverInfo = null;
 		try
 		{
 			awtContext.makeCurrent();
@@ -1791,6 +2168,7 @@ public final class Map3DPanel extends JPanel
 			processRenderTasks();
 			refreshPluginOverlayIfNeeded();
 			renderer.render(camera, renderWidth(), renderHeight());
+			npcHoverInfo = renderer.hoveredNpcInfo();
 			awtContext.swapBuffers();
 			rendered = true;
 		}
@@ -1817,7 +2195,23 @@ public final class Map3DPanel extends JPanel
 		if (rendered)
 		{
 			lastRenderMillis = (System.nanoTime() - renderStartNanos) / 1_000_000.0;
+			updateNpcHoverOverlay(npcHoverInfo);
 			updateDebugOverlay();
+		}
+	}
+
+	private void updateNpcHoverOverlay(TerrainRenderer.NpcHoverInfo info)
+	{
+		if (!npcsVisible || !npcHoverTextVisible)
+		{
+			npcHoverOverlay.setInfo(null);
+			return;
+		}
+		npcHoverOverlay.setInfo(info);
+		if (npcHoverOverlay.isVisible())
+		{
+			sceneLayer.revalidate();
+			sceneLayer.doLayout();
 		}
 	}
 
@@ -2115,11 +2509,139 @@ public final class Map3DPanel extends JPanel
 		));
 	}
 
+	private static void setFixedControlSize(Component component, Dimension size)
+	{
+		component.setMinimumSize(size);
+		component.setPreferredSize(size);
+		component.setMaximumSize(size);
+	}
+
+	private static void styleCollapseButton(AbstractButton button, Dimension size)
+	{
+		styleToolbarButton(button);
+		button.setFont(button.getFont().deriveFont(Font.BOLD, 16f));
+		button.setHorizontalAlignment(SwingConstants.CENTER);
+		button.setVerticalAlignment(SwingConstants.CENTER);
+		button.setMargin(new Insets(0, 0, 0, 0));
+		button.setMinimumSize(size);
+		button.setPreferredSize(size);
+		button.setMaximumSize(size);
+	}
+
+	private static void styleCheckBox(JCheckBox checkBox)
+	{
+		checkBox.setOpaque(false);
+		checkBox.setFocusable(false);
+		checkBox.setForeground(new Color(220, 220, 220));
+	}
+
 	private static JLabel toolbarLabel(String text)
 	{
 		JLabel label = new JLabel(text);
 		label.setForeground(new Color(210, 210, 210));
 		return label;
+	}
+
+	private static final class NpcHoverTextOverlay extends JComponent
+	{
+		private static final Color YELLOW = new Color(255, 242, 80);
+		private static final Color GREEN = new Color(86, 232, 96);
+		private static final Color WHITE = new Color(245, 245, 245);
+		private static final Color OUTLINE = new Color(0, 0, 0, 230);
+		private TerrainRenderer.NpcHoverInfo info;
+
+		private NpcHoverTextOverlay()
+		{
+			setOpaque(false);
+			setFocusable(false);
+			setFont(new Font(Font.SANS_SERIF, Font.BOLD, 16));
+		}
+
+		private void setInfo(TerrainRenderer.NpcHoverInfo next)
+		{
+			boolean changed = info == null && next != null
+				|| info != null && !info.equals(next);
+			info = next;
+			setVisible(info != null);
+			if (changed)
+			{
+				revalidate();
+				repaint();
+			}
+		}
+
+		@Override
+		public Dimension getPreferredSize()
+		{
+			if (info == null)
+			{
+				return new Dimension(1, 1);
+			}
+			FontMetrics metrics = getFontMetrics(getFont());
+			int width = segmentWidth(metrics) + 10;
+			int height = metrics.getHeight() + 8;
+			return new Dimension(width, height);
+		}
+
+		@Override
+		protected void paintComponent(Graphics g0)
+		{
+			if (info == null)
+			{
+				return;
+			}
+			Graphics2D g = (Graphics2D) g0.create();
+			try
+			{
+				g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+				g.setFont(getFont());
+				FontMetrics metrics = g.getFontMetrics();
+				int x = 5;
+				int baseline = 4 + metrics.getAscent();
+				x = drawSegment(g, displayName(), YELLOW, x, baseline);
+				if (info.hasCombatLevel())
+				{
+					x = drawSegment(g, " - Level: ", WHITE, x, baseline);
+					x = drawSegment(g, Integer.toString(info.combatLevel()), GREEN, x, baseline);
+				}
+				x = drawSegment(g, " | ID: ", WHITE, x, baseline);
+				drawSegment(g, Integer.toString(info.npcId()), YELLOW, x, baseline);
+			}
+			finally
+			{
+				g.dispose();
+			}
+		}
+
+		private int segmentWidth(FontMetrics metrics)
+		{
+			int width = metrics.stringWidth(displayName());
+			if (info.hasCombatLevel())
+			{
+				width += metrics.stringWidth(" - Level: ");
+				width += metrics.stringWidth(Integer.toString(info.combatLevel()));
+			}
+			width += metrics.stringWidth(" | ID: ");
+			width += metrics.stringWidth(Integer.toString(info.npcId()));
+			return width;
+		}
+
+		private String displayName()
+		{
+			return info.name() == null || info.name().isBlank() ? "NPC" : info.name();
+		}
+
+		private int drawSegment(Graphics2D g, String text, Color color, int x, int baseline)
+		{
+			g.setColor(OUTLINE);
+			g.drawString(text, x - 1, baseline);
+			g.drawString(text, x + 1, baseline);
+			g.drawString(text, x, baseline - 1);
+			g.drawString(text, x, baseline + 1);
+			g.setColor(color);
+			g.drawString(text, x, baseline);
+			return x + g.getFontMetrics().stringWidth(text);
+		}
 	}
 
 	private record AreaSearch(

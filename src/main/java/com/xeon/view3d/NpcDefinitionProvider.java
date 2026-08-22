@@ -298,7 +298,11 @@ final class NpcDefinitionProvider
 			|| opcode == 137 || opcode == 142 || opcode == 144 || opcode == 146
 			|| opcode >= 170 && opcode < 176)
 		{
-			if (opcode == 103)
+			if (opcode == 95)
+			{
+				definition.combatLevel = stream.readUnsignedShort();
+			}
+			else if (opcode == 103)
 			{
 				definition.rotationSpeed = stream.readUnsignedShort();
 			}

@@ -34,7 +34,10 @@ public record Viewer3DState(
 	float fovDegrees,
 	int antialiasingSamples,
 	int viewDistanceRegions,
-	boolean pluginOverlaysOnTop
+	boolean pluginOverlaysOnTop,
+	boolean npcsVisible,
+	boolean npcOutlinesVisible,
+	boolean npcHoverTextVisible
 )
 {
 	public static final int DEFAULT_VIEW_DISTANCE_REGIONS = 3;
@@ -67,7 +70,40 @@ public record Viewer3DState(
 			fovDegrees,
 			antialiasingSamples,
 			DEFAULT_VIEW_DISTANCE_REGIONS,
-			false
+			false,
+			true,
+			true,
+			true
+		);
+	}
+
+	public Viewer3DState(
+		double worldTileX,
+		double worldTileY,
+		double cameraY,
+		int plane,
+		float yawDegrees,
+		float pitchDegrees,
+		float fovDegrees,
+		int antialiasingSamples,
+		int viewDistanceRegions,
+		boolean pluginOverlaysOnTop
+	)
+	{
+		this(
+			worldTileX,
+			worldTileY,
+			cameraY,
+			plane,
+			yawDegrees,
+			pitchDegrees,
+			fovDegrees,
+			antialiasingSamples,
+			viewDistanceRegions,
+			pluginOverlaysOnTop,
+			true,
+			true,
+			true
 		);
 	}
 

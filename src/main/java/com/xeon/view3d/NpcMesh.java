@@ -31,11 +31,13 @@ import java.util.List;
 record NpcMesh(
 	int npcId,
 	String name,
+	int combatLevel,
 	int sequenceId,
 	boolean walkingAnimation,
 	int[] frameLengths,
 	int frameStep,
 	AnimatedObjectMesh.Frame[] frames,
+	Bounds bounds,
 	List<Instance> instances
 )
 {
@@ -43,6 +45,7 @@ record NpcMesh(
 	{
 		frameLengths = frameLengths == null ? new int[0] : Arrays.copyOf(frameLengths, frameLengths.length);
 		frames = frames == null ? new AnimatedObjectMesh.Frame[0] : Arrays.copyOf(frames, frames.length);
+		bounds = bounds == null ? Bounds.fallback() : bounds;
 		instances = instances == null ? List.of() : List.copyOf(instances);
 	}
 
@@ -216,5 +219,33 @@ record NpcMesh(
 		boolean walking
 	)
 	{
+	}
+
+	record Bounds(
+		float minX,
+		float minY,
+		float minZ,
+		float maxX,
+		float maxY,
+		float maxZ
+	)
+	{
+		static Bounds fallback()
+		{
+			return new Bounds(-0.45f, 0.0f, -0.45f, 0.45f, 1.75f, 0.45f);
+		}
+
+		boolean valid()
+		{
+			return Float.isFinite(minX)
+				&& Float.isFinite(minY)
+				&& Float.isFinite(minZ)
+				&& Float.isFinite(maxX)
+				&& Float.isFinite(maxY)
+				&& Float.isFinite(maxZ)
+				&& minX <= maxX
+				&& minY <= maxY
+				&& minZ <= maxZ;
+		}
 	}
 }
