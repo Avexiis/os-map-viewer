@@ -114,6 +114,7 @@ public final class Map3DPanel extends JPanel
 	private static final int CONTROLS_ACTION_GRID_GAP = 24;
 	private static final int CONTROLS_ACTION_GRID_WIDTH = CONTROLS_ACTION_BUTTON_WIDTH * 2 + CONTROLS_ACTION_GRID_GAP;
 	private static final int CONTROLS_FULL_BUTTON_WIDTH = 252;
+	private static final int PLANE_COUNT = 4;
 	private static final double SLOW_FRAME_MILLIS = 33.4;
 	private static final double SLOW_RENDER_MILLIS = 20.0;
 	private static final int HIGH_DRAW_CALLS = 128;
@@ -164,6 +165,12 @@ public final class Map3DPanel extends JPanel
 	private final JCheckBox npcVisibleCheckBox = new JCheckBox("NPCs", true);
 	private final JCheckBox npcOutlinesCheckBox = new JCheckBox("Outlines", true);
 	private final JCheckBox npcHoverTextCheckBox = new JCheckBox("Hover Text", true);
+	private final JCheckBox[] planeVisibleCheckBoxes = new JCheckBox[]{
+		new JCheckBox("0", true),
+		new JCheckBox("1", false),
+		new JCheckBox("2", false),
+		new JCheckBox("3", false)
+	};
 	private final JButton collapseControlsButton = new JButton(">");
 	private final JComboBox<AntialiasingScale> antialiasingScale = new JComboBox<>(AntialiasingScale.values());
 	private final JComboBox<ViewDistanceOption> viewDistanceSelect = new JComboBox<>(ViewDistanceOption.values());
@@ -208,6 +215,7 @@ public final class Map3DPanel extends JPanel
 	private boolean middleMouseLook;
 	private boolean cameraLocked;
 	private boolean controlsCollapsed;
+	private int maxVisiblePlane = 0;
 	private boolean npcsVisible = true;
 	private boolean npcOutlinesVisible = true;
 	private boolean npcHoverTextVisible = true;
@@ -507,6 +515,15 @@ public final class Map3DPanel extends JPanel
 		updateFovHud();
 		updateViewDistanceHud();
 
+		for (int plane = 0; plane < planeVisibleCheckBoxes.length; plane++)
+		{
+			JCheckBox checkBox = planeVisibleCheckBoxes[plane];
+			styleCheckBox(checkBox);
+			int selectedPlane = plane;
+			checkBox.addActionListener(e -> applyPlaneVisibilitySelection(selectedPlane));
+		}
+		updatePlaneControlState();
+
 		styleCheckBox(npcVisibleCheckBox);
 		styleCheckBox(npcOutlinesCheckBox);
 		styleCheckBox(npcHoverTextCheckBox);
@@ -541,6 +558,9 @@ public final class Map3DPanel extends JPanel
 		rows.add(renderingStatusRow());
 		rows.add(Box.createVerticalStrut(8));
 		rows.add(fovRow());
+		rows.add(sectionSeparator());
+		rows.add(sectionTitleRow("Planes"));
+		rows.add(controlRow(planeVisibleCheckBoxes));
 		rows.add(sectionSeparator());
 		rows.add(sectionTitleRow("NPCs"));
 		rows.add(controlRow(npcVisibleCheckBox, npcOutlinesCheckBox, npcHoverTextCheckBox));
@@ -819,6 +839,57 @@ public final class Map3DPanel extends JPanel
 		}
 	}
 
+	private void applyPlaneVisibilitySelection(int plane)
+	{
+		if (plane <= 0)
+		{
+			maxVisiblePlane = 0;
+		}
+		else if (planeVisibleCheckBoxes[plane].isSelected())
+		{
+			maxVisiblePlane = Math.max(maxVisiblePlane, plane);
+		}
+		else
+		{
+			maxVisiblePlane = plane - 1;
+		}
+		maxVisiblePlane = Viewer3DState.clampMaxVisiblePlane(maxVisiblePlane);
+		updatePlaneControlState();
+		applyPlaneRendererSettings();
+		if (hoveredTile != null && hoveredTile.plane() > maxVisiblePlane)
+		{
+			hoveredTile = null;
+			renderer.setHoveredTile(null);
+			updateTileHud();
+		}
+		if (minimapOverlay != null)
+		{
+			minimapOverlay.repaint();
+		}
+		requestPluginOverlayRefresh();
+		detail.setText("Showing planes 0-" + maxVisiblePlane);
+		scheduleStateSave();
+	}
+
+	private void updatePlaneControlState()
+	{
+		maxVisiblePlane = Viewer3DState.clampMaxVisiblePlane(maxVisiblePlane);
+		for (int plane = 0; plane < planeVisibleCheckBoxes.length; plane++)
+		{
+			JCheckBox checkBox = planeVisibleCheckBoxes[plane];
+			checkBox.setSelected(plane <= maxVisiblePlane);
+			checkBox.setEnabled(plane > 0 && plane <= maxVisiblePlane + 1);
+		}
+		planeVisibleCheckBoxes[0].setSelected(true);
+		planeVisibleCheckBoxes[0].setEnabled(false);
+	}
+
+	private void applyPlaneRendererSettings()
+	{
+		int visiblePlane = maxVisiblePlane;
+		invokeRenderLater(() -> renderer.setMaxVisiblePlane(visiblePlane));
+	}
+
 	private JPanel buildFooterPanel()
 	{
 		if (areaSearchPanel == null)
@@ -966,7 +1037,7 @@ public final class Map3DPanel extends JPanel
 			MapPanel minimapPanel = new MapPanel(atlasPath, minimapBudgetBytes(mapCacheBudgetBytes));
 			minimapPanel.setShowMapFeatureTooltips(false);
 			return new Map3DMinimapOverlay(minimapPanel, this::cameraMinimapCenter,
-				this::cameraHeadingRadians, this::openWorldMapDock);
+				this::cameraHeadingRadians, renderer::npcMapDots, this::openWorldMapDock);
 		}
 		catch (RuntimeException ex)
 		{
@@ -993,6 +1064,9 @@ public final class Map3DPanel extends JPanel
 			overlayPriorityButton.setSelected(pluginOverlaysOnTop);
 			updateOverlayPriorityButtonText();
 			renderer.setPluginOverlayOnTop(pluginOverlaysOnTop);
+			maxVisiblePlane = Viewer3DState.clampMaxVisiblePlane(state.maxVisiblePlane());
+			updatePlaneControlState();
+			applyPlaneRendererSettings();
 			npcsVisible = state.npcsVisible();
 			npcOutlinesVisible = state.npcOutlinesVisible();
 			npcHoverTextVisible = state.npcHoverTextVisible();
@@ -1010,6 +1084,9 @@ public final class Map3DPanel extends JPanel
 		overlayPriorityButton.setSelected(false);
 		updateOverlayPriorityButtonText();
 		renderer.setPluginOverlayOnTop(false);
+		maxVisiblePlane = 0;
+		updatePlaneControlState();
+		applyPlaneRendererSettings();
 		npcsVisible = true;
 		npcOutlinesVisible = true;
 		npcHoverTextVisible = true;
@@ -1198,9 +1275,9 @@ public final class Map3DPanel extends JPanel
 	{
 		if (currentScene.isEmpty())
 		{
-			return initialState == null ? 0 : Math.max(0, Math.min(3, initialState.plane()));
+			return initialState == null ? 0 : Math.min(maxVisiblePlane, Math.max(0, Math.min(3, initialState.plane())));
 		}
-		return currentScene.cameraPlaneFor(position.x(), position.y(), position.z());
+		return Math.min(maxVisiblePlane, currentScene.cameraPlaneFor(position.x(), position.y(), position.z()));
 	}
 
 	private void maybeSaveViewerState(long now)
@@ -1239,6 +1316,7 @@ public final class Map3DPanel extends JPanel
 			camera.fovDegrees(),
 			antialiasingSamples,
 			streamGridSize,
+			maxVisiblePlane,
 			pluginOverlaysOnTop,
 			npcsVisible,
 			npcOutlinesVisible,
@@ -1599,7 +1677,7 @@ public final class Map3DPanel extends JPanel
 				new Vector3f()
 			);
 			renderer.setHoverRay(camera.position(), rayDirection);
-			hoveredTile = currentScene.pickTile(camera.position(), rayDirection);
+			hoveredTile = currentScene.pickTile(camera.position(), rayDirection, maxVisiblePlane);
 			renderer.setHoveredTile(hoveredTile);
 			updateTileHud();
 		}

@@ -56,6 +56,7 @@ public final class ViewerSettings
 	private static final String KEY_3D_FOV = "viewer3d.state.fovDegrees";
 	private static final String KEY_3D_AA_SAMPLES = "viewer3d.state.antialiasingSamples";
 	private static final String KEY_3D_VIEW_DISTANCE_REGIONS = "viewer3d.state.viewDistanceRegions";
+	private static final String KEY_3D_MAX_VISIBLE_PLANE = "viewer3d.state.maxVisiblePlane";
 	private static final String KEY_3D_PLUGIN_OVERLAYS_ON_TOP = "viewer3d.state.pluginOverlaysOnTop";
 	private static final String KEY_3D_NPCS_VISIBLE = "viewer3d.state.npcsVisible";
 	private static final String KEY_3D_NPC_OUTLINES_VISIBLE = "viewer3d.state.npcOutlinesVisible";
@@ -71,6 +72,7 @@ public final class ViewerSettings
 	private static final String FIELD_FOV = "fovDegrees";
 	private static final String FIELD_AA_SAMPLES = "antialiasingSamples";
 	private static final String FIELD_VIEW_DISTANCE_REGIONS = "viewDistanceRegions";
+	private static final String FIELD_MAX_VISIBLE_PLANE = "maxVisiblePlane";
 	private static final String FIELD_PLUGIN_OVERLAYS_ON_TOP = "pluginOverlaysOnTop";
 	private static final String FIELD_NPCS_VISIBLE = "npcsVisible";
 	private static final String FIELD_NPC_OUTLINES_VISIBLE = "npcOutlinesVisible";
@@ -219,6 +221,7 @@ public final class ViewerSettings
 			(float) configManager.getDouble(CORE, KEY_3D_FOV, 68.0),
 			configManager.getInt(CORE, KEY_3D_AA_SAMPLES, 4),
 			configManager.getInt(CORE, KEY_3D_VIEW_DISTANCE_REGIONS, Viewer3DState.DEFAULT_VIEW_DISTANCE_REGIONS),
+			configManager.getInt(CORE, KEY_3D_MAX_VISIBLE_PLANE, 0),
 			configManager.getBoolean(CORE, KEY_3D_PLUGIN_OVERLAYS_ON_TOP, false),
 			configManager.getBoolean(CORE, KEY_3D_NPCS_VISIBLE, true),
 			configManager.getBoolean(CORE, KEY_3D_NPC_OUTLINES_VISIBLE, true),
@@ -251,6 +254,7 @@ public final class ViewerSettings
 		object.addProperty(FIELD_AA_SAMPLES, Math.max(0, state.antialiasingSamples()));
 		object.addProperty(FIELD_VIEW_DISTANCE_REGIONS,
 			Viewer3DState.clampViewDistanceRegions(state.viewDistanceRegions()));
+		object.addProperty(FIELD_MAX_VISIBLE_PLANE, Viewer3DState.clampMaxVisiblePlane(state.maxVisiblePlane()));
 		object.addProperty(FIELD_PLUGIN_OVERLAYS_ON_TOP, state.pluginOverlaysOnTop());
 		object.addProperty(FIELD_NPCS_VISIBLE, state.npcsVisible());
 		object.addProperty(FIELD_NPC_OUTLINES_VISIBLE, state.npcOutlinesVisible());
@@ -293,6 +297,7 @@ public final class ViewerSettings
 			(float) jsonDouble(object, FIELD_FOV, 68.0),
 			jsonInt(object, FIELD_AA_SAMPLES, 4),
 			jsonInt(object, FIELD_VIEW_DISTANCE_REGIONS, Viewer3DState.DEFAULT_VIEW_DISTANCE_REGIONS),
+			jsonInt(object, FIELD_MAX_VISIBLE_PLANE, 0),
 			jsonBoolean(object, FIELD_PLUGIN_OVERLAYS_ON_TOP, false),
 			jsonBoolean(object, FIELD_NPCS_VISIBLE, true),
 			jsonBoolean(object, FIELD_NPC_OUTLINES_VISIBLE, true),

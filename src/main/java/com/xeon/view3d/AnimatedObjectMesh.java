@@ -28,6 +28,7 @@ package com.xeon.view3d;
 import java.util.Arrays;
 
 record AnimatedObjectMesh(
+	int plane,
 	int sequenceId,
 	int[] frameLengths,
 	int frameStep,

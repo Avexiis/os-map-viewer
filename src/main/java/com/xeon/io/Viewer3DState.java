@@ -34,6 +34,7 @@ public record Viewer3DState(
 	float fovDegrees,
 	int antialiasingSamples,
 	int viewDistanceRegions,
+	int maxVisiblePlane,
 	boolean pluginOverlaysOnTop,
 	boolean npcsVisible,
 	boolean npcOutlinesVisible,
@@ -47,6 +48,7 @@ public record Viewer3DState(
 	public Viewer3DState
 	{
 		viewDistanceRegions = clampViewDistanceRegions(viewDistanceRegions);
+		maxVisiblePlane = clampMaxVisiblePlane(maxVisiblePlane);
 	}
 
 	public Viewer3DState(
@@ -70,6 +72,7 @@ public record Viewer3DState(
 			fovDegrees,
 			antialiasingSamples,
 			DEFAULT_VIEW_DISTANCE_REGIONS,
+			0,
 			false,
 			true,
 			true,
@@ -100,6 +103,7 @@ public record Viewer3DState(
 			fovDegrees,
 			antialiasingSamples,
 			viewDistanceRegions,
+			0,
 			pluginOverlaysOnTop,
 			true,
 			true,
@@ -115,6 +119,7 @@ public record Viewer3DState(
 			&& antialiasingSamples >= 0
 			&& viewDistanceRegions >= MIN_VIEW_DISTANCE_REGIONS
 			&& viewDistanceRegions <= MAX_VIEW_DISTANCE_REGIONS
+			&& maxVisiblePlane >= 0 && maxVisiblePlane <= 3
 			&& isWorldTileInAtlas();
 	}
 
@@ -125,6 +130,11 @@ public record Viewer3DState(
 			return DEFAULT_VIEW_DISTANCE_REGIONS;
 		}
 		return Math.max(MIN_VIEW_DISTANCE_REGIONS, Math.min(MAX_VIEW_DISTANCE_REGIONS, value));
+	}
+
+	public static int clampMaxVisiblePlane(int value)
+	{
+		return Math.max(0, Math.min(3, value));
 	}
 
 	public int regionId()

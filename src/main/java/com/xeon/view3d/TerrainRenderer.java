@@ -231,6 +231,7 @@ final class TerrainRenderer
 	private static final int OVERLAY_TRANSPORT_ICON_RGB = 0xFF2E3D;
 	private static final int MAX_OVERLAY_PATH_INTERVAL_SAMPLES = 384;
 	private static final int MAX_OVERLAY_LINE_VERTICES_PER_BATCH = 120_000;
+	private static final int MAX_VISIBLE_PLANE = 3;
 	private static final float REGION_CULL_PADDING = 2.0f;
 	private static final float NPC_PICK_PADDING = 0.10f;
 	private static final int MAX_NPC_OUTLINE_PIXELS = 500_000;
@@ -297,12 +298,14 @@ final class TerrainRenderer
 	private List<OverlayLineDraw> overlayLineDraws = List.of();
 	private List<OverlayLineDraw> overlayTileDraws = List.of();
 	private List<OverlayTextLabel> overlayTextLabels = List.of();
+	private volatile List<NpcMapDot> npcMapDots = List.of();
 	private HoverRay hoverRay;
 	private HoveredNpcDraw hoveredNpcDraw;
 	private NpcHoverInfo hoveredNpcInfo;
 	private boolean initialized;
 	private int antialiasingSamples = 4;
 	private int viewDistanceRegions = 3;
+	private int maxVisiblePlane = 0;
 	private long startNanos;
 	private boolean pluginOverlayDirty = true;
 	private boolean pluginOverlayOnTop;
@@ -390,6 +393,21 @@ final class TerrainRenderer
 		this.pluginOverlayOnTop = pluginOverlayOnTop;
 	}
 
+	void setMaxVisiblePlane(int maxVisiblePlane)
+	{
+		this.maxVisiblePlane = clamp(maxVisiblePlane, 0, MAX_VISIBLE_PLANE);
+		pluginOverlayDirty = true;
+		if (hoveredTile != null && !isPlaneVisible(hoveredTile.plane()))
+		{
+			hoveredTile = null;
+		}
+		if (hoveredNpcDraw != null && !isPlaneVisible(hoveredNpcDraw.instance().plane()))
+		{
+			hoveredNpcDraw = null;
+			hoveredNpcInfo = null;
+		}
+	}
+
 	void setHoverRay(Vector3fc origin, Vector3fc direction)
 	{
 		if (origin == null || direction == null || direction.lengthSquared() <= 0.000001f)
@@ -403,6 +421,11 @@ final class TerrainRenderer
 	NpcHoverInfo hoveredNpcInfo()
 	{
 		return hoveredNpcInfo;
+	}
+
+	List<NpcMapDot> npcMapDots()
+	{
+		return npcMapDots;
 	}
 
 	void setNpcsVisible(boolean npcsVisible)
@@ -493,11 +516,13 @@ final class TerrainRenderer
 			float timeSeconds = animationTimeSeconds();
 			renderCounts = renderTerrain(camera, timeSeconds);
 			updateHoveredNpc(timeSeconds);
+			updateNpcMapDots(timeSeconds);
 			overlayDrawCalls = renderSceneOverlays(camera);
 		}
 		else
 		{
 			uploadPendingRegions();
+			npcMapDots = List.of();
 		}
 		updateRenderStats(renderCounts, outlineDrawCalls + overlayDrawCalls);
 		if (renderFramebuffer != defaultFramebuffer)
@@ -641,11 +666,24 @@ final class TerrainRenderer
 			if (region.vertexCount() > 0)
 			{
 				GL33C.glBindVertexArray(region.vao());
-				GL33C.glDrawArrays(GL33C.GL_TRIANGLES, 0, region.vertexCount());
-				drawCalls++;
+				for (int plane = 0; plane <= maxVisiblePlane; plane++)
+				{
+					int vertexCount = region.planeVertexCount(plane);
+					if (vertexCount <= 0)
+					{
+						continue;
+					}
+					GL33C.glDrawArrays(GL33C.GL_TRIANGLES, region.planeStartVertex(plane), vertexCount);
+					drawCalls++;
+					verticesDrawn += vertexCount;
+				}
 			}
 			for (UploadedAnimatedObject animatedObject : region.animatedObjects())
 			{
+				if (!isPlaneVisible(animatedObject.plane()))
+				{
+					continue;
+				}
 				UploadedAnimationFrame frame = animatedObject.frameAt(timeSeconds);
 				if (frame.vertexCount() <= 0)
 				{
@@ -659,13 +697,16 @@ final class TerrainRenderer
 			if (!npcsVisible)
 			{
 				visibleRegions++;
-				verticesDrawn += region.vertexCount();
 				continue;
 			}
 			for (UploadedNpcMesh npcMesh : region.npcMeshes())
 			{
 				for (NpcMesh.Instance instance : npcMesh.instances())
 				{
+					if (!isPlaneVisible(instance.plane()))
+					{
+						continue;
+					}
 					NpcMesh.Transform transform = instance.transformAt(timeSeconds);
 					if (npcMesh.walkingAnimation() != transform.walking())
 					{
@@ -684,7 +725,6 @@ final class TerrainRenderer
 				}
 			}
 			visibleRegions++;
-			verticesDrawn += region.vertexCount();
 		}
 		setTerrainIdentityModelMatrix();
 		GL33C.glBindVertexArray(0);
@@ -715,6 +755,10 @@ final class TerrainRenderer
 			{
 				for (NpcMesh.Instance instance : npcMesh.instances())
 				{
+					if (!isPlaneVisible(instance.plane()))
+					{
+						continue;
+					}
 					NpcMesh.Transform transform = instance.transformAt(timeSeconds);
 					if (npcMesh.walkingAnimation() != transform.walking())
 					{
@@ -729,7 +773,7 @@ final class TerrainRenderer
 					if (distance < bestDistance)
 					{
 						bestDistance = distance;
-						best = new HoveredNpcDraw(region, npcMesh, transform, frame, distance);
+						best = new HoveredNpcDraw(region, npcMesh, instance, transform, frame, distance);
 					}
 				}
 			}
@@ -738,6 +782,46 @@ final class TerrainRenderer
 		hoveredNpcInfo = best == null || !npcHoverTextEnabled
 			? null
 			: new NpcHoverInfo(best.mesh().name(), best.mesh().combatLevel(), best.mesh().npcId());
+	}
+
+	private void updateNpcMapDots(float timeSeconds)
+	{
+		if (!npcsVisible)
+		{
+			npcMapDots = List.of();
+			return;
+		}
+		List<NpcMapDot> dots = new ArrayList<>();
+		for (UploadedRegion region : uploadedRegions.values())
+		{
+			if (region.npcMeshes().isEmpty())
+			{
+				continue;
+			}
+			for (UploadedNpcMesh npcMesh : region.npcMeshes())
+			{
+				for (NpcMesh.Instance instance : npcMesh.instances())
+				{
+					if (!isPlaneVisible(instance.plane()))
+					{
+						continue;
+					}
+					NpcMesh.Transform transform = instance.transformAt(timeSeconds);
+					if (npcMesh.walkingAnimation() != transform.walking())
+					{
+						continue;
+					}
+					dots.add(new NpcMapDot(
+						TerrainScene.regionX(region.regionId()) * (double) TerrainScene.REGION_SIZE
+							+ SceneScale.tileXFromWorld(transform.x()),
+						TerrainScene.regionY(region.regionId()) * (double) TerrainScene.REGION_SIZE
+							+ SceneScale.tileYFromWorld(transform.z()),
+						instance.plane()
+					));
+				}
+			}
+		}
+		npcMapDots = dots.isEmpty() ? List.of() : List.copyOf(dots);
 	}
 
 	private static float npcIntersectionDistance(UploadedRegion region, NpcMesh.Bounds bounds,
@@ -859,6 +943,11 @@ final class TerrainRenderer
 		return tMin <= tMax ? tMin : Float.POSITIVE_INFINITY;
 	}
 
+	private boolean isPlaneVisible(int plane)
+	{
+		return plane >= 0 && plane <= maxVisiblePlane;
+	}
+
 	private void setTerrainIdentityModelMatrix()
 	{
 		modelMatrix.identity();
@@ -889,7 +978,7 @@ final class TerrainRenderer
 
 	private int renderHoveredTile()
 	{
-		if (currentScene == null || hoveredTile == null)
+		if (currentScene == null || hoveredTile == null || !isPlaneVisible(hoveredTile.plane()))
 		{
 			return 0;
 		}
@@ -1526,7 +1615,7 @@ final class TerrainRenderer
 		Map<Integer, OverlayLineBatch> tileBatches = new LinkedHashMap<>();
 		for (Map3DPathSegment segment : pluginOverlay.segments())
 		{
-			if (segment == null)
+			if (segment == null || !isTilePlaneVisible(segment.start()) || !isTilePlaneVisible(segment.end()))
 			{
 				continue;
 			}
@@ -1535,14 +1624,14 @@ final class TerrainRenderer
 		}
 		for (Map3DMarker marker : pluginOverlay.markers())
 		{
-			if (marker != null)
+			if (marker != null && isTilePlaneVisible(marker.tile()))
 			{
 				addTileHighlightLines(batches, marker.tile(), marker.color());
 			}
 		}
 		for (Map3DTileOverlay overlay : pluginOverlay.tileOverlays())
 		{
-			if (overlay == null)
+			if (overlay == null || !isTilePlaneVisible(overlay.tile()))
 			{
 				continue;
 			}
@@ -1552,7 +1641,7 @@ final class TerrainRenderer
 		Set<Long> labelFlagTiles = new HashSet<>();
 		for (Map3DLabel label : pluginOverlay.labels())
 		{
-			if (label != null && label.tile() != null && labelFlagTiles.add(labelStackKey(label.tile())))
+			if (label != null && isTilePlaneVisible(label.tile()) && labelFlagTiles.add(labelStackKey(label.tile())))
 			{
 				addLabelAnchorLines(batches, label.tile(), 0);
 			}
@@ -1782,7 +1871,7 @@ final class TerrainRenderer
 		Map<Long, Integer> labelStacks = new HashMap<>();
 		for (Map3DLabel label : pluginOverlay.labels())
 		{
-			if (label == null || label.text().isBlank())
+			if (label == null || label.text().isBlank() || !isTilePlaneVisible(label.tile()))
 			{
 				continue;
 			}
@@ -1793,12 +1882,12 @@ final class TerrainRenderer
 			Vector3f position = tileWorldPosition(label.tile(), heightOffset);
 			if (position != null)
 			{
-					candidates.add(new OverlayTextCandidate(position, label.text(), Color.WHITE));
+				candidates.add(new OverlayTextCandidate(position, label.text(), Color.WHITE));
 			}
 		}
 		for (Map3DTileOverlay overlay : pluginOverlay.tileOverlays())
 		{
-			if (overlay == null || overlay.label().isBlank())
+			if (overlay == null || overlay.label().isBlank() || !isTilePlaneVisible(overlay.tile()))
 			{
 				continue;
 			}
@@ -1807,7 +1896,7 @@ final class TerrainRenderer
 			Vector3f position = tileWorldPosition(overlay.tile(), heightOffset);
 			if (position != null)
 			{
-					candidates.add(new OverlayTextCandidate(position, overlay.label(), overlay.outlineColor()));
+				candidates.add(new OverlayTextCandidate(position, overlay.label(), overlay.outlineColor()));
 			}
 		}
 		return candidates;
@@ -2206,7 +2295,7 @@ final class TerrainRenderer
 
 	private Vector3f tileWorldPosition(Tile tile, float heightOffset)
 	{
-		if (tile == null || currentScene == null)
+		if (tile == null || currentScene == null || !isTilePlaneVisible(tile))
 		{
 			return null;
 		}
@@ -2215,7 +2304,7 @@ final class TerrainRenderer
 
 	private Vector3f worldPositionForWorldTile(double worldTileX, double worldTileY, int plane, float heightOffset)
 	{
-		if (currentScene == null)
+		if (currentScene == null || !isPlaneVisible(plane))
 		{
 			return null;
 		}
@@ -2237,7 +2326,7 @@ final class TerrainRenderer
 
 	private TileGeometry tileGeometry(Tile tile, float heightOffset)
 	{
-		if (tile == null || currentScene == null)
+		if (tile == null || currentScene == null || !isTilePlaneVisible(tile))
 		{
 			return null;
 		}
@@ -2280,6 +2369,11 @@ final class TerrainRenderer
 		return region != null
 			&& (region.vertexCount() > 0 || !region.animatedObjects().isEmpty() || !region.npcMeshes().isEmpty())
 			&& isVisible(region);
+	}
+
+	private boolean isTilePlaneVisible(Tile tile)
+	{
+		return tile != null && isPlaneVisible(tile.z);
 	}
 
 	private static float channel(int argb, int shift)
@@ -2506,6 +2600,8 @@ final class TerrainRenderer
 			vao,
 			vbo,
 			mesh.vertexCount(),
+			planeStartVertices(mesh),
+			planeVertexCounts(mesh),
 			offsetX,
 			offsetZ,
 			minX,
@@ -2517,6 +2613,36 @@ final class TerrainRenderer
 			animatedObjects,
 			npcMeshes
 		);
+	}
+
+	private static int[] planeStartVertices(TerrainMesh mesh)
+	{
+		int[] starts = new int[MAX_VISIBLE_PLANE + 1];
+		for (int plane = 0; plane < starts.length; plane++)
+		{
+			starts[plane] = mesh.planeStartVertex(plane);
+		}
+		return starts;
+	}
+
+	private static int[] planeVertexCounts(TerrainMesh mesh)
+	{
+		int[] counts = new int[MAX_VISIBLE_PLANE + 1];
+		for (int plane = 0; plane < counts.length; plane++)
+		{
+			counts[plane] = mesh.planeVertexCount(plane);
+		}
+		return counts;
+	}
+
+	private static int[] normalizedPlaneArray(int[] values)
+	{
+		int[] out = new int[MAX_VISIBLE_PLANE + 1];
+		if (values != null)
+		{
+			System.arraycopy(values, 0, out, 0, Math.min(out.length, values.length));
+		}
+		return out;
 	}
 
 	private void installTerrainAttributes()
@@ -3084,9 +3210,18 @@ final class TerrainRenderer
 		}
 	}
 
+	record NpcMapDot(
+		double worldTileX,
+		double worldTileY,
+		int plane
+	)
+	{
+	}
+
 	private record HoveredNpcDraw(
 		UploadedRegion region,
 		UploadedNpcMesh mesh,
+		NpcMesh.Instance instance,
 		NpcMesh.Transform transform,
 		UploadedAnimationFrame frame,
 		float distance
@@ -3211,6 +3346,8 @@ final class TerrainRenderer
 		int vao,
 		int vbo,
 		int vertexCount,
+		int[] planeStartVertices,
+		int[] planeVertexCounts,
 		float offsetX,
 		float offsetZ,
 		float minX,
@@ -3230,6 +3367,8 @@ final class TerrainRenderer
 				0,
 				0,
 				0,
+				new int[MAX_VISIBLE_PLANE + 1],
+				new int[MAX_VISIBLE_PLANE + 1],
 				offsetX,
 				offsetZ,
 				0.0f,
@@ -3245,8 +3384,20 @@ final class TerrainRenderer
 
 		private UploadedRegion
 		{
+			planeStartVertices = normalizedPlaneArray(planeStartVertices);
+			planeVertexCounts = normalizedPlaneArray(planeVertexCounts);
 			animatedObjects = animatedObjects == null ? List.of() : List.copyOf(animatedObjects);
 			npcMeshes = npcMeshes == null ? List.of() : List.copyOf(npcMeshes);
+		}
+
+		private int planeStartVertex(int plane)
+		{
+			return planeStartVertices[clamp(plane, 0, MAX_VISIBLE_PLANE)];
+		}
+
+		private int planeVertexCount(int plane)
+		{
+			return planeVertexCounts[clamp(plane, 0, MAX_VISIBLE_PLANE)];
 		}
 
 		private void delete()
@@ -3490,6 +3641,7 @@ final class TerrainRenderer
 		private UploadedAnimatedObject finish()
 		{
 			return new UploadedAnimatedObject(
+				mesh.plane(),
 				mesh.sequenceId(),
 				mesh.frameLengths(),
 				mesh.frameStep(),
@@ -3695,6 +3847,7 @@ final class TerrainRenderer
 	}
 
 	private record UploadedAnimatedObject(
+		int plane,
 		int sequenceId,
 		int[] frameLengths,
 		int frameStep,

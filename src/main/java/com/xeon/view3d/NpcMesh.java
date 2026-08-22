@@ -66,6 +66,7 @@ record NpcMesh(
 	}
 
 	record Instance(
+		int plane,
 		int phaseOffset,
 		float movementPhaseSeconds,
 		float idleYawRadians,
@@ -78,9 +79,10 @@ record NpcMesh(
 		float[] segmentSeconds
 	)
 	{
-		static Instance stationary(int phaseOffset, float x, float y, float z, float yawRadians)
+		static Instance stationary(int plane, int phaseOffset, float x, float y, float z, float yawRadians)
 		{
 			return new Instance(
+				plane,
 				phaseOffset,
 				0.0f,
 				yawRadians,
@@ -95,6 +97,7 @@ record NpcMesh(
 		}
 
 		static Instance moving(
+			int plane,
 			int phaseOffset,
 			float movementPhaseSeconds,
 			float idleYawRadians,
@@ -108,6 +111,7 @@ record NpcMesh(
 		)
 		{
 			return new Instance(
+				plane,
 				phaseOffset,
 				movementPhaseSeconds,
 				idleYawRadians,
@@ -123,6 +127,7 @@ record NpcMesh(
 
 		Instance
 		{
+			plane = Math.max(0, Math.min(3, plane));
 			x = x == null ? new float[0] : Arrays.copyOf(x, x.length);
 			y = y == null ? new float[0] : Arrays.copyOf(y, y.length);
 			z = z == null ? new float[0] : Arrays.copyOf(z, z.length);

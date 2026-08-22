@@ -68,7 +68,7 @@ final class ObjectMeshBuilder
 	}
 
 	static List<AnimatedObjectMesh> append(
-		SceneMeshBuffer data,
+		SceneMeshBuffer[] planeData,
 		Region region,
 		TerrainHeightMap[] heightMaps,
 		ObjectManager objectManager,
@@ -87,6 +87,10 @@ final class ObjectMeshBuilder
 			{
 				continue;
 			}
+			if (planeData == null || sourcePlane >= planeData.length || planeData[sourcePlane] == null)
+			{
+				continue;
+			}
 
 			int localX = position.getX() - region.getBaseX();
 			int localY = position.getY() - region.getBaseY();
@@ -95,6 +99,7 @@ final class ObjectMeshBuilder
 				continue;
 			}
 
+			SceneMeshBuffer data = planeData[sourcePlane];
 			ObjectDefinition definition = completionStateDefinition(objectManager, objectManager.getObject(location.getId()));
 			if (definition == null || definition.getObjectModels() == null)
 			{
@@ -285,6 +290,7 @@ final class ObjectMeshBuilder
 		}
 
 		return new AnimatedObjectMesh(
+			location.getPosition().getZ(),
 			definition.getAnimationID(),
 			animationProvider.frameLengths(sequence),
 			sequence.frameStep,

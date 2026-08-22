@@ -106,6 +106,17 @@ final class SceneMeshBuffer
 		return size;
 	}
 
+	void addAll(SceneMeshBuffer other)
+	{
+		if (other == null || other.size == 0)
+		{
+			return;
+		}
+		ensureCapacity(size + other.size);
+		System.arraycopy(other.values, 0, values, size, other.size);
+		size += other.size;
+	}
+
 	float[] toArray()
 	{
 		return Arrays.copyOf(values, size);
@@ -113,16 +124,25 @@ final class SceneMeshBuffer
 
 	private void add(float value)
 	{
-		if (size == values.length)
+		ensureCapacity(size + 1);
+		values[size++] = value;
+	}
+
+	private void ensureCapacity(int required)
+	{
+		if (required < 0 || required > MAX_ARRAY_SIZE)
+		{
+			throw new OutOfMemoryError("3D mesh buffer exceeded maximum Java array size");
+		}
+		if (required > values.length)
 		{
 			if (values.length >= MAX_ARRAY_SIZE)
 			{
 				throw new OutOfMemoryError("3D mesh buffer exceeded maximum Java array size");
 			}
 			long doubled = (long) values.length * 2L;
-			int nextLength = (int) Math.min(MAX_ARRAY_SIZE, Math.max(doubled, (long) size + 1L));
+			int nextLength = (int) Math.min(MAX_ARRAY_SIZE, Math.max(doubled, (long) required));
 			values = Arrays.copyOf(values, nextLength);
 		}
-		values[size++] = value;
 	}
 }

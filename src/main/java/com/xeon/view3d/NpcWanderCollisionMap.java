@@ -88,8 +88,13 @@ final class NpcWanderCollisionMap
 				continue;
 			}
 
-			BitSet bits = BitSet.valueOf(entry.getValue());
-			int planeCount = (bits.size() + BITS_PER_PLANE - 1) / BITS_PER_PLANE;
+			byte[] bytes = entry.getValue();
+			BitSet bits = BitSet.valueOf(bytes);
+			int planeCount = Math.min(Region.Z, (bytes.length * Byte.SIZE + BITS_PER_PLANE - 1) / BITS_PER_PLANE);
+			if (planeCount <= 0)
+			{
+				continue;
+			}
 			regionPlaneCounts[index] = (byte) planeCount;
 			regionWordOffset[index] = totalWords;
 			regionWords.put(index, bits.toLongArray());
@@ -100,7 +105,8 @@ final class NpcWanderCollisionMap
 		for (Map.Entry<Integer, long[]> entry : regionWords.entrySet())
 		{
 			long[] words = entry.getValue();
-			System.arraycopy(words, 0, flags, regionWordOffset[entry.getKey()], words.length);
+			int offset = regionWordOffset[entry.getKey()];
+			System.arraycopy(words, 0, flags, offset, Math.min(words.length, flags.length - offset));
 		}
 	}
 
@@ -123,7 +129,7 @@ final class NpcWanderCollisionMap
 
 	boolean canStand(int worldX, int worldY, int plane, int size)
 	{
-		if (!available || !hasData(worldX, worldY, plane))
+		if (!available)
 		{
 			return true;
 		}
@@ -132,7 +138,7 @@ final class NpcWanderCollisionMap
 		{
 			for (int y = worldY; y < worldY + footprint; y++)
 			{
-				if (hasData(x, y, plane) && isBlocked(x, y, plane))
+				if (!hasData(x, y, plane) || isBlocked(x, y, plane))
 				{
 					return false;
 				}
@@ -147,9 +153,13 @@ final class NpcWanderCollisionMap
 		{
 			return true;
 		}
-		if (!available || !hasData(worldX, worldY, plane))
+		if (!available)
 		{
 			return true;
+		}
+		if (!hasData(worldX, worldY, plane))
+		{
+			return false;
 		}
 
 		int footprint = Math.max(1, size);
@@ -167,6 +177,11 @@ final class NpcWanderCollisionMap
 		{
 			return false;
 		}
+		if (dx != 0 && dy != 0)
+		{
+			return canStepCardinal(worldX, targetY, plane, footprint, dx, 0)
+				&& canStepCardinal(targetX, worldY, plane, footprint, 0, dy);
+		}
 		return true;
 	}
 
@@ -177,7 +192,7 @@ final class NpcWanderCollisionMap
 			int edgeX = worldX + size - 1;
 			for (int y = worldY; y < worldY + size; y++)
 			{
-				if (hasData(edgeX, y, plane) && !east(edgeX, y, plane))
+				if (!east(edgeX, y, plane))
 				{
 					return false;
 				}
@@ -187,7 +202,7 @@ final class NpcWanderCollisionMap
 		{
 			for (int y = worldY; y < worldY + size; y++)
 			{
-				if (hasData(worldX, y, plane) && !west(worldX, y, plane))
+				if (!west(worldX, y, plane))
 				{
 					return false;
 				}
@@ -198,7 +213,7 @@ final class NpcWanderCollisionMap
 			int edgeY = worldY + size - 1;
 			for (int x = worldX; x < worldX + size; x++)
 			{
-				if (hasData(x, edgeY, plane) && !north(x, edgeY, plane))
+				if (!north(x, edgeY, plane))
 				{
 					return false;
 				}
@@ -208,7 +223,7 @@ final class NpcWanderCollisionMap
 		{
 			for (int x = worldX; x < worldX + size; x++)
 			{
-				if (hasData(x, worldY, plane) && !south(x, worldY, plane))
+				if (!south(x, worldY, plane))
 				{
 					return false;
 				}

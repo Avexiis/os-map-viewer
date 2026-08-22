@@ -38,6 +38,7 @@ import java.awt.Insets;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.awt.Shape;
+import java.util.List;
 import java.util.function.DoubleSupplier;
 import java.util.function.Supplier;
 import javax.swing.BorderFactory;
@@ -56,15 +57,19 @@ final class Map3DMinimapOverlay extends JPanel
 	private final MapPanel mapPanel;
 	private final Supplier<Center> centerSupplier;
 	private final DoubleSupplier headingRadiansSupplier;
+	private final Supplier<List<TerrainRenderer.NpcMapDot>> npcDotSupplier;
 	private MapViewerPlugin activePlugin;
 
 	Map3DMinimapOverlay(MapPanel mapPanel, Supplier<Center> centerSupplier,
-	                    DoubleSupplier headingRadiansSupplier, Runnable openWorldMap)
+	                    DoubleSupplier headingRadiansSupplier,
+	                    Supplier<List<TerrainRenderer.NpcMapDot>> npcDotSupplier,
+	                    Runnable openWorldMap)
 	{
 		super(new BorderLayout(0, 6));
 		this.mapPanel = mapPanel;
 		this.centerSupplier = centerSupplier;
 		this.headingRadiansSupplier = headingRadiansSupplier;
+		this.npcDotSupplier = npcDotSupplier == null ? List::of : npcDotSupplier;
 		setOpaque(false);
 		setBorder(BorderFactory.createEmptyBorder(PAD, PAD, PAD, PAD));
 		setFocusable(false);
@@ -177,6 +182,7 @@ final class Map3DMinimapOverlay extends JPanel
 						);
 						mapPanel.paintMapSnapshot(mapGraphics, target, center.worldTileX(), center.worldTileY(),
 							MINIMAP_PLANE, FULL_ZOOM_PIXELS_PER_TILE, true, false);
+						drawNpcDots(mapGraphics, mapBounds, center);
 					}
 					finally
 					{
@@ -209,6 +215,38 @@ final class Map3DMinimapOverlay extends JPanel
 			g.setColor(new Color(255, 242, 80));
 			g.drawLine(cx - 8, cy, cx + 8, cy);
 			g.drawLine(cx, cy - 8, cx, cy + 8);
+		}
+
+		private void drawNpcDots(Graphics2D g, Rectangle mapBounds, Center center)
+		{
+			List<TerrainRenderer.NpcMapDot> dots = npcDotSupplier.get();
+			if (dots == null || dots.isEmpty())
+			{
+				return;
+			}
+			double cx = mapBounds.getCenterX();
+			double cy = mapBounds.getCenterY();
+			g.setStroke(new BasicStroke(1.0f));
+			for (TerrainRenderer.NpcMapDot dot : dots)
+			{
+				if (dot == null || dot.plane() != MINIMAP_PLANE)
+				{
+					continue;
+				}
+				double x = cx + (dot.worldTileX() - center.worldTileX()) * FULL_ZOOM_PIXELS_PER_TILE;
+				double y = cy - (dot.worldTileY() - center.worldTileY()) * FULL_ZOOM_PIXELS_PER_TILE;
+				if (x < mapBounds.x - 4.0 || y < mapBounds.y - 4.0
+					|| x > mapBounds.getMaxX() + 4.0 || y > mapBounds.getMaxY() + 4.0)
+				{
+					continue;
+				}
+				int px = (int) Math.round(x);
+				int py = (int) Math.round(y);
+				g.setColor(new Color(0, 0, 0, 190));
+				g.fillOval(px - 3, py - 3, 6, 6);
+				g.setColor(new Color(255, 242, 80));
+				g.fillOval(px - 2, py - 2, 4, 4);
+			}
 		}
 	}
 

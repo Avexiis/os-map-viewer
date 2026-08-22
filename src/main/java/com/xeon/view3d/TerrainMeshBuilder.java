@@ -57,9 +57,13 @@ final class TerrainMeshBuilder
 		SceneTextureSet textureSet
 	)
 	{
-		SceneMeshBuffer data = new SceneMeshBuffer(
-			Region.X * Region.Y * INITIAL_TILE_TRIANGLES * 3 * TerrainMesh.FLOATS_PER_VERTEX * Region.Z
-		);
+		SceneMeshBuffer[] planeData = new SceneMeshBuffer[Region.Z];
+		for (int plane = 0; plane < Region.Z; plane++)
+		{
+			planeData[plane] = new SceneMeshBuffer(
+				Region.X * Region.Y * INITIAL_TILE_TRIANGLES * 3 * TerrainMesh.FLOATS_PER_VERTEX
+			);
+		}
 		Region region = regionContext.center();
 		int[] sceneHeights = sceneHeights(regionContext);
 		boolean[] renderableTiles = new boolean[Region.Z * Region.X * Region.Y];
@@ -91,7 +95,7 @@ final class TerrainMeshBuilder
 				for (int y = 0; y < Region.Y; y++)
 				{
 					maxHeight = putSourceTile(
-						data,
+						planeData[sourcePlane],
 						region,
 						colorizers,
 						heightMaps,
@@ -111,7 +115,7 @@ final class TerrainMeshBuilder
 		if (objectManager != null && modelProvider != null)
 		{
 			animatedObjects = ObjectMeshBuilder.append(
-				data,
+				planeData,
 				region,
 				heightMaps,
 				objectManager,
@@ -120,6 +124,17 @@ final class TerrainMeshBuilder
 				textureProvider,
 				textureSet
 			);
+		}
+		SceneMeshBuffer data = new SceneMeshBuffer(
+			Region.X * Region.Y * INITIAL_TILE_TRIANGLES * 3 * TerrainMesh.FLOATS_PER_VERTEX * Region.Z
+		);
+		int[] planeStartVertices = new int[Region.Z];
+		int[] planeVertexCounts = new int[Region.Z];
+		for (int plane = 0; plane < Region.Z; plane++)
+		{
+			planeStartVertices[plane] = data.size() / TerrainMesh.FLOATS_PER_VERTEX;
+			planeVertexCounts[plane] = planeData[plane].size() / TerrainMesh.FLOATS_PER_VERTEX;
+			data.addAll(planeData[plane]);
 		}
 		List<NpcMesh> npcMeshes = NpcMeshBuilder.build(
 			region,
@@ -141,6 +156,8 @@ final class TerrainMeshBuilder
 			true,
 			data.toArray(),
 			data.size() / TerrainMesh.FLOATS_PER_VERTEX,
+			planeStartVertices,
+			planeVertexCounts,
 			animatedObjects,
 			npcMeshes,
 			textureSet,

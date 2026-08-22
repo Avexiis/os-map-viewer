@@ -442,14 +442,14 @@ final class NpcMeshBuilder
 		if (!walking)
 		{
 			PathPoint point = pathPoint(region, heightMaps, plane, spawn.worldX(), spawn.worldY(), definition.size());
-			return NpcMesh.Instance.stationary(phaseOffset, point.x(), point.y(), point.z(), idleYaw);
+			return NpcMesh.Instance.stationary(plane, phaseOffset, point.x(), point.y(), point.z(), idleYaw);
 		}
 
 		List<TilePoint> tiles = wanderTilePath(definition, spawn, region, plane, collisionMap);
 		if (tiles.size() <= 1)
 		{
 			PathPoint point = pathPoint(region, heightMaps, plane, spawn.worldX(), spawn.worldY(), definition.size());
-			return NpcMesh.Instance.stationary(phaseOffset, point.x(), point.y(), point.z(), idleYaw);
+			return NpcMesh.Instance.stationary(plane, phaseOffset, point.x(), point.y(), point.z(), idleYaw);
 		}
 
 		List<Float> x = new ArrayList<>();
@@ -526,6 +526,7 @@ final class NpcMeshBuilder
 
 		float movementPhaseSeconds = Math.floorMod(hash, 10_000) / 1000.0f;
 		return NpcMesh.Instance.moving(
+			plane,
 			phaseOffset,
 			movementPhaseSeconds,
 			loopStartYaw,

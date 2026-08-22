@@ -46,6 +46,8 @@ public final class TerrainMesh
 	private final boolean allPlanes;
 	private float[] vertexData;
 	private final int vertexCount;
+	private final int[] planeStartVertices;
+	private final int[] planeVertexCounts;
 	private final float minY;
 	private final float maxY;
 	private final List<AnimatedObjectMesh> animatedObjects;
@@ -67,6 +69,8 @@ public final class TerrainMesh
 			true,
 			new float[0],
 			0,
+			new int[Region.Z],
+			new int[Region.Z],
 			List.of(),
 			List.of(),
 			SceneTextureSet.empty(),
@@ -86,6 +90,8 @@ public final class TerrainMesh
 		boolean allPlanes,
 		float[] vertexData,
 		int vertexCount,
+		int[] planeStartVertices,
+		int[] planeVertexCounts,
 		List<AnimatedObjectMesh> animatedObjects,
 		List<NpcMesh> npcMeshes,
 		SceneTextureSet textureSet,
@@ -103,6 +109,8 @@ public final class TerrainMesh
 		this.allPlanes = allPlanes;
 		this.vertexData = vertexData == null ? new float[0] : vertexData;
 		this.vertexCount = vertexCount;
+		this.planeStartVertices = normalizedPlaneArray(planeStartVertices);
+		this.planeVertexCounts = normalizedPlaneArray(planeVertexCounts);
 		this.animatedObjects = animatedObjects == null ? List.of() : List.copyOf(animatedObjects);
 		this.npcMeshes = npcMeshes == null ? List.of() : List.copyOf(npcMeshes);
 		float[] bounds = heightBounds(this.vertexData, this.animatedObjects, this.npcMeshes);
@@ -167,6 +175,16 @@ public final class TerrainMesh
 	public int vertexCount()
 	{
 		return vertexCount;
+	}
+
+	int planeStartVertex(int samplePlane)
+	{
+		return planeStartVertices[clamp(samplePlane, 0, Region.Z - 1)];
+	}
+
+	int planeVertexCount(int samplePlane)
+	{
+		return planeVertexCounts[clamp(samplePlane, 0, Region.Z - 1)];
 	}
 
 	float minY()
@@ -389,6 +407,16 @@ public final class TerrainMesh
 			maxY = Math.max(maxY, vertexData[i + 1]);
 		}
 		return new float[]{minY, maxY};
+	}
+
+	private static int[] normalizedPlaneArray(int[] values)
+	{
+		int[] out = new int[Region.Z];
+		if (values != null)
+		{
+			System.arraycopy(values, 0, out, 0, Math.min(out.length, values.length));
+		}
+		return out;
 	}
 
 }

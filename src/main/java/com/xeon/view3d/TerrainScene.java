@@ -237,8 +237,14 @@ final class TerrainScene
 
 	HoveredTile pickTile(Vector3fc origin, Vector3fc direction)
 	{
+		return pickTile(origin, direction, Region.Z - 1);
+	}
+
+	HoveredTile pickTile(Vector3fc origin, Vector3fc direction, int maxVisiblePlane)
+	{
 		float[] previousDistances = new float[Region.Z];
 		Arrays.fill(previousDistances, Float.NaN);
+		int topPlane = clamp(maxVisiblePlane, 0, Region.Z - 1);
 		for (float distance = PICK_STEP; distance <= SceneScale.CAMERA_FAR_PLANE; distance += PICK_STEP)
 		{
 			float worldX = origin.x() + direction.x() * distance;
@@ -261,7 +267,7 @@ final class TerrainScene
 
 			int tileX = clamp((int) Math.floor(localX), 0, REGION_SIZE - 1);
 			int tileY = clamp((int) Math.floor(localY), 0, REGION_SIZE - 1);
-			for (int samplePlane = Region.Z - 1; samplePlane >= 0; samplePlane--)
+			for (int samplePlane = topPlane; samplePlane >= 0; samplePlane--)
 			{
 				if (!mesh.renderableTileAt(samplePlane, tileX, tileY))
 				{
