@@ -613,9 +613,9 @@ public final class Map3DPanel extends JPanel
 		rows.add(controlRow(planeVisibleCheckBoxes));
 		rows.add(sectionSeparator());
 		rows.add(sectionTitleRow("NPCs"));
-		rows.add(controlRow(npcVisibleCheckBox, npcOutlinesCheckBox, npcHoverTextCheckBox));
+		rows.add(centeredControlRow(npcVisibleCheckBox, npcOutlinesCheckBox, npcHoverTextCheckBox));
 		rows.add(Box.createVerticalStrut(6));
-		rows.add(controlRowFixedWidth(npcOutlineColorButton,
+		rows.add(centeredControlRowFixedWidth(npcOutlineColorButton,
 			controlContentWidth(npcVisibleCheckBox, npcOutlinesCheckBox, npcHoverTextCheckBox)));
 		Dimension rowSize = new Dimension(CONTROLS_INNER_WIDTH, rows.getPreferredSize().height);
 		rows.setMinimumSize(rowSize);
@@ -653,9 +653,24 @@ public final class Map3DPanel extends JPanel
 		return row;
 	}
 
-	private JPanel controlRowFixedWidth(AbstractButton button, int width)
+	private JPanel centeredControlRow(Component... components)
 	{
-		JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+		JPanel row = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 0));
+		row.setOpaque(false);
+		row.setAlignmentX(Component.LEFT_ALIGNMENT);
+		row.setMinimumSize(new Dimension(CONTROLS_INNER_WIDTH, 26));
+		row.setPreferredSize(new Dimension(CONTROLS_INNER_WIDTH, 26));
+		row.setMaximumSize(new Dimension(CONTROLS_INNER_WIDTH, 26));
+		for (Component component : components)
+		{
+			row.add(component);
+		}
+		return row;
+	}
+
+	private JPanel centeredControlRowFixedWidth(AbstractButton button, int width)
+	{
+		JPanel row = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 0));
 		row.setOpaque(false);
 		row.setAlignmentX(Component.LEFT_ALIGNMENT);
 		Dimension rowSize = new Dimension(CONTROLS_INNER_WIDTH, 26);

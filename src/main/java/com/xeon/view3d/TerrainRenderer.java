@@ -79,7 +79,6 @@ final class TerrainRenderer
 		uniform float uTimeSeconds;
 
 		out vec3 vColor;
-		out vec3 vNormal;
 		out float vAlpha;
 		out float vDistance;
 		out vec2 vTexCoord;
@@ -92,7 +91,6 @@ final class TerrainRenderer
 			vec3 position = modelPosition + uRegionOffset;
 			vec4 worldPosition = vec4(position, 1.0);
 			vColor = aColor;
-			vNormal = normalize(mat3(uModelMatrix) * aNormal);
 			vAlpha = aAlpha;
 			vDistance = distance(position, uCameraPosition);
 			vec2 animation = vec2(aTextureAnimU, aTextureAnimV);
@@ -106,28 +104,29 @@ final class TerrainRenderer
 	private static final String TERRAIN_FRAGMENT_SHADER = """
 		#version 330 core
 		in vec3 vColor;
-		in vec3 vNormal;
 		in float vAlpha;
 		in float vDistance;
-			in vec2 vTexCoord;
-			flat in float vTextureLayer;
-			flat in float vTextureAlphaCutoff;
-			uniform sampler2DArray uTextures;
-			uniform float uTextureLayerCount;
-			uniform float uFogStart;
-			uniform float uFogEnd;
-			uniform vec3 uFogColor;
+		in vec2 vTexCoord;
+		flat in float vTextureLayer;
+		flat in float vTextureAlphaCutoff;
+		uniform sampler2DArray uTextures;
+		uniform float uTextureLayerCount;
+		uniform float uFogStart;
+		uniform float uFogEnd;
+		uniform vec3 uFogColor;
 
 		out vec4 fragColor;
 
+		vec3 sceneColor(vec3 color)
+		{
+			float luminance = dot(color, vec3(0.299, 0.587, 0.114));
+			color = mix(vec3(luminance), color, 0.88);
+			color = mix(vec3(0.5), color, 0.96);
+			return clamp(color, 0.0, 1.0);
+		}
+
 		void main()
 		{
-			vec3 normal = normalize(vNormal);
-			vec3 lightDirection = normalize(vec3(-0.36, 0.78, -0.52));
-			float diffuse = max(dot(normal, lightDirection), 0.0);
-			float skyFill = 0.18 * max(normal.y, 0.0);
-			float groundFill = 0.08 * max(-normal.y, 0.0);
-			float shade = clamp(0.50 + diffuse * 0.46 + skyFill + groundFill, 0.46, 1.08);
 			vec3 baseColor = vColor;
 			float alpha = vAlpha;
 			if (vTextureLayer > 0.5 && vTextureLayer < uTextureLayerCount)
@@ -137,11 +136,11 @@ final class TerrainRenderer
 				{
 					discard;
 				}
-					baseColor *= textureColor.rgb;
-					alpha *= textureColor.a;
-				}
-				float fog = smoothstep(uFogStart, uFogEnd, vDistance);
-				vec3 color = mix(baseColor * shade, uFogColor, fog);
+				baseColor *= textureColor.rgb;
+				alpha *= textureColor.a;
+			}
+			float fog = smoothstep(uFogStart, uFogEnd, vDistance);
+			vec3 color = mix(sceneColor(baseColor), uFogColor, fog);
 			if (alpha <= 0.01)
 			{
 				discard;
