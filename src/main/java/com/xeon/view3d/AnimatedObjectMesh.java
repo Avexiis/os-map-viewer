@@ -58,6 +58,35 @@ record AnimatedObjectMesh(
 		}
 	}
 
+	void compactVertexData()
+	{
+		compactVertexData(null);
+	}
+
+	void compactVertexData(Runnable pause)
+	{
+		for (Frame frame : frames)
+		{
+			if (frame != null)
+			{
+				frame.compactVertexData(pause);
+			}
+		}
+	}
+
+	long retainedVertexBytes()
+	{
+		long bytes = 0L;
+		for (Frame frame : frames)
+		{
+			if (frame != null)
+			{
+				bytes += frame.retainedVertexBytes();
+			}
+		}
+		return bytes;
+	}
+
 	static int frameIndexAt(int frameCount, int[] frameLengths, int frameStep, int phaseOffset, float timeSeconds)
 	{
 		if (frameCount <= 0)
@@ -119,6 +148,7 @@ record AnimatedObjectMesh(
 		private static final Frame EMPTY = new Frame(new float[0], 0);
 
 		private float[] vertexData;
+		private byte[] compressedVertexData;
 		private final int vertexCount;
 
 		Frame(float[] vertexData, int vertexCount)
@@ -127,8 +157,15 @@ record AnimatedObjectMesh(
 			this.vertexCount = vertexCount;
 		}
 
-		float[] rawVertexData()
+		synchronized float[] rawVertexData()
 		{
+			if ((vertexData == null || vertexData.length == 0) && compressedVertexData != null && compressedVertexData.length > 0)
+			{
+				vertexData = FloatDataCodec.inflate(
+					compressedVertexData,
+					Math.multiplyExact(vertexCount, TerrainMesh.FLOATS_PER_VERTEX)
+				);
+			}
 			return vertexData;
 		}
 
@@ -137,9 +174,52 @@ record AnimatedObjectMesh(
 			return vertexCount;
 		}
 
-		void releaseVertexData()
+		synchronized long retainedVertexBytes()
+		{
+			if (vertexData != null && vertexData.length > 0)
+			{
+				return (long) vertexData.length * Float.BYTES;
+			}
+			return compressedVertexData == null ? 0L : compressedVertexData.length;
+		}
+
+		void compactVertexData()
+		{
+			compactVertexData(null);
+		}
+
+		void compactVertexData(Runnable pause)
+		{
+			float[] source;
+			synchronized (this)
+			{
+				if (vertexData == null || vertexData.length == 0)
+				{
+					return;
+				}
+				if (compressedVertexData != null)
+				{
+					vertexData = new float[0];
+					return;
+				}
+				source = vertexData;
+			}
+
+			byte[] compressed = FloatDataCodec.deflate(source, pause);
+			synchronized (this)
+			{
+				if (vertexData == source && compressedVertexData == null)
+				{
+					compressedVertexData = compressed;
+					vertexData = new float[0];
+				}
+			}
+		}
+
+		synchronized void releaseVertexData()
 		{
 			vertexData = new float[0];
+			compressedVertexData = null;
 		}
 	}
 }

@@ -43,6 +43,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.locks.LockSupport;
 import org.joml.FrustumIntersection;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -213,8 +217,13 @@ final class TerrainRenderer
 	private static final int OVERLAY_LINE_POSITION_FLOATS = 3;
 	private static final int OVERLAY_TEXT_UV_FLOATS = 2;
 	private static final int OVERLAY_TEXT_FLOATS_PER_VERTEX = OVERLAY_LINE_POSITION_FLOATS + OVERLAY_TEXT_UV_FLOATS;
-	private static final int MAX_UPLOAD_BYTES_PER_FRAME = 4 * 1024 * 1024;
+	private static final int MAX_UPLOAD_BYTES_PER_FRAME = 3 * 1024 * 1024;
 	private static final int MAX_UPLOAD_FLOATS_PER_FRAME = MAX_UPLOAD_BYTES_PER_FRAME / Float.BYTES;
+	private static final int MAX_UPLOAD_CHUNK_BYTES = 512 * 1024;
+	private static final int MAX_UPLOAD_CHUNK_FLOATS = MAX_UPLOAD_CHUNK_BYTES / Float.BYTES;
+	private static final long MAX_UPLOAD_NANOS_PER_FRAME = 2_000_000L;
+	private static final long COMPACTION_DEFER_NANOS = 750_000_000L;
+	private static final long COMPACTION_PAUSE_SLICE_NANOS = 2_000_000L;
 	private static final float OUTLINE_HEIGHT_OFFSET = SceneScale.SCENE_TO_WORLD * 1.5f;
 	private static final float OVERLAY_PATH_HEIGHT_OFFSET = 0.28f;
 	private static final float OVERLAY_MARKER_HEIGHT_OFFSET = OUTLINE_HEIGHT_OFFSET;
@@ -247,9 +256,16 @@ final class TerrainRenderer
 	private final FrustumIntersection frustum = new FrustumIntersection();
 	private final Map<Integer, UploadedRegion> uploadedRegions = new HashMap<>();
 	private final Map<Integer, TerrainMesh> pendingUploadRegions = new LinkedHashMap<>();
+	private final ExecutorService retainedDataCompactor = Executors.newSingleThreadExecutor(r -> {
+		Thread thread = new Thread(r, "3D retained mesh compactor");
+		thread.setDaemon(true);
+		thread.setPriority(Thread.MIN_PRIORITY);
+		return thread;
+	});
 	private RegionUploadTask activeUploadTask;
 	private TerrainScene pendingScene;
 	private TerrainScene currentScene;
+	private volatile long retainedDataCompactionDeferredUntilNanos;
 	private HoveredTile hoveredTile;
 	private int terrainProgram;
 	private int terrainMvpLocation;
@@ -498,6 +514,11 @@ final class TerrainRenderer
 		this.viewDistanceRegions = Math.max(2, Math.min(5, viewDistanceRegions));
 	}
 
+	void deferRetainedDataCompaction()
+	{
+		deferRetainedDataCompactionUntil(System.nanoTime() + COMPACTION_DEFER_NANOS);
+	}
+
 	float animationTimeSeconds()
 	{
 		return (System.nanoTime() - startNanos) / 1_000_000_000.0f;
@@ -629,6 +650,11 @@ final class TerrainRenderer
 		}
 		deleteSceneFbo();
 		initialized = false;
+	}
+
+	void shutdown()
+	{
+		retainedDataCompactor.shutdownNow();
 	}
 
 	private void prepareMatrices(FreeCamera camera, float aspectRatio)
@@ -2570,6 +2596,10 @@ final class TerrainRenderer
 		{
 			return;
 		}
+		if (activeUploadTask != null || !pendingUploadRegions.isEmpty())
+		{
+			deferRetainedDataCompaction();
+		}
 
 		if (activeUploadTask == null)
 		{
@@ -2580,10 +2610,15 @@ final class TerrainRenderer
 			return;
 		}
 
-		UploadBudget budget = new UploadBudget(MAX_UPLOAD_FLOATS_PER_FRAME);
+		UploadBudget budget = new UploadBudget(
+			MAX_UPLOAD_FLOATS_PER_FRAME,
+			MAX_UPLOAD_CHUNK_FLOATS,
+			System.nanoTime() + MAX_UPLOAD_NANOS_PER_FRAME
+		);
 		if (activeUploadTask.uploadChunk(budget))
 		{
 			UploadedRegion uploadedRegion = activeUploadTask.finish();
+			scheduleStaticCompaction(activeUploadTask.mesh());
 			UploadedRegion previous = uploadedRegions.put(uploadedRegion.regionId(), uploadedRegion);
 			if (previous != null)
 			{
@@ -2591,6 +2626,77 @@ final class TerrainRenderer
 			}
 			pluginOverlayDirty = true;
 			activeUploadTask = null;
+		}
+	}
+
+	private void scheduleStaticCompaction(TerrainMesh mesh)
+	{
+		if (mesh == null)
+		{
+			return;
+		}
+		scheduleRetainedDataCompaction(() -> mesh.compactStaticVertexData(this::waitForRetainedDataCompactionSlot));
+	}
+
+	private void scheduleFrameCompaction(AnimatedObjectMesh.Frame frame)
+	{
+		if (frame == null)
+		{
+			return;
+		}
+		scheduleRetainedDataCompaction(() -> frame.compactVertexData(this::waitForRetainedDataCompactionSlot));
+	}
+
+	private void scheduleRetainedDataCompaction(Runnable task)
+	{
+		if (task == null || retainedDataCompactor.isShutdown())
+		{
+			return;
+		}
+		try
+		{
+			retainedDataCompactor.execute(() -> {
+				try
+				{
+					waitForRetainedDataCompactionSlot();
+					task.run();
+				}
+				catch (RetainedDataCompactionCancelled ignored)
+				{
+					// Shutdown or an interrupted worker abandoned opportunistic retained-data compaction.
+				}
+			});
+		}
+		catch (RejectedExecutionException ignored)
+		{
+			// Renderer shutdown won the race; the mesh will be released by normal scene disposal.
+		}
+	}
+
+	private void deferRetainedDataCompactionUntil(long nanos)
+	{
+		long current = retainedDataCompactionDeferredUntilNanos;
+		if (nanos > current)
+		{
+			retainedDataCompactionDeferredUntilNanos = nanos;
+		}
+	}
+
+	private void waitForRetainedDataCompactionSlot()
+	{
+		while (true)
+		{
+			if (Thread.currentThread().isInterrupted() || retainedDataCompactor.isShutdown())
+			{
+				throw new RetainedDataCompactionCancelled();
+			}
+
+			long pauseNanos = retainedDataCompactionDeferredUntilNanos - System.nanoTime();
+			if (pauseNanos <= 0L)
+			{
+				return;
+			}
+			LockSupport.parkNanos(Math.min(pauseNanos, COMPACTION_PAUSE_SLICE_NANOS));
 		}
 	}
 
@@ -3460,8 +3566,8 @@ final class TerrainRenderer
 		private final float[] vertexData;
 		private final List<AnimatedObjectUploadTask> animatedTasks = new ArrayList<>();
 		private final List<NpcMeshUploadTask> npcTasks = new ArrayList<>();
-		private final int vao;
-		private final int vbo;
+		private int vao;
+		private int vbo;
 		private int uploadedFloats;
 		private int animatedTaskIndex;
 		private int npcTaskIndex;
@@ -3472,21 +3578,6 @@ final class TerrainRenderer
 			this.scene = scene;
 			this.mesh = mesh;
 			this.vertexData = mesh.rawVertexData();
-			if (vertexData.length == 0)
-			{
-				vao = 0;
-				vbo = 0;
-			}
-			else
-			{
-			vao = GL33C.glGenVertexArrays();
-			vbo = GL33C.glGenBuffers();
-			GL33C.glBindVertexArray(vao);
-			GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, vbo);
-			GL33C.glBufferData(GL33C.GL_ARRAY_BUFFER, (long) vertexData.length * Float.BYTES, GL33C.GL_STATIC_DRAW);
-			installTerrainAttributes();
-			GL33C.glBindVertexArray(0);
-		}
 			for (AnimatedObjectMesh animatedObject : mesh.animatedObjects())
 			{
 				if (animatedObject.frameCount() > 0)
@@ -3519,32 +3610,55 @@ final class TerrainRenderer
 			{
 				return false;
 			}
-			int remaining = vertexData.length - uploadedFloats;
-			if (remaining <= 0)
-			{
-				return uploadAnimationChunk(budget) && uploadNpcChunk(budget);
-			}
-
-			int floats = budget.take(remaining);
-			if (floats <= 0)
+			if (!ensureStaticBuffer(budget))
 			{
 				return false;
 			}
-			FloatBuffer buffer = MemoryUtil.memAllocFloat(floats);
-			try
+			while (uploadedFloats < vertexData.length)
 			{
-				buffer.put(vertexData, uploadedFloats, floats).flip();
-				GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, vbo);
-				GL33C.glBufferSubData(GL33C.GL_ARRAY_BUFFER, (long) uploadedFloats * Float.BYTES, buffer);
+				int remaining = vertexData.length - uploadedFloats;
+				int floats = budget.take(remaining);
+				if (floats <= 0)
+				{
+					return false;
+				}
+				FloatBuffer buffer = MemoryUtil.memAllocFloat(floats);
+				try
+				{
+					buffer.put(vertexData, uploadedFloats, floats).flip();
+					GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, vbo);
+					GL33C.glBufferSubData(GL33C.GL_ARRAY_BUFFER, (long) uploadedFloats * Float.BYTES, buffer);
+				}
+				finally
+				{
+					MemoryUtil.memFree(buffer);
+				}
+				uploadedFloats += floats;
 			}
-			finally
-			{
-				MemoryUtil.memFree(buffer);
-			}
-			uploadedFloats += floats;
-			return uploadedFloats >= vertexData.length
-				&& uploadAnimationChunk(budget)
+
+			return uploadAnimationChunk(budget)
 				&& uploadNpcChunk(budget);
+		}
+
+		private boolean ensureStaticBuffer(UploadBudget budget)
+		{
+			if (vertexData.length == 0 || vbo != 0)
+			{
+				return true;
+			}
+			if (!budget.hasRemaining())
+			{
+				return false;
+			}
+			vao = GL33C.glGenVertexArrays();
+			vbo = GL33C.glGenBuffers();
+			GL33C.glBindVertexArray(vao);
+			GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, vbo);
+			GL33C.glBufferData(GL33C.GL_ARRAY_BUFFER, (long) vertexData.length * Float.BYTES, GL33C.GL_STATIC_DRAW);
+			installTerrainAttributes();
+			GL33C.glBindVertexArray(0);
+			budget.reserveSetup(vertexData.length);
+			return budget.hasRemaining();
 		}
 
 		private UploadedRegion finish()
@@ -3656,7 +3770,7 @@ final class TerrainRenderer
 					{
 						return false;
 					}
-					activeFrameTask = new AnimationFrameUploadTask(frame, false);
+					activeFrameTask = new AnimationFrameUploadTask(frame, false, true);
 				}
 				if (activeFrameTask.uploadChunk(budget))
 				{
@@ -3729,7 +3843,7 @@ final class TerrainRenderer
 					{
 						return false;
 					}
-					activeFrameTask = new AnimationFrameUploadTask(frame, true);
+					activeFrameTask = new AnimationFrameUploadTask(frame, true, false);
 				}
 				if (activeFrameTask.uploadChunk(budget))
 				{
@@ -3781,70 +3895,82 @@ final class TerrainRenderer
 		private final AnimatedObjectMesh.Frame frame;
 		private final float[] vertexData;
 		private final NpcOutlineGeometry outlineGeometry;
-		private final int vao;
-		private final int vbo;
+		private final boolean compactAfterUpload;
+		private int vao;
+		private int vbo;
 		private int uploadedFloats;
 
-		private AnimationFrameUploadTask(AnimatedObjectMesh.Frame frame, boolean buildOutlineEdges)
+		private AnimationFrameUploadTask(AnimatedObjectMesh.Frame frame, boolean buildOutlineEdges, boolean compactAfterUpload)
 		{
 			this.frame = frame;
 			this.vertexData = frame.rawVertexData();
 			this.outlineGeometry = buildOutlineEdges ? buildNpcOutlineGeometry(vertexData, frame.vertexCount()) : NpcOutlineGeometry.EMPTY;
-			if (frame.vertexCount() <= 0 || vertexData.length == 0)
-			{
-				vao = 0;
-				vbo = 0;
-				return;
-			}
-
-				vao = GL33C.glGenVertexArrays();
-				vbo = GL33C.glGenBuffers();
-				GL33C.glBindVertexArray(vao);
-				GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, vbo);
-				GL33C.glBufferData(GL33C.GL_ARRAY_BUFFER, (long) vertexData.length * Float.BYTES, GL33C.GL_STATIC_DRAW);
-				installTerrainAttributes();
-				GL33C.glBindVertexArray(0);
-			}
+			this.compactAfterUpload = compactAfterUpload;
+		}
 
 		private boolean uploadChunk(UploadBudget budget)
 		{
-			int remaining = vertexData.length - uploadedFloats;
-			if (remaining <= 0)
-			{
-				return true;
-			}
-
-			int floats = budget.take(remaining);
-			if (floats <= 0)
+			if (!ensureBuffer(budget))
 			{
 				return false;
 			}
-			FloatBuffer buffer = MemoryUtil.memAllocFloat(floats);
-			try
+			while (uploadedFloats < vertexData.length)
 			{
-				buffer.put(vertexData, uploadedFloats, floats).flip();
-				GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, vbo);
-				GL33C.glBufferSubData(GL33C.GL_ARRAY_BUFFER, (long) uploadedFloats * Float.BYTES, buffer);
+				int remaining = vertexData.length - uploadedFloats;
+				int floats = budget.take(remaining);
+				if (floats <= 0)
+				{
+					return false;
+				}
+				FloatBuffer buffer = MemoryUtil.memAllocFloat(floats);
+				try
+				{
+					buffer.put(vertexData, uploadedFloats, floats).flip();
+					GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, vbo);
+					GL33C.glBufferSubData(GL33C.GL_ARRAY_BUFFER, (long) uploadedFloats * Float.BYTES, buffer);
+				}
+				finally
+				{
+					MemoryUtil.memFree(buffer);
+				}
+				uploadedFloats += floats;
 			}
-			finally
+			return true;
+		}
+
+		private boolean ensureBuffer(UploadBudget budget)
+		{
+			if (frame.vertexCount() <= 0 || vertexData.length == 0 || vbo != 0)
 			{
-				MemoryUtil.memFree(buffer);
+				return true;
 			}
-			uploadedFloats += floats;
-			return uploadedFloats >= vertexData.length;
+			if (!budget.hasRemaining())
+			{
+				return false;
+			}
+			vao = GL33C.glGenVertexArrays();
+			vbo = GL33C.glGenBuffers();
+			GL33C.glBindVertexArray(vao);
+			GL33C.glBindBuffer(GL33C.GL_ARRAY_BUFFER, vbo);
+			GL33C.glBufferData(GL33C.GL_ARRAY_BUFFER, (long) vertexData.length * Float.BYTES, GL33C.GL_STATIC_DRAW);
+			installTerrainAttributes();
+			GL33C.glBindVertexArray(0);
+			budget.reserveSetup(vertexData.length);
+			return budget.hasRemaining();
 		}
 
 		private UploadedAnimationFrame finish()
 		{
-			return new UploadedAnimationFrame(vao, vbo, frame.vertexCount(), outlineGeometry);
+			UploadedAnimationFrame uploadedFrame = new UploadedAnimationFrame(vao, vbo, frame.vertexCount(), outlineGeometry);
+			if (compactAfterUpload)
+			{
+				scheduleFrameCompaction(frame);
+			}
+			return uploadedFrame;
 		}
 
 		private void cancel(boolean releaseVertexData)
 		{
-			if (releaseVertexData)
-			{
-				frame.releaseVertexData();
-			}
 			if (vbo != 0)
 			{
 				GL33C.glDeleteBuffers(vbo);
@@ -3858,24 +3984,45 @@ final class TerrainRenderer
 
 	private static final class UploadBudget
 	{
+		private final int maxChunkFloats;
+		private final long deadlineNanos;
 		private int remainingFloats;
 
-		private UploadBudget(int remainingFloats)
+		private UploadBudget(int remainingFloats, int maxChunkFloats, long deadlineNanos)
 		{
 			this.remainingFloats = remainingFloats;
+			this.maxChunkFloats = maxChunkFloats;
+			this.deadlineNanos = deadlineNanos;
 		}
 
 		private int take(int requestedFloats)
 		{
-			int floats = Math.min(requestedFloats, remainingFloats);
+			if (!hasRemaining())
+			{
+				return 0;
+			}
+			int floats = Math.min(Math.min(requestedFloats, remainingFloats), maxChunkFloats);
 			remainingFloats -= floats;
 			return floats;
 		}
 
+		private void reserveSetup(int requestedFloats)
+		{
+			if (remainingFloats <= 0)
+			{
+				return;
+			}
+			remainingFloats -= Math.min(Math.min(requestedFloats, remainingFloats), maxChunkFloats);
+		}
+
 		private boolean hasRemaining()
 		{
-			return remainingFloats > 0;
+			return remainingFloats > 0 && System.nanoTime() < deadlineNanos;
 		}
+	}
+
+	private static final class RetainedDataCompactionCancelled extends RuntimeException
+	{
 	}
 
 	private record UploadedAnimatedObject(

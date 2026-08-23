@@ -54,7 +54,8 @@ final class TerrainMeshBuilder
 		ObjectAnimationProvider animationProvider,
 		RSTextureProvider textureProvider,
 		TerrainFloorTextures floorTextures,
-		SceneTextureSet textureSet
+		SceneTextureSet textureSet,
+		NpcMeshBuilder.FrameCache npcFrameCache
 	)
 	{
 		SceneMeshBuffer[] planeData = new SceneMeshBuffer[Region.Z];
@@ -147,7 +148,8 @@ final class TerrainMeshBuilder
 			modelProvider,
 			animationProvider,
 			textureProvider,
-			textureSet
+			textureSet,
+			npcFrameCache
 		);
 
 		return new TerrainMesh(

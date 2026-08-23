@@ -45,6 +45,7 @@ public final class TerrainMesh
 	private final int plane;
 	private final boolean allPlanes;
 	private float[] vertexData;
+	private byte[] compressedVertexData;
 	private final int vertexCount;
 	private final int[] planeStartVertices;
 	private final int[] planeVertexCounts;
@@ -151,17 +152,29 @@ public final class TerrainMesh
 
 	public float[] vertexData()
 	{
-		return Arrays.copyOf(vertexData, vertexData.length);
+		float[] raw = rawVertexData();
+		return Arrays.copyOf(raw, raw.length);
 	}
 
-	float[] rawVertexData()
+	synchronized float[] rawVertexData()
 	{
+		if ((vertexData == null || vertexData.length == 0) && compressedVertexData != null && compressedVertexData.length > 0)
+		{
+			vertexData = FloatDataCodec.inflate(
+				compressedVertexData,
+				Math.multiplyExact(vertexCount, FLOATS_PER_VERTEX)
+			);
+		}
 		return vertexData;
 	}
 
 	void releaseVertexData()
 	{
-		vertexData = new float[0];
+		synchronized (this)
+		{
+			vertexData = new float[0];
+			compressedVertexData = null;
+		}
 		for (AnimatedObjectMesh animatedObject : animatedObjects)
 		{
 			animatedObject.releaseVertexData();
@@ -170,6 +183,48 @@ public final class TerrainMesh
 		{
 			npcMesh.releaseVertexData();
 		}
+	}
+
+	void compactStaticVertexData()
+	{
+		compactStaticVertexData(null);
+	}
+
+	void compactStaticVertexData(Runnable pause)
+	{
+		float[] source;
+		synchronized (this)
+		{
+			if (vertexData == null || vertexData.length == 0)
+			{
+				return;
+			}
+			if (compressedVertexData != null)
+			{
+				vertexData = new float[0];
+				return;
+			}
+			source = vertexData;
+		}
+
+		byte[] compressed = FloatDataCodec.deflate(source, pause);
+		synchronized (this)
+		{
+			if (vertexData == source && compressedVertexData == null)
+			{
+				compressedVertexData = compressed;
+				vertexData = new float[0];
+			}
+		}
+	}
+
+	synchronized long retainedStaticVertexBytes()
+	{
+		if (vertexData != null && vertexData.length > 0)
+		{
+			return (long) vertexData.length * Float.BYTES;
+		}
+		return compressedVertexData == null ? 0L : compressedVertexData.length;
 	}
 
 	public int vertexCount()

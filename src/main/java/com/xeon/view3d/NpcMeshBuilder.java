@@ -27,9 +27,11 @@ package com.xeon.view3d;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 import net.runelite.cache.definitions.ModelDefinition;
 import net.runelite.cache.definitions.SequenceDefinition;
 import net.runelite.cache.item.RSTextureProvider;
@@ -78,7 +80,8 @@ final class NpcMeshBuilder
 		ObjectModelProvider modelProvider,
 		ObjectAnimationProvider animationProvider,
 		RSTextureProvider textureProvider,
-		SceneTextureSet textureSet
+		SceneTextureSet textureSet,
+		FrameCache frameCache
 	)
 	{
 		if (spawnIndex == null || definitionProvider == null || modelProvider == null)
@@ -142,7 +145,8 @@ final class NpcMeshBuilder
 					animationProvider,
 					textureProvider,
 					textureSet,
-					false
+					false,
+					frameCache
 				)
 			);
 
@@ -161,7 +165,8 @@ final class NpcMeshBuilder
 						animationProvider,
 						textureProvider,
 						textureSet,
-						true
+						true,
+						frameCache
 					)
 				);
 			}
@@ -282,10 +287,17 @@ final class NpcMeshBuilder
 		ObjectAnimationProvider animationProvider,
 		RSTextureProvider textureProvider,
 		SceneTextureSet textureSet,
-		boolean walking
+		boolean walking,
+		FrameCache frameCache
 	)
 	{
-		FrameSet frameSet = frameSet(definition, baseModel, sequence, animationProvider, textureProvider, textureSet, walking);
+		NpcAnimationKey key = new NpcAnimationKey(definition.id, sequenceId, walking);
+		FrameSet frameSet = frameCache == null
+			? frameSet(definition, baseModel, sequence, animationProvider, textureProvider, textureSet, walking)
+			: frameCache.computeIfAbsent(
+				key,
+				() -> frameSet(definition, baseModel, sequence, animationProvider, textureProvider, textureSet, walking)
+			);
 		return new NpcMeshEntry(
 			definition.id,
 			definition.name,
@@ -1509,6 +1521,62 @@ final class NpcMeshBuilder
 		NpcMesh.Bounds bounds
 	)
 	{
+		private long retainedBytes()
+		{
+			long bytes = (long) frameLengths.length * Integer.BYTES;
+			bytes += 16L;
+			for (AnimatedObjectMesh.Frame frame : frames)
+			{
+				if (frame != null)
+				{
+					bytes += frame.retainedVertexBytes();
+				}
+			}
+			return bytes;
+		}
+	}
+
+	static final class FrameCache
+	{
+		private static final long MAX_RETAINED_BYTES = 384L * 1024L * 1024L;
+
+		private final LinkedHashMap<NpcAnimationKey, FrameSet> entries = new LinkedHashMap<>(64, 0.75f, true);
+		private long retainedBytes;
+
+		FrameSet computeIfAbsent(NpcAnimationKey key, Supplier<FrameSet> builder)
+		{
+			FrameSet existing = entries.get(key);
+			if (existing != null)
+			{
+				return existing;
+			}
+			FrameSet created = builder.get();
+			entries.put(key, created);
+			retainedBytes += created.retainedBytes();
+			trim();
+			return created;
+		}
+
+		void clear()
+		{
+			entries.clear();
+			retainedBytes = 0L;
+		}
+
+		private void trim()
+		{
+			if (retainedBytes <= MAX_RETAINED_BYTES)
+			{
+				return;
+			}
+			Iterator<Map.Entry<NpcAnimationKey, FrameSet>> iterator = entries.entrySet().iterator();
+			while (retainedBytes > MAX_RETAINED_BYTES && iterator.hasNext())
+			{
+				Map.Entry<NpcAnimationKey, FrameSet> entry = iterator.next();
+				retainedBytes -= entry.getValue().retainedBytes();
+				iterator.remove();
+			}
+		}
 	}
 
 	private static final class NpcMeshEntry

@@ -165,6 +165,7 @@ public final class TerrainRegionLoader
 		private final NpcSpawnIndex npcSpawnIndex;
 		private final NpcDefinitionProvider npcDefinitionProvider;
 		private final NpcWanderCollisionMap npcCollisionMap;
+		private final NpcMeshBuilder.FrameCache npcFrameCache = new NpcMeshBuilder.FrameCache();
 		private final ObjectModelProvider modelProvider;
 		private final ObjectAnimationProvider animationProvider;
 		private final RSTextureProvider textureProvider;
@@ -248,7 +249,8 @@ public final class TerrainRegionLoader
 					animationProvider,
 					textureProvider,
 					floorTextures,
-					textureSet
+					textureSet,
+					npcFrameCache
 				);
 			}
 			finally
@@ -273,6 +275,7 @@ public final class TerrainRegionLoader
 		@Override
 		public void close() throws IOException
 		{
+			npcFrameCache.clear();
 			store.close();
 		}
 	}

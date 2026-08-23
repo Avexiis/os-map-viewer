@@ -11,20 +11,15 @@ val runeliteCacheShadedJar = layout.projectDirectory
     .asFile
 val lwjglVersion = "3.4.0"
 val jomlVersion = "1.10.5"
-val lwjglNatives = run {
-    val os = System.getProperty("os.name").lowercase()
-    val arch = System.getProperty("os.arch").lowercase()
-    when {
-        os.contains("windows") && arch.contains("aarch64") -> "natives-windows-arm64"
-        os.contains("windows") -> "natives-windows"
-        os.contains("mac") && arch.contains("aarch64") -> "natives-macos-arm64"
-        os.contains("mac") -> "natives-macos"
-        os.contains("linux") && arch.contains("aarch64") -> "natives-linux-arm64"
-        os.contains("linux") && (arch == "arm" || arch.startsWith("armv7")) -> "natives-linux-arm32"
-        os.contains("linux") -> "natives-linux"
-        else -> throw GradleException("Unsupported LWJGL platform: $os/$arch")
-    }
-}
+val lwjglBundledNativeClassifiers = linkedSetOf(
+    "natives-windows",
+    "natives-windows-arm64",
+    "natives-linux",
+    "natives-linux-arm64",
+    "natives-linux-arm32",
+    "natives-macos",
+    "natives-macos-arm64"
+)
 val nvidiaPrimeEnvironment = mapOf(
     "__NV_PRIME_RENDER_OFFLOAD" to "1",
     "__VK_LAYER_NV_optimus" to "NVIDIA_only",
@@ -91,8 +86,10 @@ dependencies {
     implementation("net.runelite:rlawt:1.8")
     compileOnly(files(runeliteCacheShadedJar))
     runtimeOnly(files(runeliteCacheShadedJar))
-    runtimeOnly("org.lwjgl:lwjgl::$lwjglNatives")
-    runtimeOnly("org.lwjgl:lwjgl-opengl::$lwjglNatives")
+    lwjglBundledNativeClassifiers.forEach { classifier ->
+        runtimeOnly("org.lwjgl:lwjgl::$classifier")
+        runtimeOnly("org.lwjgl:lwjgl-opengl::$classifier")
+    }
 }
 
 tasks.register<JavaExec>("dumpMapAreaLabels") {

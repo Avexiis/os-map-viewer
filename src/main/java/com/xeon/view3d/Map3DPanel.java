@@ -151,6 +151,7 @@ public final class Map3DPanel extends JPanel
 	private final ExecutorService regionLoaderExecutor = Executors.newSingleThreadExecutor(r -> {
 		Thread thread = new Thread(r, "3D region loader");
 		thread.setDaemon(true);
+		thread.setPriority(Math.max(Thread.MIN_PRIORITY, Thread.NORM_PRIORITY - 1));
 		return thread;
 	});
 	private final Queue<Runnable> renderTasks = new ConcurrentLinkedQueue<>();
@@ -374,6 +375,7 @@ public final class Map3DPanel extends JPanel
 		finally
 		{
 			destroyContext();
+			renderer.shutdown();
 		}
 	}
 
@@ -1829,6 +1831,8 @@ public final class Map3DPanel extends JPanel
 			if (cameraOrientationChanged(previousYaw, previousPitch))
 			{
 				scheduleStateSave();
+				renderer.deferRetainedDataCompaction();
+				renderer.invalidatePluginOverlayGeometry();
 			}
 		}
 		updateHoveredTile(event);
@@ -1845,6 +1849,11 @@ public final class Map3DPanel extends JPanel
 			if (!currentScene.isEmpty())
 			{
 				camera.setPosition(applyMovementConstraints(previousPosition, camera.position()));
+			}
+			if (cameraPositionChanged(previousPosition))
+			{
+				renderer.deferRetainedDataCompaction();
+				renderer.invalidatePluginOverlayGeometry();
 			}
 			scheduleStateSave();
 			updateStreamedRegions();
@@ -2317,6 +2326,14 @@ public final class Map3DPanel extends JPanel
 		updateStreamStatus();
 	}
 
+	private boolean isRegionStreamingBusy()
+	{
+		return !loadingRegionIds.isEmpty()
+			|| !regionLoadQueue.isEmpty()
+			|| !queuedRegionIds.isEmpty()
+			|| loadedRegionIds.size() + failedRegionIds.size() < desiredRegionIds.size();
+	}
+
 	private List<Integer> desiredRegionIds(int centerRegionId, Tile centerTile)
 	{
 		int centerX = TerrainScene.regionX(centerRegionId);
@@ -2494,6 +2511,7 @@ public final class Map3DPanel extends JPanel
 		Vector3f previousPosition = camera.copyPosition(new Vector3f());
 		float previousYaw = camera.yawDegrees();
 		float previousPitch = camera.pitchDegrees();
+		boolean cameraChanged = false;
 		if (!cameraLocked)
 		{
 			camera.update(deltaSeconds);
@@ -2505,11 +2523,17 @@ public final class Map3DPanel extends JPanel
 			boolean orientationChanged = cameraOrientationChanged(previousYaw, previousPitch);
 			if (positionChanged || orientationChanged)
 			{
+				cameraChanged = true;
 				scheduleStateSave();
+				renderer.deferRetainedDataCompaction();
 				renderer.invalidatePluginOverlayGeometry();
 			}
 		}
 		updateStreamedRegions();
+		if (cameraChanged || isRegionStreamingBusy())
+		{
+			renderer.deferRetainedDataCompaction();
+		}
 		updatePluginOverlayContext();
 		updateCompassHud();
 		maybeSaveViewerState(now);
