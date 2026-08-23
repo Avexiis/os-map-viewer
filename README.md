@@ -9,7 +9,7 @@ The app includes a 2D world map, a 3D cache-backed scene viewer, cache-backed NP
 When the app opens, choose either `2D Map` or `3D Viewer`. You can also open 3D mode later from the Options menu. 3D mode reads your local OSRS cache and renders nearby regions, objects, and NPCs around a free camera.
 
 Preview:
-<img width="1917" height="1047" alt="image" src="https://github.com/user-attachments/assets/ed9c3708-1f3e-46dc-80ed-3982a5482b96" />
+<img width="1919" height="1050" alt="image" src="https://github.com/user-attachments/assets/4a77dd92-a91c-46d3-b617-9a6d6d770610" />
 
 3D mode does **NOT** rely on a Jagex client and does **NOT** modify game files.
 
