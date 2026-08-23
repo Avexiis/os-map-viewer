@@ -1,6 +1,6 @@
 # 3D Mode
 
-<img width="1917" height="1047" alt="image" src="https://github.com/user-attachments/assets/15bab20b-39f8-4ea7-8655-f78098bc854d" />
+<img width="1919" height="1050" alt="image" src="https://github.com/user-attachments/assets/bb8d7c49-35f9-446a-b9b3-9afa604c8abd" />
 
 3D Mode shows the OSRS map scene with a free camera. It reads nearby regions, objects, textures, and NPC definitions from your local OSRS cache and does **not** modify game files.
 
