@@ -32,6 +32,7 @@ import com.xeon.io.ViewerSettings;
 import com.xeon.model.MapArea;
 import com.xeon.model.Tile;
 import com.xeon.plugin.MapViewerPlugin;
+import com.xeon.util.NumberField;
 import com.xeon.view.MapAreaSearchPanel;
 import com.xeon.view.MapPanel;
 
@@ -81,11 +82,13 @@ import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
+import javax.swing.JColorChooser;
 import javax.swing.JComponent;
 import javax.swing.JComboBox;
 import javax.swing.JLayeredPane;
 import javax.swing.JLabel;
 import javax.swing.JMenuItem;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
 import javax.swing.JProgressBar;
@@ -165,12 +168,25 @@ public final class Map3DPanel extends JPanel
 	private final JCheckBox npcVisibleCheckBox = new JCheckBox("NPCs", true);
 	private final JCheckBox npcOutlinesCheckBox = new JCheckBox("Outlines", true);
 	private final JCheckBox npcHoverTextCheckBox = new JCheckBox("Hover Text", true);
+	private final JButton npcOutlineColorButton = new JButton("Outline Color");
+	private final JButton tileHoverColorButton = new JButton("Hover Color");
 	private final JCheckBox[] planeVisibleCheckBoxes = new JCheckBox[]{
 		new JCheckBox("0", true),
 		new JCheckBox("1", false),
 		new JCheckBox("2", false),
 		new JCheckBox("3", false)
 	};
+	private final NumberField jumpRegionId = new NumberField(6);
+	private final NumberField jumpRegionIdPlane = new NumberField(2);
+	private final NumberField jumpRegionX = new NumberField(4);
+	private final NumberField jumpRegionY = new NumberField(4);
+	private final NumberField jumpRegionPlane = new NumberField(2);
+	private final NumberField jumpTileX = new NumberField(6);
+	private final NumberField jumpTileY = new NumberField(6);
+	private final NumberField jumpTilePlane = new NumberField(2);
+	private final JButton jumpRegionIdButton = new JButton("Jump");
+	private final JButton jumpRegionButton = new JButton("Jump");
+	private final JButton jumpTileButton = new JButton("Jump");
 	private final JButton collapseControlsButton = new JButton(">");
 	private final JComboBox<AntialiasingScale> antialiasingScale = new JComboBox<>(AntialiasingScale.values());
 	private final JComboBox<ViewDistanceOption> viewDistanceSelect = new JComboBox<>(ViewDistanceOption.values());
@@ -219,6 +235,9 @@ public final class Map3DPanel extends JPanel
 	private boolean npcsVisible = true;
 	private boolean npcOutlinesVisible = true;
 	private boolean npcHoverTextVisible = true;
+	private boolean minimapVisible = true;
+	private Color npcOutlineColor = new Color(Viewer3DState.DEFAULT_NPC_OUTLINE_COLOR_ARGB, true);
+	private Color tileHoverSelectorColor = new Color(Viewer3DState.DEFAULT_TILE_HOVER_COLOR_ARGB, true);
 	private boolean cameraInitialized;
 	private boolean hoverPickErrorLogged;
 	private int streamCenterRegionId;
@@ -286,6 +305,10 @@ public final class Map3DPanel extends JPanel
 		canvas.setFocusable(true);
 		canvas.setIgnoreRepaint(true);
 		minimapOverlay = createMinimapOverlay();
+		if (minimapOverlay != null)
+		{
+			minimapOverlay.setVisible(minimapVisible);
+		}
 		AreaSearch areaSearch = createAreaSearch();
 		areaSearchMapPanel = areaSearch.mapPanel();
 		areaSearchPanel = areaSearch.searchPanel();
@@ -487,10 +510,17 @@ public final class Map3DPanel extends JPanel
 		});
 		styleToolbarButton(minimapButton);
 		minimapButton.setEnabled(minimapOverlay != null);
+		minimapButton.setSelected(!minimapVisible);
+		minimapButton.setText(minimapVisible ? "Hide Minimap" : "Show Minimap");
 		minimapButton.addActionListener(e -> applyMinimapVisibilitySelection());
 		styleToolbarButton(overlayPriorityButton);
 		updateOverlayPriorityButtonText();
 		overlayPriorityButton.addActionListener(e -> applyOverlayPrioritySelection());
+		styleColorButton(npcOutlineColorButton, npcOutlineColor);
+		npcOutlineColorButton.addActionListener(e -> chooseNpcOutlineColor());
+		styleColorButton(tileHoverColorButton, tileHoverSelectorColor);
+		tileHoverColorButton.addActionListener(e -> chooseTileHoverSelectorColor());
+		configureJumpControls();
 		JButton exit = new JButton("Switch to 2D Map");
 		styleToolbarButton(exit);
 		exit.addActionListener(e -> {
@@ -552,18 +582,31 @@ public final class Map3DPanel extends JPanel
 		rows.add(centeredRow(actionButtonGrid()));
 		rows.add(Box.createVerticalStrut(8));
 		rows.add(centeredButtonRow(exit));
-		rows.add(Box.createVerticalStrut(6));
-		rows.add(centeredButtonRow(overlayPriorityButton));
 		rows.add(sectionSeparator());
 		rows.add(renderingStatusRow());
 		rows.add(Box.createVerticalStrut(8));
 		rows.add(fovRow());
+		rows.add(sectionSeparator());
+		rows.add(sectionTitleRow("Overlays"));
+		rows.add(centeredButtonRow(tileHoverColorButton));
+		rows.add(Box.createVerticalStrut(6));
+		rows.add(centeredButtonRow(overlayPriorityButton));
+		rows.add(sectionSeparator());
+		rows.add(sectionTitleRow("Jump"));
+		rows.add(jumpRegionIdRow());
+		rows.add(Box.createVerticalStrut(6));
+		rows.add(jumpRegionRow());
+		rows.add(Box.createVerticalStrut(6));
+		rows.add(jumpTileRow());
 		rows.add(sectionSeparator());
 		rows.add(sectionTitleRow("Planes"));
 		rows.add(controlRow(planeVisibleCheckBoxes));
 		rows.add(sectionSeparator());
 		rows.add(sectionTitleRow("NPCs"));
 		rows.add(controlRow(npcVisibleCheckBox, npcOutlinesCheckBox, npcHoverTextCheckBox));
+		rows.add(Box.createVerticalStrut(6));
+		rows.add(controlRowFixedWidth(npcOutlineColorButton,
+			controlContentWidth(npcVisibleCheckBox, npcOutlinesCheckBox, npcHoverTextCheckBox)));
 		Dimension rowSize = new Dimension(CONTROLS_INNER_WIDTH, rows.getPreferredSize().height);
 		rows.setMinimumSize(rowSize);
 		rows.setPreferredSize(rowSize);
@@ -598,6 +641,38 @@ public final class Map3DPanel extends JPanel
 			row.add(component);
 		}
 		return row;
+	}
+
+	private JPanel controlRowFixedWidth(AbstractButton button, int width)
+	{
+		JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+		row.setOpaque(false);
+		row.setAlignmentX(Component.LEFT_ALIGNMENT);
+		Dimension rowSize = new Dimension(CONTROLS_INNER_WIDTH, 26);
+		row.setMinimumSize(rowSize);
+		row.setPreferredSize(rowSize);
+		row.setMaximumSize(rowSize);
+		Dimension buttonSize = new Dimension(
+			Math.min(CONTROLS_INNER_WIDTH - 16, Math.max(button.getPreferredSize().width, width)),
+			26
+		);
+		setFixedControlSize(button, buttonSize);
+		row.add(button);
+		return row;
+	}
+
+	private int controlContentWidth(Component... components)
+	{
+		int width = 0;
+		for (int i = 0; i < components.length; i++)
+		{
+			width += components[i].getPreferredSize().width;
+			if (i > 0)
+			{
+				width += 8;
+			}
+		}
+		return width;
 	}
 
 	private JPanel sectionTitleRow(String text)
@@ -757,6 +832,156 @@ public final class Map3DPanel extends JPanel
 		return row;
 	}
 
+	private void configureJumpControls()
+	{
+		Dimension regionIdSize = new Dimension(74, 26);
+		Dimension coordSize = new Dimension(54, 26);
+		Dimension planeSize = new Dimension(38, 26);
+		setFixedControlSize(jumpRegionId, regionIdSize);
+		setFixedControlSize(jumpRegionIdPlane, planeSize);
+		setFixedControlSize(jumpRegionX, coordSize);
+		setFixedControlSize(jumpRegionY, coordSize);
+		setFixedControlSize(jumpRegionPlane, planeSize);
+		setFixedControlSize(jumpTileX, new Dimension(64, 26));
+		setFixedControlSize(jumpTileY, new Dimension(64, 26));
+		setFixedControlSize(jumpTilePlane, planeSize);
+		jumpRegionIdPlane.setInt(0);
+		jumpRegionPlane.setInt(0);
+		jumpTilePlane.setInt(0);
+		styleToolbarButton(jumpRegionIdButton);
+		styleToolbarButton(jumpRegionButton);
+		styleToolbarButton(jumpTileButton);
+		jumpRegionIdButton.addActionListener(e -> jumpToRegionIdInput());
+		jumpRegionButton.addActionListener(e -> jumpToRegionInput());
+		jumpTileButton.addActionListener(e -> jumpToTileInput());
+	}
+
+	private JPanel jumpRegionIdRow()
+	{
+		JPanel row = compactInputRow();
+		row.add(toolbarLabel("Region"));
+		row.add(jumpRegionId);
+		row.add(toolbarLabel("Z"));
+		row.add(jumpRegionIdPlane);
+		row.add(jumpRegionIdButton);
+		return row;
+	}
+
+	private JPanel jumpRegionRow()
+	{
+		JPanel row = compactInputRow();
+		row.add(toolbarLabel("RX"));
+		row.add(jumpRegionX);
+		row.add(toolbarLabel("RY"));
+		row.add(jumpRegionY);
+		row.add(toolbarLabel("Z"));
+		row.add(jumpRegionPlane);
+		row.add(jumpRegionButton);
+		return row;
+	}
+
+	private JPanel jumpTileRow()
+	{
+		JPanel row = compactInputRow();
+		row.add(toolbarLabel("X"));
+		row.add(jumpTileX);
+		row.add(toolbarLabel("Y"));
+		row.add(jumpTileY);
+		row.add(toolbarLabel("Z"));
+		row.add(jumpTilePlane);
+		row.add(jumpTileButton);
+		return row;
+	}
+
+	private JPanel compactInputRow()
+	{
+		JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+		row.setOpaque(false);
+		row.setAlignmentX(Component.LEFT_ALIGNMENT);
+		Dimension size = new Dimension(CONTROLS_INNER_WIDTH, 28);
+		row.setMinimumSize(size);
+		row.setPreferredSize(size);
+		row.setMaximumSize(size);
+		return row;
+	}
+
+	private void jumpToRegionIdInput()
+	{
+		Integer regionIdValue = jumpRegionId.getInt(null);
+		if (regionIdValue == null || regionIdValue < 0)
+		{
+			showJumpWarning("Enter a valid region ID.");
+			return;
+		}
+		int rx = regionIdValue >> 8;
+		int ry = regionIdValue & 0xFF;
+		if (!isRegionInMap(rx, ry))
+		{
+			showJumpWarning("That region is outside the bundled map range.");
+			return;
+		}
+		warpCameraToTile(centerTileForRegion(rx, ry, normalizedJumpPlane(jumpRegionIdPlane.getInt(0))));
+	}
+
+	private void jumpToRegionInput()
+	{
+		Integer rx = jumpRegionX.getInt(null);
+		Integer ry = jumpRegionY.getInt(null);
+		if (rx == null || ry == null)
+		{
+			showJumpWarning("Enter valid integers for rx and ry.");
+			return;
+		}
+		if (!isRegionInMap(rx, ry))
+		{
+			showJumpWarning("That region is outside the bundled map range.");
+			return;
+		}
+		warpCameraToTile(centerTileForRegion(rx, ry, normalizedJumpPlane(jumpRegionPlane.getInt(0))));
+	}
+
+	private void jumpToTileInput()
+	{
+		Integer x = jumpTileX.getInt(null);
+		Integer y = jumpTileY.getInt(null);
+		if (x == null || y == null)
+		{
+			showJumpWarning("Enter valid integers for x and y.");
+			return;
+		}
+		Tile tile = new Tile(x, y, normalizedJumpPlane(jumpTilePlane.getInt(0)));
+		if (!isValidWorldTile(tile))
+		{
+			showJumpWarning("That tile is outside the bundled map range.");
+			return;
+		}
+		warpCameraToTile(tile);
+	}
+
+	private void showJumpWarning(String message)
+	{
+		JOptionPane.showMessageDialog(this, message, "Jump", JOptionPane.WARNING_MESSAGE);
+	}
+
+	private static int normalizedJumpPlane(Integer value)
+	{
+		return Math.max(0, Math.min(3, value == null ? 0 : value));
+	}
+
+	private static boolean isRegionInMap(int rx, int ry)
+	{
+		return rx >= Paths.MIN_RX && rx <= Paths.MAX_RX && ry >= Paths.MIN_RY && ry <= Paths.MAX_RY;
+	}
+
+	private static Tile centerTileForRegion(int rx, int ry, int z)
+	{
+		return new Tile(
+			rx * TerrainScene.REGION_SIZE + TerrainScene.REGION_SIZE / 2,
+			ry * TerrainScene.REGION_SIZE + TerrainScene.REGION_SIZE / 2,
+			z
+		);
+	}
+
 	private JPanel statusLabelRow(JLabel label)
 	{
 		JPanel row = new JPanel(new BorderLayout());
@@ -817,10 +1042,61 @@ public final class Map3DPanel extends JPanel
 		scheduleStateSave();
 	}
 
+	private void chooseNpcOutlineColor()
+	{
+		Color picked = JColorChooser.showDialog(this, "NPC Outline Color", npcOutlineColor);
+		if (picked == null)
+		{
+			return;
+		}
+		npcOutlineColor = withAlpha(picked, npcOutlineColor.getAlpha());
+		styleColorButton(npcOutlineColorButton, npcOutlineColor);
+		applyOverlayColorSettings();
+		scheduleStateSave();
+	}
+
+	private void chooseTileHoverSelectorColor()
+	{
+		Color picked = JColorChooser.showDialog(this, "Tile Hover Selector Color", tileHoverSelectorColor);
+		if (picked == null)
+		{
+			return;
+		}
+		tileHoverSelectorColor = withAlpha(picked, tileHoverSelectorColor.getAlpha());
+		styleColorButton(tileHoverColorButton, tileHoverSelectorColor);
+		applyOverlayColorSettings();
+		scheduleStateSave();
+	}
+
+	private void applyOverlayColorSettings()
+	{
+		Color outline = npcOutlineColor;
+		Color hover = tileHoverSelectorColor;
+		invokeRenderLater(() -> {
+			renderer.setNpcOutlineColor(outline);
+			renderer.setTileHoverSelectorColor(hover);
+		});
+	}
+
+	private static Color withAlpha(Color color, int alpha)
+	{
+		if (color == null)
+		{
+			return null;
+		}
+		return new Color(color.getRed(), color.getGreen(), color.getBlue(), Math.max(1, Math.min(255, alpha)));
+	}
+
+	private static int argb(Color color)
+	{
+		return color == null ? 0 : color.getRGB();
+	}
+
 	private void updateNpcControlState()
 	{
 		npcOutlinesCheckBox.setEnabled(npcsVisible);
 		npcHoverTextCheckBox.setEnabled(npcsVisible);
+		npcOutlineColorButton.setEnabled(npcsVisible && npcOutlinesVisible);
 	}
 
 	private void applyNpcRendererSettings()
@@ -1070,7 +1346,11 @@ public final class Map3DPanel extends JPanel
 			npcsVisible = state.npcsVisible();
 			npcOutlinesVisible = state.npcOutlinesVisible();
 			npcHoverTextVisible = state.npcHoverTextVisible();
+			minimapVisible = state.minimapVisible();
+			npcOutlineColor = new Color(state.npcOutlineColorArgb(), true);
+			tileHoverSelectorColor = new Color(state.tileHoverColorArgb(), true);
 			applyNpcRendererSettings();
+			applyOverlayColorSettings();
 			return;
 		}
 		AntialiasingScale scale = AntialiasingScale.forSamples(DEFAULT_ANTIALIASING_SAMPLES);
@@ -1090,7 +1370,11 @@ public final class Map3DPanel extends JPanel
 		npcsVisible = true;
 		npcOutlinesVisible = true;
 		npcHoverTextVisible = true;
+		minimapVisible = true;
+		npcOutlineColor = new Color(Viewer3DState.DEFAULT_NPC_OUTLINE_COLOR_ARGB, true);
+		tileHoverSelectorColor = new Color(Viewer3DState.DEFAULT_TILE_HOVER_COLOR_ARGB, true);
 		applyNpcRendererSettings();
+		applyOverlayColorSettings();
 	}
 
 	private void openWorldMapDock()
@@ -1320,7 +1604,10 @@ public final class Map3DPanel extends JPanel
 			pluginOverlaysOnTop,
 			npcsVisible,
 			npcOutlinesVisible,
-			npcHoverTextVisible
+			npcHoverTextVisible,
+			minimapVisible,
+			argb(npcOutlineColor),
+			argb(tileHoverSelectorColor)
 		);
 		if (!state.equals(lastSavedState))
 		{
@@ -1764,7 +2051,8 @@ public final class Map3DPanel extends JPanel
 	{
 		pluginOverlaysOnTop = overlayPriorityButton.isSelected();
 		updateOverlayPriorityButtonText();
-		renderer.setPluginOverlayOnTop(pluginOverlaysOnTop);
+		boolean overlaysOnTop = pluginOverlaysOnTop;
+		invokeRenderLater(() -> renderer.setPluginOverlayOnTop(overlaysOnTop));
 		detail.setText(pluginOverlaysOnTop ? "3D overlays forced to front" : "3D overlays depth-tested");
 		saveViewerStateNow();
 	}
@@ -1781,11 +2069,13 @@ public final class Map3DPanel extends JPanel
 			return;
 		}
 		boolean hidden = minimapButton.isSelected();
+		minimapVisible = !hidden;
 		minimapOverlay.setVisible(!hidden);
 		minimapButton.setText(hidden ? "Show Minimap" : "Hide Minimap");
 		sceneLayer.revalidate();
 		sceneLayer.doLayout();
 		sceneLayer.repaint();
+		saveViewerStateNow();
 	}
 
 	private static String cardinal(float degrees)
@@ -2585,6 +2875,21 @@ public final class Map3DPanel extends JPanel
 			BorderFactory.createLineBorder(new Color(80, 80, 80)),
 			BorderFactory.createEmptyBorder(2, 4, 2, 4)
 		));
+	}
+
+	private static void styleColorButton(AbstractButton button, Color color)
+	{
+		styleToolbarButton(button);
+		Color swatch = color == null ? Color.WHITE : color;
+		button.setOpaque(true);
+		button.setBackground(swatch);
+		button.setForeground(contrastColor(swatch));
+	}
+
+	private static Color contrastColor(Color color)
+	{
+		int luminance = (color.getRed() * 299 + color.getGreen() * 587 + color.getBlue() * 114) / 1000;
+		return luminance >= 145 ? Color.BLACK : Color.WHITE;
 	}
 
 	private static void setFixedControlSize(Component component, Dimension size)

@@ -47,6 +47,7 @@ import com.xeon.view.MapControlsPanel;
 import com.xeon.view.MapLegendDialog;
 import com.xeon.view.MapPanel;
 import com.xeon.view.MapView;
+import com.xeon.view.NpcLocationLayer;
 import com.xeon.view3d.Map3DPanel;
 
 import java.util.Enumeration;
@@ -127,10 +128,12 @@ public class MapViewerController
 	private boolean showMapIcons = true;
 	private boolean showMapLabels = true;
 	private boolean showMapFeatureTooltips = settings.mapFeatureTooltips();
+	private boolean showNpcDots = false;
 	private boolean mapLocked = false;
 	private boolean mapPrintInProgress = false;
 	private int mapScrollHorizontalPolicy = ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED;
 	private int mapScrollVerticalPolicy = ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED;
+	private NpcLocationLayer npcLocationLayer;
 
 	public MapViewerController()
 	{
@@ -202,6 +205,7 @@ public class MapViewerController
 			}
 		}
 
+		buildStartupShell();
 		frame.setSize(1660, 950);
 		frame.setLocationRelativeTo(null);
 		frame.setVisible(true);
@@ -272,7 +276,7 @@ public class MapViewerController
 
 	private StartupMode promptStartupMode()
 	{
-		Object[] options = new Object[]{"2D Map", "3D Viewer"};
+		Object[] options = new Object[]{"3D Viewer", "2D Map"};
 		int answer = JOptionPane.showOptionDialog(
 			frame,
 			"Choose how to open OS Map Viewer.",
@@ -283,11 +287,43 @@ public class MapViewerController
 			options,
 			options[0]
 		);
-		return answer == 1 ? StartupMode.VIEWER_3D : StartupMode.MAP_2D;
+		return answer == 0 ? StartupMode.VIEWER_3D : StartupMode.MAP_2D;
+	}
+
+	private void buildStartupShell()
+	{
+		frame.getContentPane().removeAll();
+		JPanel rail = new JPanel();
+		rail.setLayout(new BoxLayout(rail, BoxLayout.Y_AXIS));
+		rail.setOpaque(true);
+		rail.setBackground(RAIL_BACKGROUND);
+		rail.setBorder(BorderFactory.createMatteBorder(0, 0, 0, 1, new Color(55, 55, 55)));
+		rail.setPreferredSize(new Dimension(44, 0));
+		styleRailButton(btnOptions);
+		btnOptions.setEnabled(false);
+		btnOptions.setToolTipText("Options");
+		rail.add(Box.createVerticalStrut(4));
+		rail.add(btnOptions);
+		rail.add(Box.createVerticalGlue());
+
+		JPanel placeholder = new JPanel(new BorderLayout());
+		placeholder.setBackground(new Color(42, 43, 46));
+		placeholder.setOpaque(true);
+
+		statusLabel = new JLabel("Choose a map mode");
+		statusLabel.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
+		JPanel bottom = new JPanel(new BorderLayout());
+		bottom.add(statusLabel, BorderLayout.SOUTH);
+
+		frame.add(rail, BorderLayout.WEST);
+		frame.add(placeholder, BorderLayout.CENTER);
+		frame.add(bottom, BorderLayout.SOUTH);
 	}
 
 	private void buildUi()
 	{
+		frame.getContentPane().removeAll();
+		optionsMenu.removeAll();
 		mapPanel = createMapPanel(null);
 		mapScrollPane = new JScrollPane(mapPanel);
 		statusLabel = new JLabel("Ready");
@@ -296,10 +332,12 @@ public class MapViewerController
 		mapControls.setPlaneCount(mapPanel.getPlaneCount());
 		mapControls.setSelectedPlane(mapPanel.getPlane());
 		mapControls.setMapFeatureTooltips(showMapFeatureTooltips);
+		mapControls.setNpcDotsVisible(showNpcDots);
 		areaSearchPanel = new MapAreaSearchPanel();
 		areaSearchPanel.setSearchProvider(mapPanel::searchMapAreas);
 		mapPanel.setMapBackgroundColor(settings.mapBackgroundColor());
 		mapPanel.setShowMapFeatureTooltips(showMapFeatureTooltips);
+		applyNpcLocationLayer(mapPanel);
 
 		toolRail = buildToolRail();
 		westPanel = new JPanel(new BorderLayout());
@@ -389,6 +427,7 @@ public class MapViewerController
 		rail.setPreferredSize(new Dimension(44, 0));
 		rail.setMinimumSize(new Dimension(44, 0));
 		styleRailButton(btnOptions);
+		btnOptions.setEnabled(true);
 		btnOptions.setToolTipText("Options");
 		btnOptions.addActionListener(e -> toggleOptionsMenu());
 
@@ -481,6 +520,7 @@ public class MapViewerController
 			settings.setMapFeatureTooltips(value);
 			mapPanel.setShowMapFeatureTooltips(value);
 		});
+		mapControls.onToggleNpcDots.addListener(this::setNpcDotsVisible);
 		mapControls.onToggleLocked.addListener(value -> {
 			mapLocked = value;
 			mapPanel.setMapLocked(value);
@@ -530,6 +570,42 @@ public class MapViewerController
 		panel.setShowMapFeatureTooltips(showMapFeatureTooltips);
 		panel.setMapBackgroundColor(settings.mapBackgroundColor());
 		panel.setMemoryBudgetBytes(memoryBudgetBytes(selectedMemoryBudgetMb()));
+		applyNpcLocationLayer(panel);
+	}
+
+	private void setNpcDotsVisible(boolean visible)
+	{
+		showNpcDots = visible;
+		if (mapPanel != null)
+		{
+			applyNpcLocationLayer(mapPanel);
+			mapPanel.repaintVisible();
+		}
+	}
+
+	private void applyNpcLocationLayer(MapPanel panel)
+	{
+		if (panel == null)
+		{
+			return;
+		}
+		if (showNpcDots)
+		{
+			panel.addLayer(npcLocationLayer());
+		}
+		else if (npcLocationLayer != null)
+		{
+			panel.removeLayer(npcLocationLayer);
+		}
+	}
+
+	private NpcLocationLayer npcLocationLayer()
+	{
+		if (npcLocationLayer == null)
+		{
+			npcLocationLayer = NpcLocationLayer.loadDefault();
+		}
+		return npcLocationLayer;
 	}
 
 	private int clampedPlane(int plane, MapPanel panel)

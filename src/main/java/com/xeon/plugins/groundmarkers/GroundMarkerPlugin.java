@@ -71,6 +71,8 @@ public final class GroundMarkerPlugin implements MapViewerPlugin, MapLayer, MapT
 	private MarkerListPanel markerList;
 	private int currentRegionId = -1;
 	private Set<Integer> visibleRegionIds = Set.of();
+	private Set<Integer> visible3DRegionIds = Set.of();
+	private boolean viewer3DMode;
 	private Tile selectedTile;
 	private GroundMarker selectedMarker;
 
@@ -271,9 +273,11 @@ public final class GroundMarkerPlugin implements MapViewerPlugin, MapLayer, MapT
 	{
 		if (context == null || context.visibleRegionIds().isEmpty())
 		{
+			visible3DRegionIds = Set.of();
 			return Map3DOverlay.empty();
 		}
 		Set<Integer> loadedRegions = Set.copyOf(context.visibleRegionIds());
+		visible3DRegionIds = loadedRegions;
 		List<Map3DTileOverlay> overlays = new ArrayList<>();
 		for (GroundMarker marker : project.inRegions(loadedRegions))
 		{
@@ -286,6 +290,25 @@ public final class GroundMarkerPlugin implements MapViewerPlugin, MapLayer, MapT
 			));
 		}
 		return new Map3DOverlay(List.of(), List.of(), List.of(), overlays);
+	}
+
+	@Override
+	public void viewer3DModeChanged(boolean active)
+	{
+		viewer3DMode = active;
+		if (toolbar != null)
+		{
+			toolbar.setViewer3DMode(active);
+		}
+		if (active && !selectedRegionIds.isEmpty())
+		{
+			selectedRegionIds.clear();
+			refreshPanels();
+			if (context != null)
+			{
+				context.repaintVisible();
+			}
+		}
 	}
 
 	@Override
@@ -996,6 +1019,16 @@ public final class GroundMarkerPlugin implements MapViewerPlugin, MapLayer, MapT
 					yield null;
 				}
 				yield project.inRegions(selectedRegionIds);
+			}
+			case VISIBLE_AREA_TO_FILE ->
+			{
+				Set<Integer> scope = viewer3DMode ? visible3DRegionIds : visibleRegionIds;
+				if (scope.isEmpty())
+				{
+					Ui.info("There are no visible regions to export.");
+					yield null;
+				}
+				yield project.inRegions(scope);
 			}
 		};
 	}

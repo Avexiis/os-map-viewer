@@ -38,17 +38,24 @@ public record Viewer3DState(
 	boolean pluginOverlaysOnTop,
 	boolean npcsVisible,
 	boolean npcOutlinesVisible,
-	boolean npcHoverTextVisible
+	boolean npcHoverTextVisible,
+	boolean minimapVisible,
+	int npcOutlineColorArgb,
+	int tileHoverColorArgb
 )
 {
 	public static final int DEFAULT_VIEW_DISTANCE_REGIONS = 3;
 	public static final int MIN_VIEW_DISTANCE_REGIONS = 2;
 	public static final int MAX_VIEW_DISTANCE_REGIONS = 5;
+	public static final int DEFAULT_NPC_OUTLINE_COLOR_ARGB = 0xFAFFEB3B;
+	public static final int DEFAULT_TILE_HOVER_COLOR_ARGB = 0xF2FFEB3B;
 
 	public Viewer3DState
 	{
 		viewDistanceRegions = clampViewDistanceRegions(viewDistanceRegions);
 		maxVisiblePlane = clampMaxVisiblePlane(maxVisiblePlane);
+		npcOutlineColorArgb = normalizeArgb(npcOutlineColorArgb, DEFAULT_NPC_OUTLINE_COLOR_ARGB);
+		tileHoverColorArgb = normalizeArgb(tileHoverColorArgb, DEFAULT_TILE_HOVER_COLOR_ARGB);
 	}
 
 	public Viewer3DState(
@@ -107,7 +114,48 @@ public record Viewer3DState(
 			pluginOverlaysOnTop,
 			true,
 			true,
-			true
+			true,
+			true,
+			DEFAULT_NPC_OUTLINE_COLOR_ARGB,
+			DEFAULT_TILE_HOVER_COLOR_ARGB
+		);
+	}
+
+	public Viewer3DState(
+		double worldTileX,
+		double worldTileY,
+		double cameraY,
+		int plane,
+		float yawDegrees,
+		float pitchDegrees,
+		float fovDegrees,
+		int antialiasingSamples,
+		int viewDistanceRegions,
+		int maxVisiblePlane,
+		boolean pluginOverlaysOnTop,
+		boolean npcsVisible,
+		boolean npcOutlinesVisible,
+		boolean npcHoverTextVisible
+	)
+	{
+		this(
+			worldTileX,
+			worldTileY,
+			cameraY,
+			plane,
+			yawDegrees,
+			pitchDegrees,
+			fovDegrees,
+			antialiasingSamples,
+			viewDistanceRegions,
+			maxVisiblePlane,
+			pluginOverlaysOnTop,
+			npcsVisible,
+			npcOutlinesVisible,
+			npcHoverTextVisible,
+			true,
+			DEFAULT_NPC_OUTLINE_COLOR_ARGB,
+			DEFAULT_TILE_HOVER_COLOR_ARGB
 		);
 	}
 
@@ -135,6 +183,15 @@ public record Viewer3DState(
 	public static int clampMaxVisiblePlane(int value)
 	{
 		return Math.max(0, Math.min(3, value));
+	}
+
+	public static int normalizeArgb(int value, int fallback)
+	{
+		if (((value >>> 24) & 0xFF) == 0)
+		{
+			return fallback;
+		}
+		return value;
 	}
 
 	public int regionId()

@@ -94,14 +94,16 @@ final class TerrainMeshBuilder
 			{
 				for (int y = 0; y < Region.Y; y++)
 				{
+					int displayPlane = SceneTileFlags.displayPlaneForSource(region, sourcePlane, x, y);
 					maxHeight = putSourceTile(
-						planeData[sourcePlane],
+						planeData[displayPlane],
 						region,
 						colorizers,
 						heightMaps,
 						lightMaps,
 						renderableTiles,
 						renderedTiles,
+						displayPlane,
 						sourcePlane,
 						x,
 						y,
@@ -177,6 +179,7 @@ final class TerrainMeshBuilder
 		TerrainLightMap[] lightMaps,
 		boolean[] renderableTiles,
 		boolean[] renderedTiles,
+		int displayPlane,
 		int sourcePlane,
 		int x,
 		int y,
@@ -205,7 +208,7 @@ final class TerrainMeshBuilder
 		TerrainHeightMap heightMap = heightMaps[sourcePlane];
 		TerrainLightMap lightMap = lightMaps[sourcePlane];
 		renderedTiles[index] = true;
-		renderableTiles[index] = true;
+		renderableTiles[tileIndex(displayPlane, x, y)] = true;
 		maxHeight = Math.max(maxHeight, maxCornerHeight(heightMap, x, y));
 		if (!paint.hasOverlay())
 		{

@@ -40,7 +40,8 @@ public final class GroundMarkerToolbarPanel extends JPopupMenu
 		SELECTED_TO_CLIPBOARD("Selected regions to clipboard"),
 		CURRENT_TO_FILE("Current region to file"),
 		ALL_TO_FILE("All markers to file"),
-		SELECTED_TO_FILE("Selected regions to file");
+		SELECTED_TO_FILE("Selected regions to file"),
+		VISIBLE_AREA_TO_FILE("Export Visible Area");
 
 		private final String label;
 
@@ -60,6 +61,8 @@ public final class GroundMarkerToolbarPanel extends JPopupMenu
 	private Consumer<ActionEvent> onImportRuneLite;
 	private Consumer<ActionEvent> onImportHdos;
 	private Consumer<ActionEvent> onImportJson;
+	private JMenu exportMenu;
+	private boolean viewer3DMode;
 
 	public GroundMarkerToolbarPanel()
 	{
@@ -109,14 +112,47 @@ public final class GroundMarkerToolbarPanel extends JPopupMenu
 		add(importJson);
 		addSeparator();
 
-		JMenu exportMenu = new JMenu("Export");
+		exportMenu = new JMenu("Export");
+		rebuildExportMenu();
+		add(exportMenu);
+	}
+
+	public void setViewer3DMode(boolean viewer3DMode)
+	{
+		if (this.viewer3DMode == viewer3DMode)
+		{
+			return;
+		}
+		this.viewer3DMode = viewer3DMode;
+		rebuildExportMenu();
+	}
+
+	private void rebuildExportMenu()
+	{
+		if (exportMenu == null)
+		{
+			return;
+		}
+		exportMenu.removeAll();
+		if (viewer3DMode)
+		{
+			addExportItem(ExportAction.VISIBLE_AREA_TO_FILE);
+			return;
+		}
 		for (ExportAction action : ExportAction.values())
 		{
-			JMenuItem item = new JMenuItem(action.label());
-			item.addActionListener(e -> onExport.emit(action));
-			exportMenu.add(item);
+			if (action != ExportAction.VISIBLE_AREA_TO_FILE)
+			{
+				addExportItem(action);
+			}
 		}
-		add(exportMenu);
+	}
+
+	private void addExportItem(ExportAction action)
+	{
+		JMenuItem item = new JMenuItem(action.label());
+		item.addActionListener(e -> onExport.emit(action));
+		exportMenu.add(item);
 	}
 
 	public static final class Event<T>

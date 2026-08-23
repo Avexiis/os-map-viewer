@@ -25,6 +25,7 @@
  */
 package com.xeon.view3d;
 
+import com.xeon.io.Viewer3DState;
 import com.xeon.model.Tile;
 
 import java.awt.Color;
@@ -315,6 +316,8 @@ final class TerrainRenderer
 	private float backgroundRed = 0.0f;
 	private float backgroundGreen = 0.0f;
 	private float backgroundBlue = 0.0f;
+	private Color npcOutlineColor = new Color(Viewer3DState.DEFAULT_NPC_OUTLINE_COLOR_ARGB, true);
+	private Color tileHoverSelectorColor = new Color(Viewer3DState.DEFAULT_TILE_HOVER_COLOR_ARGB, true);
 
 	void init()
 	{
@@ -450,6 +453,20 @@ final class TerrainRenderer
 		{
 			hoveredNpcInfo = null;
 		}
+	}
+
+	void setNpcOutlineColor(Color color)
+	{
+		npcOutlineColor = color == null
+			? new Color(Viewer3DState.DEFAULT_NPC_OUTLINE_COLOR_ARGB, true)
+			: color;
+	}
+
+	void setTileHoverSelectorColor(Color color)
+	{
+		tileHoverSelectorColor = color == null
+			? new Color(Viewer3DState.DEFAULT_TILE_HOVER_COLOR_ARGB, true)
+			: color;
 	}
 
 	void setBackgroundColor(Color color)
@@ -1020,7 +1037,7 @@ final class TerrainRenderer
 		GL33C.glUniform4f(outlineColorLocation, 0.0f, 0.0f, 0.0f, 0.78f);
 		GL33C.glLineWidth(4.0f);
 		GL33C.glDrawArrays(GL33C.GL_LINES, 0, OUTLINE_VERTICES);
-		GL33C.glUniform4f(outlineColorLocation, 1.0f, 0.92f, 0.24f, 0.95f);
+		uploadOutlineColor(tileHoverSelectorColor, 0.95f);
 		GL33C.glLineWidth(2.0f);
 		GL33C.glDrawArrays(GL33C.GL_LINES, 0, OUTLINE_VERTICES);
 		GL33C.glLineWidth(1.0f);
@@ -1085,12 +1102,12 @@ final class TerrainRenderer
 			GL33C.glUseProgram(outlineProgram);
 			uploadScreenOutlineMatrix();
 			GL33C.glBindVertexArray(npcOutlineEdgeVao);
-			GL33C.glUniform4f(outlineColorLocation, 0.0f, 0.0f, 0.0f, 0.80f);
-			GL33C.glLineWidth(4.0f);
-			GL33C.glDrawArrays(GL33C.GL_LINES, 0, vertexCount);
-			GL33C.glUniform4f(outlineColorLocation, 1.0f, 0.92f, 0.12f, 0.98f);
-			GL33C.glLineWidth(2.0f);
-			GL33C.glDrawArrays(GL33C.GL_LINES, 0, vertexCount);
+				GL33C.glUniform4f(outlineColorLocation, 0.0f, 0.0f, 0.0f, 0.80f);
+				GL33C.glLineWidth(4.0f);
+				GL33C.glDrawArrays(GL33C.GL_LINES, 0, vertexCount);
+				uploadOutlineColor(npcOutlineColor, 0.98f);
+				GL33C.glLineWidth(2.0f);
+				GL33C.glDrawArrays(GL33C.GL_LINES, 0, vertexCount);
 			return 2;
 		}
 		finally
@@ -1106,6 +1123,21 @@ final class TerrainRenderer
 				GL33C.glEnable(GL33C.GL_CULL_FACE);
 			}
 		}
+	}
+
+	private void uploadOutlineColor(Color color, float fallbackAlpha)
+	{
+		Color c = color == null ? Color.WHITE : color;
+		float alpha = c.getAlpha() / 255.0f;
+		if (alpha <= 0.0f)
+		{
+			alpha = fallbackAlpha;
+		}
+		GL33C.glUniform4f(outlineColorLocation,
+			c.getRed() / 255.0f,
+			c.getGreen() / 255.0f,
+			c.getBlue() / 255.0f,
+			Math.max(0.05f, Math.min(1.0f, alpha)));
 	}
 
 	private FloatList npcOutlineLineVertices(HoveredNpcDraw hovered)

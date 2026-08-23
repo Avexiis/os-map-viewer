@@ -61,6 +61,9 @@ public final class ViewerSettings
 	private static final String KEY_3D_NPCS_VISIBLE = "viewer3d.state.npcsVisible";
 	private static final String KEY_3D_NPC_OUTLINES_VISIBLE = "viewer3d.state.npcOutlinesVisible";
 	private static final String KEY_3D_NPC_HOVER_TEXT_VISIBLE = "viewer3d.state.npcHoverTextVisible";
+	private static final String KEY_3D_MINIMAP_VISIBLE = "viewer3d.state.minimapVisible";
+	private static final String KEY_3D_NPC_OUTLINE_COLOR = "viewer3d.state.npcOutlineColor";
+	private static final String KEY_3D_TILE_HOVER_COLOR = "viewer3d.state.tileHoverColor";
 	private static final String KEY_3D_CACHE_ASK_ON_OPEN = "viewer3d.cache.askOnOpen";
 	private static final String KEY_3D_CACHE_AUTO_DETECT = "viewer3d.cache.autoDetect";
 	private static final String FIELD_WORLD_TILE_X = "worldTileX";
@@ -77,6 +80,9 @@ public final class ViewerSettings
 	private static final String FIELD_NPCS_VISIBLE = "npcsVisible";
 	private static final String FIELD_NPC_OUTLINES_VISIBLE = "npcOutlinesVisible";
 	private static final String FIELD_NPC_HOVER_TEXT_VISIBLE = "npcHoverTextVisible";
+	private static final String FIELD_MINIMAP_VISIBLE = "minimapVisible";
+	private static final String FIELD_NPC_OUTLINE_COLOR = "npcOutlineColor";
+	private static final String FIELD_TILE_HOVER_COLOR = "tileHoverColor";
 	private static final String DEFAULT_BACKGROUND = "#000000";
 	private static final int DEFAULT_MEMORY_BUDGET_MB = 512;
 
@@ -225,7 +231,12 @@ public final class ViewerSettings
 			configManager.getBoolean(CORE, KEY_3D_PLUGIN_OVERLAYS_ON_TOP, false),
 			configManager.getBoolean(CORE, KEY_3D_NPCS_VISIBLE, true),
 			configManager.getBoolean(CORE, KEY_3D_NPC_OUTLINES_VISIBLE, true),
-			configManager.getBoolean(CORE, KEY_3D_NPC_HOVER_TEXT_VISIBLE, true)
+			configManager.getBoolean(CORE, KEY_3D_NPC_HOVER_TEXT_VISIBLE, true),
+			configManager.getBoolean(CORE, KEY_3D_MINIMAP_VISIBLE, true),
+			parseArgb(configManager.getString(CORE, KEY_3D_NPC_OUTLINE_COLOR, null),
+				Viewer3DState.DEFAULT_NPC_OUTLINE_COLOR_ARGB),
+			parseArgb(configManager.getString(CORE, KEY_3D_TILE_HOVER_COLOR, null),
+				Viewer3DState.DEFAULT_TILE_HOVER_COLOR_ARGB)
 		);
 		return state.isValid() ? state : null;
 	}
@@ -259,6 +270,9 @@ public final class ViewerSettings
 		object.addProperty(FIELD_NPCS_VISIBLE, state.npcsVisible());
 		object.addProperty(FIELD_NPC_OUTLINES_VISIBLE, state.npcOutlinesVisible());
 		object.addProperty(FIELD_NPC_HOVER_TEXT_VISIBLE, state.npcHoverTextVisible());
+		object.addProperty(FIELD_MINIMAP_VISIBLE, state.minimapVisible());
+		object.addProperty(FIELD_NPC_OUTLINE_COLOR, colorToArgbHex(state.npcOutlineColorArgb()));
+		object.addProperty(FIELD_TILE_HOVER_COLOR, colorToArgbHex(state.tileHoverColorArgb()));
 		configManager.setElement(CORE, KEY_3D_STATE, object);
 	}
 
@@ -301,7 +315,10 @@ public final class ViewerSettings
 			jsonBoolean(object, FIELD_PLUGIN_OVERLAYS_ON_TOP, false),
 			jsonBoolean(object, FIELD_NPCS_VISIBLE, true),
 			jsonBoolean(object, FIELD_NPC_OUTLINES_VISIBLE, true),
-			jsonBoolean(object, FIELD_NPC_HOVER_TEXT_VISIBLE, true)
+			jsonBoolean(object, FIELD_NPC_HOVER_TEXT_VISIBLE, true),
+			jsonBoolean(object, FIELD_MINIMAP_VISIBLE, true),
+			jsonArgb(object, FIELD_NPC_OUTLINE_COLOR, Viewer3DState.DEFAULT_NPC_OUTLINE_COLOR_ARGB),
+			jsonArgb(object, FIELD_TILE_HOVER_COLOR, Viewer3DState.DEFAULT_TILE_HOVER_COLOR_ARGB)
 		);
 		return state.isValid() ? state : null;
 	}
@@ -357,9 +374,35 @@ public final class ViewerSettings
 		}
 	}
 
+	private static int jsonArgb(JsonObject object, String key, int defaultValue)
+	{
+		JsonElement element = object.get(key);
+		if (element == null || !element.isJsonPrimitive())
+		{
+			return defaultValue;
+		}
+		try
+		{
+			if (element.getAsJsonPrimitive().isNumber())
+			{
+				return Viewer3DState.normalizeArgb(element.getAsInt(), defaultValue);
+			}
+			return parseArgb(element.getAsString(), defaultValue);
+		}
+		catch (RuntimeException ex)
+		{
+			return defaultValue;
+		}
+	}
+
 	private static String colorToHex(Color color)
 	{
 		return String.format("#%06X", color.getRGB() & 0x00FFFFFF);
+	}
+
+	private static String colorToArgbHex(int argb)
+	{
+		return String.format("#%08X", argb);
 	}
 
 	private static String normalizeColor(String raw, String fallback)
@@ -388,5 +431,28 @@ public final class ViewerSettings
 			return fallback;
 		}
 		return new Color(Integer.parseInt(normalized.substring(1), 16));
+	}
+
+	private static int parseArgb(String raw, int fallback)
+	{
+		if (raw == null || raw.isBlank())
+		{
+			return fallback;
+		}
+		String value = raw.trim();
+		if (value.startsWith("#"))
+		{
+			value = value.substring(1);
+		}
+		if (value.length() == 6 && value.matches("[0-9a-fA-F]{6}"))
+		{
+			return Viewer3DState.normalizeArgb(0xFF000000 | Integer.parseInt(value, 16), fallback);
+		}
+		if (value.length() != 8 || !value.matches("[0-9a-fA-F]{8}"))
+		{
+			return fallback;
+		}
+		long parsed = Long.parseLong(value, 16);
+		return Viewer3DState.normalizeArgb((int) parsed, fallback);
 	}
 }

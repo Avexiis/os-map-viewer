@@ -170,19 +170,19 @@ final class Map3DMinimapOverlay extends JPanel
 					Graphics2D mapGraphics = (Graphics2D) g.create();
 					try
 					{
-						double cx = mapBounds.getCenterX();
-						double cy = mapBounds.getCenterY();
-						mapGraphics.rotate(-headingRadiansSupplier.getAsDouble(), cx, cy);
-						int snapshotSize = (int) Math.ceil(Math.hypot(mapBounds.width, mapBounds.height)) + 8;
-						Rectangle target = new Rectangle(
-							(int) Math.round(cx - snapshotSize / 2.0),
-							(int) Math.round(cy - snapshotSize / 2.0),
-							snapshotSize,
-							snapshotSize
-						);
-						mapPanel.paintMapSnapshot(mapGraphics, target, center.worldTileX(), center.worldTileY(),
-							MINIMAP_PLANE, FULL_ZOOM_PIXELS_PER_TILE, true, false);
-						drawNpcDots(mapGraphics, mapBounds, center);
+							double cx = mapBounds.getCenterX();
+							double cy = mapBounds.getCenterY();
+							mapGraphics.rotate(-headingRadiansSupplier.getAsDouble(), cx, cy);
+							int snapshotSize = (int) Math.ceil(Math.hypot(mapBounds.width, mapBounds.height)) + 8;
+							Rectangle target = new Rectangle(
+								(int) Math.round(cx - snapshotSize / 2.0),
+								(int) Math.round(cy - snapshotSize / 2.0),
+								snapshotSize,
+								snapshotSize
+							);
+							mapPanel.paintMapSnapshot(mapGraphics, target, center.worldTileX(), center.worldTileY(),
+								MINIMAP_PLANE, FULL_ZOOM_PIXELS_PER_TILE, true, false, true);
+							drawNpcDots(mapGraphics, mapBounds, center);
 					}
 					finally
 					{

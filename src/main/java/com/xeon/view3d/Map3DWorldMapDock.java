@@ -29,6 +29,7 @@ import com.xeon.plugin.MapViewerPlugin;
 import com.xeon.view.MapLayer;
 import com.xeon.view.MapPanel;
 import com.xeon.view.MapTool;
+import com.xeon.view.NpcLocationLayer;
 
 import java.awt.BasicStroke;
 import java.awt.BorderLayout;
@@ -53,6 +54,7 @@ import java.awt.event.WindowEvent;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import javax.swing.BoxLayout;
+import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
@@ -79,11 +81,17 @@ final class Map3DWorldMapDock extends JDialog
 	private final Consumer<Tile> warpConsumer;
 	private final Timer clampDebounce;
 	private final JComboBox<Integer> planeSelect;
-	private final JCheckBox trackCameraToggle = new JCheckBox("Track camera", true);
+	private final JCheckBox trackCameraToggle = new JCheckBox("Track camera", false);
+	private final JCheckBox gridToggle = new JCheckBox("Grid", false);
+	private final JCheckBox regionCoordsToggle = new JCheckBox("RX,RY", false);
+	private final JCheckBox regionIdsToggle = new JCheckBox("Region IDs", false);
+	private final JCheckBox npcDotsToggle = new JCheckBox("NPC Dots", false);
 	private final CloseOverlay overlay;
 	private MapViewerPlugin activePlugin;
+	private NpcLocationLayer npcLocationLayer;
 	private ComponentAdapter clampListener;
 	private boolean mapPanelDisposed;
+	private boolean npcLocationLayerInstalled;
 	private int selectedPlane = 0;
 
 	Map3DWorldMapDock(Component ownerForLocation, MapPanel mapPanel,
@@ -223,7 +231,22 @@ final class Map3DWorldMapDock extends JDialog
 		{
 			return;
 		}
-		mapPanel.focusTile(focusTile, targetZoom);
+		boolean locked = mapPanel.isMapLocked();
+		if (locked)
+		{
+			mapPanel.setMapLocked(false);
+		}
+		try
+		{
+			mapPanel.focusTile(focusTile, targetZoom);
+		}
+		finally
+		{
+			if (locked)
+			{
+				mapPanel.setMapLocked(true);
+			}
+		}
 	}
 
 	private void installPlaneSelector()
@@ -250,12 +273,85 @@ final class Map3DWorldMapDock extends JDialog
 		trackCameraToggle.setAlignmentX(Component.LEFT_ALIGNMENT);
 		trackCameraToggle.setMaximumSize(trackCameraToggle.getPreferredSize());
 		trackCameraToggle.addActionListener(e -> {
+			syncTrackingLock();
 			if (trackCameraToggle.isSelected())
 			{
 				focusCameraTile(null, true);
 			}
 			overlay.repaint();
 		});
+		styleOverlayCheckBox(gridToggle);
+		styleOverlayCheckBox(regionCoordsToggle);
+		styleOverlayCheckBox(regionIdsToggle);
+		styleOverlayCheckBox(npcDotsToggle);
+		gridToggle.addActionListener(e -> mapPanel.setShowGrid(gridToggle.isSelected()));
+		regionCoordsToggle.addActionListener(e -> {
+			boolean selected = regionCoordsToggle.isSelected();
+			if (selected && regionIdsToggle.isSelected())
+			{
+				regionIdsToggle.setSelected(false);
+				mapPanel.setShowRegionIds(false);
+			}
+			mapPanel.setShowRegionCoordinates(selected);
+		});
+		regionIdsToggle.addActionListener(e -> {
+			boolean selected = regionIdsToggle.isSelected();
+			if (selected && regionCoordsToggle.isSelected())
+			{
+				regionCoordsToggle.setSelected(false);
+				mapPanel.setShowRegionCoordinates(false);
+			}
+			mapPanel.setShowRegionIds(selected);
+		});
+		npcDotsToggle.addActionListener(e -> setNpcLocationLayerVisible(npcDotsToggle.isSelected()));
+		syncTrackingLock();
+	}
+
+	private void syncTrackingLock()
+	{
+		mapPanel.setMapLocked(trackCameraToggle.isSelected());
+	}
+
+	private void setNpcLocationLayerVisible(boolean visible)
+	{
+		if (visible)
+		{
+			if (!npcLocationLayerInstalled)
+			{
+				mapPanel.addLayer(npcLocationLayer());
+				npcLocationLayerInstalled = true;
+			}
+		}
+		else if (npcLocationLayerInstalled)
+		{
+			mapPanel.removeLayer(npcLocationLayer);
+			npcLocationLayerInstalled = false;
+		}
+		mapPanel.repaintVisible();
+	}
+
+	private NpcLocationLayer npcLocationLayer()
+	{
+		if (npcLocationLayer == null)
+		{
+			npcLocationLayer = NpcLocationLayer.loadDefault();
+		}
+		return npcLocationLayer;
+	}
+
+	private static void styleOverlayCheckBox(JCheckBox checkBox)
+	{
+		checkBox.setFocusable(false);
+		checkBox.setForeground(Color.WHITE);
+		checkBox.setOpaque(false);
+		checkBox.setAlignmentX(Component.LEFT_ALIGNMENT);
+		checkBox.setMaximumSize(checkBox.getPreferredSize());
+	}
+
+	private static void styleOverlayButton(JButton button)
+	{
+		button.setFocusable(false);
+		button.setMargin(new Insets(1, 6, 1, 6));
 	}
 
 	private void installDoubleClickWarp()
@@ -485,6 +581,12 @@ final class Map3DWorldMapDock extends JDialog
 			}
 			edgeMask = hitTest(p.x, p.y);
 			moveDrag = edgeMask == 0 && e.isShiftDown();
+			if (trackCameraToggle.isSelected() && edgeMask == 0)
+			{
+				dragStart = null;
+				startBounds = null;
+				return;
+			}
 			if (edgeMask == 0 && !moveDrag)
 			{
 				dragStart = null;
@@ -574,6 +676,9 @@ final class Map3DWorldMapDock extends JDialog
 		private static final int PAD = 8;
 		private static final int ARC = 6;
 		private final JPanel planePanel = new JPanel();
+		private final JPanel controlsBody = new JPanel();
+		private final JButton collapseButton = new JButton("-");
+		private boolean controlsCollapsed;
 
 		CloseOverlay()
 		{
@@ -582,6 +687,21 @@ final class Map3DWorldMapDock extends JDialog
 			planePanel.setOpaque(true);
 			planePanel.setBackground(new Color(0, 0, 0, 165));
 			planePanel.setLayout(new BoxLayout(planePanel, BoxLayout.Y_AXIS));
+
+			JPanel header = new JPanel(new BorderLayout(6, 0));
+			header.setOpaque(false);
+			header.setAlignmentX(Component.LEFT_ALIGNMENT);
+			JLabel title = new JLabel("Map");
+			title.setForeground(Color.WHITE);
+			title.setFont(title.getFont().deriveFont(title.getFont().getStyle() | java.awt.Font.BOLD));
+			styleOverlayButton(collapseButton);
+			collapseButton.addActionListener(e -> setControlsCollapsed(!controlsCollapsed));
+			header.add(title, BorderLayout.WEST);
+			header.add(collapseButton, BorderLayout.EAST);
+			planePanel.add(header);
+
+			controlsBody.setOpaque(false);
+			controlsBody.setLayout(new BoxLayout(controlsBody, BoxLayout.Y_AXIS));
 			JPanel planeRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 3));
 			planeRow.setOpaque(false);
 			planeRow.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -589,9 +709,10 @@ final class Map3DWorldMapDock extends JDialog
 			label.setForeground(Color.WHITE);
 			planeRow.add(label);
 			planeRow.add(planeSelect);
-			trackCameraToggle.setAlignmentX(Component.LEFT_ALIGNMENT);
-			planePanel.add(planeRow);
-			planePanel.add(trackCameraToggle);
+			controlsBody.add(planeRow);
+			controlsBody.add(checkRow(gridToggle, regionCoordsToggle, regionIdsToggle));
+			controlsBody.add(checkRow(npcDotsToggle, trackCameraToggle));
+			planePanel.add(controlsBody);
 			add(planePanel);
 			addMouseListener(new MouseAdapter()
 			{
@@ -658,6 +779,32 @@ final class Map3DWorldMapDock extends JDialog
 			{
 				g.dispose();
 			}
+		}
+
+		private JPanel checkRow(Component... components)
+		{
+			JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 1));
+			row.setOpaque(false);
+			row.setAlignmentX(Component.LEFT_ALIGNMENT);
+			for (Component component : components)
+			{
+				row.add(component);
+			}
+			return row;
+		}
+
+		private void setControlsCollapsed(boolean value)
+		{
+			if (controlsCollapsed == value)
+			{
+				return;
+			}
+			controlsCollapsed = value;
+			controlsBody.setVisible(!controlsCollapsed);
+			collapseButton.setText(controlsCollapsed ? "+" : "-");
+			planePanel.revalidate();
+			doLayout();
+			repaint();
 		}
 
 		@Override

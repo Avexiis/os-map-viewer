@@ -961,6 +961,14 @@ public class MapPanel extends JComponent implements MapView
 	public void paintMapSnapshot(Graphics2D g0, Rectangle target, double centerWorldTileX, double centerWorldTileY,
 	                             int plane, double pixelsPerTile, boolean includeIcons, boolean includeLabels)
 	{
+		paintMapSnapshot(g0, target, centerWorldTileX, centerWorldTileY, plane, pixelsPerTile,
+			includeIcons, includeLabels, false);
+	}
+
+	public void paintMapSnapshot(Graphics2D g0, Rectangle target, double centerWorldTileX, double centerWorldTileY,
+	                             int plane, double pixelsPerTile, boolean includeIcons, boolean includeLabels,
+	                             boolean forceFullLod)
+	{
 		if (g0 == null || target == null || target.width <= 0 || target.height <= 0 || pixelsPerTile <= 0.0)
 		{
 			return;
@@ -976,7 +984,7 @@ public class MapPanel extends JComponent implements MapView
 		double centerY = logicalYForWorldTile(centerWorldTileY);
 		double scale = Math.max(0.05, pixelsPerTile);
 		double snapshotZoom = scale * HI_PX_PER_TILE;
-		LOD lodNow = LOD.forZoom(snapshotZoom);
+		LOD lodNow = forceFullLod ? LOD.FULL : LOD.forZoom(snapshotZoom);
 		double originX = target.getCenterX() - centerX * scale;
 		double originY = target.getCenterY() - centerY * scale;
 		Rectangle visibleMap = visibleMapPixelRect(target, originX, originY, scale, 2);

@@ -99,7 +99,13 @@ final class ObjectMeshBuilder
 				continue;
 			}
 
-			SceneMeshBuffer data = planeData[sourcePlane];
+			int displayPlane = SceneTileFlags.displayPlaneForSource(region, sourcePlane, localX, localY);
+			if (displayPlane < 0 || displayPlane >= planeData.length || planeData[displayPlane] == null)
+			{
+				continue;
+			}
+
+			SceneMeshBuffer data = planeData[displayPlane];
 			ObjectDefinition definition = completionStateDefinition(objectManager, objectManager.getObject(location.getId()));
 			if (definition == null || definition.getObjectModels() == null)
 			{
@@ -112,6 +118,7 @@ final class ObjectMeshBuilder
 				textureProvider,
 				textureSet,
 				definition,
+				displayPlane,
 				heightMaps[sourcePlane],
 				localX,
 				localY,
@@ -241,6 +248,7 @@ final class ObjectMeshBuilder
 		RSTextureProvider textureProvider,
 		SceneTextureSet textureSet,
 		ObjectDefinition definition,
+		int displayPlane,
 		TerrainHeightMap heightMap,
 		int localX,
 		int localY,
@@ -290,7 +298,7 @@ final class ObjectMeshBuilder
 		}
 
 		return new AnimatedObjectMesh(
-			location.getPosition().getZ(),
+			displayPlane,
 			definition.getAnimationID(),
 			animationProvider.frameLengths(sequence),
 			sequence.frameStep,

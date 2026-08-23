@@ -60,6 +60,18 @@ final class SceneTileFlags
 			&& (tileSetting(region, sourcePlane, x, y) & RENDER_ON_LOWER_Z) != 0;
 	}
 
+	static int displayPlaneForSource(Region region, int sourcePlane, int x, int y)
+	{
+		for (int displayPlane = 0; displayPlane <= sourcePlane && displayPlane < Region.Z; displayPlane++)
+		{
+			if (visibleOnDisplayPlane(region, displayPlane, sourcePlane, x, y))
+			{
+				return displayPlane;
+			}
+		}
+		return sourcePlane;
+	}
+
 	static boolean visibleOnDisplayPlane(Region region, int displayPlane, int sourcePlane, int x, int y)
 	{
 		int visualPlane = visualPlane(region, displayPlane, x, y);
@@ -67,15 +79,21 @@ final class SceneTileFlags
 		{
 			return false;
 		}
+		if (displayPlane == 0
+			&& sourcePlane == 0
+			&& isBridge(region, x, y)
+			&& canRenderBaseLayer(region, displayPlane, x, y))
+		{
+			return true;
+		}
 		if (sourcePlane == visualPlane && canRenderBaseLayer(region, displayPlane, x, y))
 		{
 			return true;
 		}
 
-		int lowerSourcePlane = visualPlane + 1;
-		return sourcePlane == lowerSourcePlane
-			&& lowerSourcePlane < Region.Z
-			&& renderOnLowerPlane(region, lowerSourcePlane, x, y);
+		return displayPlane < Region.Z - 1
+			&& sourcePlane == visualPlane + 1
+			&& renderOnLowerPlane(region, displayPlane + 1, x, y);
 	}
 
 	static boolean isBridge(Region region, int x, int y)
