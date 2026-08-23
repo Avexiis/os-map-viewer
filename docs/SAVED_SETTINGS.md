@@ -13,6 +13,7 @@ Saved settings include:
 - Last viewed region, plane, and zoom.
 - Whether to jump to the last region on start.
 - Map memory budget.
-- Last 3D camera tile, height, rotation, pitch, FOV, antialiasing, view distance, and overlay priority.
+- Last 3D camera tile, height, rotation, pitch, FOV, antialiasing, view distance, visible planes, minimap visibility, and overlay priority.
+- 3D NPC visibility, NPC outline visibility, NPC hover text visibility, NPC outline color, and tile hover color.
 - 3D cache prompt preference.
 - Plugin settings.

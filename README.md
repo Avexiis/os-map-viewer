@@ -29,6 +29,7 @@ The Options menu includes a map printer that uses the RuneLite cache library to 
 - Pan and zoom the map.
 - Fly around the game world in 3D with a free camera.
 - See NPCs at known OSRS spawn locations, with idle or walk animation when cache data supports it.
+- Use the 3D controls panel to change rendering, view distance, visible planes, NPC display, overlay colors, and jump targets.
 - Use the 3D minimap, floating world map, and area search to navigate.
 - Change map planes.
 - Search for map areas by name.

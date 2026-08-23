@@ -22,7 +22,7 @@ The viewer resumes your last 3D camera position. If no saved 3D state exists, it
 - Plugin sidebars stay available when the active plugin supports 3D.
 - Nearby regions stream in as you move.
 - NPCs appear at known OSRS spawn locations. They use idle animations when available, and NPCs with walk animations can wander near their spawn tile.
-- The minimap stays in the top-right corner and can be hidden.
+- The minimap stays near the top-right corner and can be hidden.
 - `Open World Map` opens a movable floating world map.
 - The area search box stays below the 3D viewer.
 - Click `Switch to 2D Map` or press `Esc` to leave 3D mode.
@@ -38,19 +38,49 @@ The viewer resumes your last 3D camera position. If no saved 3D state exists, it
 - Hold middle mouse and move the mouse: aim the camera.
 - Move the mouse over the scene: highlight the tile under the cursor and show its world tile coordinates.
 
-Click `View Controls` in the 3D toolbar to see the current controls in the viewer. If the active plugin has 3D controls, they appear in that overlay too.
+Click `View Controls` in the `3D Map Controls` panel to show a small controls overlay in the viewer. If the active plugin has 3D controls, they appear in that overlay too.
 
-## Viewer Buttons
+## 3D Map Controls Panel
+
+The floating `3D Map Controls` panel is in the top right. Click the arrow button to collapse or expand it.
+
+Main buttons:
 
 - `Lock Camera`: freezes camera movement and rotation. Tile hover still works.
 - `Debug`: shows rendering and performance details.
-- `AA`: changes multisample antialiasing.
-- `View`: changes streamed region distance.
-- `Overlays Front` / `Overlays Occluded`: controls whether plugin overlays draw through terrain and objects.
-- `FOV`: adjusts the camera field of view.
-- `View Controls`: shows or hides the controls overlay.
-- `Hide Minimap`: hides the minimap and world-map button.
+- `View Controls`: shows or hides the in-scene controls overlay.
+- `Hide Minimap` / `Show Minimap`: hides or shows the minimap and world-map button.
 - `Switch to 2D Map`: closes the 3D viewer.
+
+Rendering and status controls:
+
+- `AA`: changes edge smoothing.
+- `View`: changes how many nearby regions stream around the camera.
+- `FOV`: adjusts the camera field of view.
+- Status text shows heading, camera tile, and current view distance.
+
+Overlay controls:
+
+- `Hover Color`: changes the tile hover outline color.
+- `Overlays Front` / `Overlays Occluded`: controls whether plugin overlays draw through terrain and objects.
+
+Jump controls:
+
+- `Region`: jumps to a region ID and plane.
+- `RX` / `RY`: jumps to region coordinates and plane.
+- `X` / `Y`: jumps to a world tile and plane.
+
+Plane controls:
+
+- Plane checkboxes show planes from `0` up to the highest selected plane.
+- Plane `0` always stays visible.
+
+NPC controls:
+
+- `NPCs`: shows or hides NPCs.
+- `Outlines`: shows or hides NPC outlines.
+- `Hover Text`: shows or hides NPC hover text.
+- `Outline Color`: changes the NPC outline color.
 
 ## Plugins In 3D
 
