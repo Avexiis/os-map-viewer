@@ -1,241 +1,60 @@
 # OS Map Viewer
-<img width="1917" height="1048" alt="image" src="https://github.com/user-attachments/assets/4e4a7a7b-323f-4873-a61d-4c8fccbb6e7a" />
-
+<img width="1917" height="1048" alt="image" src="https://github.com/user-attachments/assets/5558f01c-c0bd-4244-af9a-2ea187ec7c10" /> 
 OS Map Viewer is a desktop map viewer for the Old School RuneScape world map.
 
-The core app is only a map viewer. Extra tools are added through plugins. The app includes one built-in plugin for RuneLite and HDOS ground markers.
+The app includes a 2D world map, a 3D cache-backed scene viewer, cache-backed NPC spawns, and built-in plugins for RuneLite/HDOS ground markers and shortest-path routing.
+
+## 3D Mode
+
+When the app opens, choose either `2D Map` or `3D Viewer`. You can also open 3D mode later from the Options menu. 3D mode reads your local OSRS cache and renders nearby regions, objects, and NPCs around a free camera.
+
+Preview:
+<img width="1917" height="1047" alt="image" src="https://github.com/user-attachments/assets/ed9c3708-1f3e-46dc-80ed-3982a5482b96" />
+
+3D mode does **NOT** rely on a Jagex client and does **NOT** modify game files.
+
+## Map Printer
+
+The Options menu includes a map printer that uses the RuneLite cache library to read your installed game cache and print a new 2D atlas after game updates.
 
 ## Requirements
 
 - Java 17 or newer
 - Gradle, or the included `gradlew` script
 
-## Run From Source
-
-Build the app:
-
-```bash
-./gradlew build
-```
-
-Run the built app:
-
-```bash
-java -jar build/libs/OSMapViewer.jar
-```
-
-You can also run the Gradle app task:
-
-```bash
-./gradlew run
-```
-
 ## Main Features
 
 - View the bundled OSRS world map.
+- Choose 2D or 3D mode on startup.
 - Pan and zoom the map.
+- Fly around the game world in 3D with a free camera.
+- See NPCs at known OSRS spawn locations, with idle or walk animation when cache data supports it.
+- Use the 3D minimap, floating world map, and area search to navigate.
 - Change map planes.
 - Search for map areas by name.
 - Jump to a region ID, region coordinates, or world tile.
 - Show or hide grid lines.
 - Show region IDs or region coordinates over the map.
 - Show or hide atlas text and map icons.
+- Show tooltips for supported map icon locations.
 - Lock the map so it cannot be moved or zoomed by mistake.
 - Change the map background color.
 - Save your last viewed region and zoom level.
-- Enable, disable, and load plugins.
-
-## Basic Map Use
-
-- Drag the map to pan.
-- Use the mouse wheel to zoom.
-- Hover a tile to see the tile selector.
-- Use the floating `Map Controls` panel in the top right for grid, plane, jump, and lock options.
-- Click the arrow button on the `Map Controls` panel to hide or show it.
-
-## Area Search
-
-The search box is at the bottom of the app.
-
-- Type at least 3 letters.
-- Matching map areas appear in a dropdown.
-- Press `Tab` to fill the best match.
-- Press `Enter` to jump to the selected match.
-- You can also click a result in the dropdown.
-
-Jumping to an area zooms in and centers it in the viewer.
-
-## Options Menu
-
-The hamburger button in the left rail opens the main options menu.
-
-From this menu you can:<img width="1918" height="1045" alt="image" src="https://github.com/user-attachments/assets/fbfa3b39-40a9-4b0f-b0a8-75f22bedb417" />
-
-
-- Open `Plugins...`
-- Load a plugin JAR file.
-- Change the map background color.
-- Turn `Jump to last region on start` on or off.
-- Change the map memory budget.
-
-The memory budget controls how much RAM the map cache can use. The app offers presets from `512 MB` to `5 GB`, plus `Unlimited`. Unlimited mode shows a warning before it is enabled.
-
-## Plugins
-
-Plugins are disabled by default.
-
-When no plugins are enabled, OS Map Viewer only shows the map viewer and core map controls. A small message tells you how to enable plugins.
-
-To enable plugins:
-
-1. Click the hamburger button in the left rail.
-2. Click `Plugins...`.
-3. Check the plugin you want to enable.
-4. Close the plugin window.
-
-To start with plugins enabled next time:
-
-1. Open `Plugins...`.
-2. Check `Start with plugins enabled`.
-
-To load an external plugin:
-
-1. Click the hamburger button.
-2. Click `Load plugin JAR...`.
-3. Choose a compatible plugin JAR file.
-
-Enabled plugins add buttons to the left rail. Click a plugin button to open its plugin menu.
-
-## Built-In Ground Markers Plugin
-<img width="1918" height="1045" alt="image" src="https://github.com/user-attachments/assets/d688b50c-f635-4f70-844a-e828aadcd75b" />
-
-The built-in `Ground Markers` plugin can view, create, import, and export ground marker JSON for RuneLite-style marker packs.
-
-It does not write to RuneLite or HDOS config files. It only reads files you allow it to read, then lets you export marker JSON.
-
-### Enable The Plugin
-
-1. Open the hamburger menu.
-2. Click `Plugins...`.
-3. Check `Ground Markers`.
-
-When enabled, the plugin adds:
-
-- A marker list on the left.
-- A marker editor on the right.
-- A Ground Markers button in the left rail.
-
-### Import Markers
-
-Click the Ground Markers button in the left rail.
-
-The plugin menu has these import options:
-
-- `Import from RuneLite`
-- `Import from HDOS`
-- `Import JSON file`
-
-For RuneLite and HDOS, the app asks before it searches common config locations. If it cannot find a file, or if you choose not to search, it lets you pick the config or profile file yourself.
-
-The importer supports RuneLite config files, HDOS profile files, and JSON files that use the RuneLite ground marker format.
-
-### Create Or Edit Markers
-
-With the Ground Markers plugin enabled:
-
-- Click a tile to select it.
-- Use the right panel to set the label, color, and alpha.
-- Click `Add Marker` to create a marker.
-- Select an existing marker, edit the fields, then click `Update Marker`.
-- Click `Delete Marker` to remove the selected marker.
-
-Hold `Ctrl` while clicking tiles to select more than one tile. Then click `Add Marker(s)` to add markers to all selected tiles.
-
-The marker list on the left has three tabs:
-
-- `All`: every marker in the current project.
-- `Visible Area`: markers in the visible map area and current plane.
-- `New Tiles`: markers created in this app session that were not imported from RuneLite or HDOS config files.
-
-Clicking a marker in the list zooms in and centers it on the map.
-
-### Region Selection For Export
-
-Hold `Shift` to enter region selection mode.
-
-- The map shows a dark region overlay while `Shift` is held.
-- Click a region to select it for export.
-- Click more regions while holding `Shift` to select more than one.
-- Selected regions stay highlighted after you release `Shift`.
-- Click normally on the map to clear the selected regions.
-
-Region selection is only used for export.
-
-### Export Markers
-
-Click the Ground Markers button in the left rail, then open `Export`.
-
-Export options:
-
-- `Current region to clipboard`
-- `All markers to clipboard`
-- `Selected regions to clipboard`
-- `Current region to file`
-- `All markers to file`
-- `Selected regions to file`
-
-Clipboard exports can be pasted into RuneLite or HDOS. File exports save JSON that RuneLite or HDOS can import.
-
-### Import Markers Into RuneLite Or HDOS
-
-After you copy marker JSON to your clipboard:
-
-1. Log into the game.
-2. Right-click the world map icon below the minimap.
-3. Click **Import Ground Markers**.
-4. RuneLite or HDOS will import the markers from your clipboard.
-
-## Saved Settings
-
-OS Map Viewer saves settings here:
-
-```text
-user.home/os-map-viewer/config.json
-```
-
-Saved settings include:
-
-- Whether plugins should start enabled.
-- Map background color.
-- Last viewed region, plane, and zoom.
-- Whether to jump to the last region on start.
-- Map memory budget.
-- Plugin settings.
-
-## Notes For Plugin Developers
-
-The plugin API document is at:
-
-```text
-docs/PLUGIN_API.md
-```
-
-Build the API JAR with:
-
-```bash
-./gradlew buildPluginApi
-```
-
-The API lets plugins do things like:
-
-- Add a button to the left rail.
-- Add panels to the left or right side of the app.
-- Draw overlays on the map.
-- Show tooltips for map tiles.
-- Handle map clicks and tile selection.
-- Search bundled map area metadata.
-- Save plugin settings in the shared config manager.
-
-Plugins are loaded from JAR files with Java `ServiceLoader`. See `docs/PLUGIN_API.md` for the exact setup.
-## 
+- Enable, disable, and load plugins. One plugin can be active at a time.
+- Use ground markers and shortest-path overlays in both 2D and 3D.
+
+## Documentation
+
+- [Basic Map Use](docs/BASIC_MAP_USE.md)
+- [Area Search](docs/AREA_SEARCH.md)
+- [Options Menu](docs/OPTIONS_MENU.md)
+- [Plugins](docs/PLUGINS.md)
+- [Built-In Shortest Path Plugin](docs/SHORTEST_PATH_PLUGIN.md)
+- [Built-In Ground Markers Plugin](docs/GROUND_MARKERS_PLUGIN.md)
+- [3D Mode](docs/3D_MODE.md)
+- [Saved Settings](docs/SAVED_SETTINGS.md)
+- [Notes For Developers](docs/DEVELOPER_NOTES.md)
+- [3rd Party Attributions](docs/ATTRIBUTIONS.md)
+
+##
 #### This project was developed on Linux!
