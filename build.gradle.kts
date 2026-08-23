@@ -3,8 +3,42 @@ plugins {
     id("com.github.johnrengelman.shadow") version "8.1.1"
 }
 
+version = "1.1.0"
+// Update this when replacing lib/runelite-cache/cache-<version>-SNAPSHOT-shaded.jar.
+val runeliteCacheVersion = "1.12.37"
+val runeliteCacheShadedJar = layout.projectDirectory
+    .file("lib/runelite-cache/cache-$runeliteCacheVersion-SNAPSHOT-shaded.jar")
+    .asFile
+val lwjglVersion = "3.4.0"
+val jomlVersion = "1.10.5"
+val lwjglBundledNativeClassifiers = linkedSetOf(
+    "natives-windows",
+    "natives-windows-arm64",
+    "natives-linux",
+    "natives-linux-arm64",
+    "natives-linux-arm32",
+    "natives-macos",
+    "natives-macos-arm64"
+)
+val nvidiaPrimeEnvironment = mapOf(
+    "__NV_PRIME_RENDER_OFFLOAD" to "1",
+    "__VK_LAYER_NV_optimus" to "NVIDIA_only",
+    "__GLX_VENDOR_LIBRARY_NAME" to "nvidia"
+)
+val useNvidiaPrime = providers.gradleProperty("osmapviewer.nvidiaPrime")
+    .map { value ->
+        value.equals("true", ignoreCase = true)
+            || value.equals("yes", ignoreCase = true)
+            || value.equals("on", ignoreCase = true)
+            || value == "1"
+    }
+    .orElse(false)
+
 repositories {
     mavenCentral()
+    maven {
+        url = uri("https://repo.runelite.net")
+    }
 }
 
 java {
@@ -17,9 +51,45 @@ application {
     mainClass.set("com.xeon.App")
 }
 
+tasks.named<JavaExec>("run") {
+    if (useNvidiaPrime.get())
+    {
+        environment(nvidiaPrimeEnvironment)
+    }
+}
+
+val generatedResourcesDir = layout.buildDirectory.dir("generated/resources/main")
+val generateAppVersionProperties by tasks.registering {
+    val outputFile = generatedResourcesDir.map { it.file("com/xeon/app.properties") }
+    inputs.property("version", project.version.toString())
+    outputs.file(outputFile)
+    doLast {
+        val file = outputFile.get().asFile
+        file.parentFile.mkdirs()
+        file.writeText("version=${project.version}\n")
+    }
+}
+
+sourceSets {
+    main {
+        resources.srcDir(generatedResourcesDir)
+    }
+}
+
 dependencies {
     implementation(project(":api"))
     implementation("com.formdev:flatlaf:2.6")
+    implementation(platform("org.lwjgl:lwjgl-bom:$lwjglVersion"))
+    implementation("org.joml:joml:$jomlVersion")
+    implementation("org.lwjgl:lwjgl")
+    implementation("org.lwjgl:lwjgl-opengl")
+    implementation("net.runelite:rlawt:1.8")
+    compileOnly(files(runeliteCacheShadedJar))
+    runtimeOnly(files(runeliteCacheShadedJar))
+    lwjglBundledNativeClassifiers.forEach { classifier ->
+        runtimeOnly("org.lwjgl:lwjgl::$classifier")
+        runtimeOnly("org.lwjgl:lwjgl-opengl::$classifier")
+    }
 }
 
 tasks.register<JavaExec>("dumpMapAreaLabels") {
@@ -31,11 +101,34 @@ tasks.register<JavaExec>("dumpMapAreaLabels") {
     workingDir = projectDir
 }
 
+tasks.register<JavaExec>("checkShortestPathData") {
+    group = "verification"
+    description = "Validates bundled shortest-path collision and transport resources."
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.xeon.tools.ShortestPathDataCheck")
+    workingDir = projectDir
+}
+
+tasks.register<JavaExec>("inspectAtlas") {
+    group = "verification"
+    description = "Opens a Swing inspector for a .atlas file. Pass --args=\"path/to/file.atlas\" to inspect another atlas."
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.xeon.tools.AtlasInspectorApp")
+    workingDir = projectDir
+}
+
 tasks.withType<Jar>().configureEach {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     manifest {
         attributes["Main-Class"] = "com.xeon.App"
+        attributes["Implementation-Version"] = project.version
     }
+}
+
+tasks.processResources {
+    dependsOn(generateAppVersionProperties)
 }
 
 tasks.shadowJar {

@@ -9,84 +9,135 @@ import java.awt.Rectangle;
 import java.util.List;
 import java.util.function.IntConsumer;
 
-public interface MapView {
-    void addLayer(MapLayer layer);
+public interface MapView
+{
+	void addLayer(MapLayer layer);
 
-    void removeLayer(MapLayer layer);
+	void removeLayer(MapLayer layer);
 
-    void setActiveTool(MapTool activeTool);
+	void setActiveTool(MapTool activeTool);
 
-    void clearActiveTool(MapTool tool);
+	void clearActiveTool(MapTool tool);
 
-    void addPlaneChangeListener(IntConsumer listener);
+	void addPlaneChangeListener(IntConsumer listener);
 
-    void removePlaneChangeListener(IntConsumer listener);
+	void removePlaneChangeListener(IntConsumer listener);
 
-    void addVisibleAreaChangeListener(Runnable listener);
+	void addVisibleAreaChangeListener(Runnable listener);
 
-    void removeVisibleAreaChangeListener(Runnable listener);
+	void removeVisibleAreaChangeListener(Runnable listener);
 
-    void setShowGrid(boolean value);
+	void setShowGrid(boolean value);
 
-    void setShowRegionIds(boolean value);
+	void setShowRegionIds(boolean value);
 
-    void setMapLocked(boolean value);
+	void setMapLocked(boolean value);
 
-    boolean isMapLocked();
+	boolean isMapLocked();
 
-    Color getMapBackgroundColor();
+	Color getMapBackgroundColor();
 
-    void setMapBackgroundColor(Color color);
+	void setMapBackgroundColor(Color color);
 
-    void setPlane(int z);
+	void setPlane(int z);
 
-    int getPlane();
+	int getPlane();
 
-    int getPlaneCount();
+	int getPlaneCount();
 
-    double getZoom();
+	double getZoom();
 
-    double getEffectiveZoom();
+	double getEffectiveZoom();
 
-    Tile getHoverTile();
+	Tile getHoverTile();
 
-    int getHoverRegionId();
+	int getHoverRegionId();
 
-    boolean isRegionSelectionActive();
+	default int getHoveredRegionId()
+	{
+		return getHoverRegionId();
+	}
 
-    int getTotalWidthTiles();
+	default void addHoveredRegionChangeListener(RegionChangeListener listener)
+	{
+	}
 
-    int getTotalHeightTiles();
+	default void removeHoveredRegionChangeListener(RegionChangeListener listener)
+	{
+	}
 
-    void focusTile(Tile tile, Double targetZoom);
+	default int getSelectedRegionId()
+	{
+		return -1;
+	}
 
-    void focusRegion(int regionId, int plane, Double targetZoom);
+	default void setSelectedRegionId(int regionId)
+	{
+	}
 
-    List<MapArea> searchMapAreas(String query, int limit);
+	default void clearSelectedRegionId()
+	{
+		setSelectedRegionId(-1);
+	}
 
-    List<MapArea> mapAreasAt(Tile tile);
+	default void addSelectedRegionChangeListener(RegionChangeListener listener)
+	{
+	}
 
-    MapArea nearestMapArea(Tile tile, int maxDistanceTiles);
+	default void removeSelectedRegionChangeListener(RegionChangeListener listener)
+	{
+	}
 
-    Tile getCenterTile();
+	boolean isRegionSelectionActive();
 
-    int getCenterRegionId();
+	int getTotalWidthTiles();
 
-    Tile pointToTile(Point point);
+	int getTotalHeightTiles();
 
-    int regionIdFor(Tile tile);
+	void focusTile(Tile tile, Double targetZoom);
 
-    Rectangle tileToRect(Tile tile);
+	void focusRegion(int regionId, int plane, Double targetZoom);
 
-    Rectangle regionToRect(int regionId);
+	List<MapArea> searchMapAreas(String query, int limit);
 
-    List<Integer> visibleRegionIds(Rectangle visibleMap);
+	List<MapArea> mapAreasAt(Tile tile);
 
-    List<Integer> currentVisibleRegionIds();
+	MapArea nearestMapArea(Tile tile, int maxDistanceTiles);
 
-    void repaintVisible();
+	Tile getCenterTile();
 
-    void repaintTile(Tile tile);
+	int getCenterRegionId();
 
-    void repaintRegion(int regionId);
+	default Rectangle visibleViewRect()
+	{
+		return new Rectangle();
+	}
+
+	Tile pointToTile(Point point);
+
+	int regionIdFor(Tile tile);
+
+	Rectangle tileToRect(Tile tile);
+
+	Rectangle regionToRect(int regionId);
+
+	default Rectangle regionTileBounds(int regionId)
+	{
+		return new Rectangle();
+	}
+
+	default Rectangle tileBounds(Rectangle mapRect)
+	{
+		return new Rectangle();
+	}
+
+	List<Integer> visibleRegionIds(Rectangle visibleMap);
+
+	List<Integer> currentVisibleRegionIds();
+
+	void repaintVisible();
+
+	void repaintTile(Tile tile);
+
+	void repaintRegion(int regionId);
 }

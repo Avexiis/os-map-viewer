@@ -1,0 +1,1520 @@
+# OS Map Viewer core map tooltip locations.
+# Generated from RuneLite core worldmap plugin location enums.
+# Columns: source	tooltip	x	y	z
+AgilityCourseLocation	Agility Pyramid	3347	2827	0
+AgilityCourseLocation	Al Kharid Rooftop Course	3272	3195	0
+AgilityCourseLocation	Ape Atoll Agility Course	2752	2742	0
+AgilityCourseLocation	Ardougne Rooftop Course	2673	3298	0
+AgilityCourseLocation	Barbarian Outpost Agility Course	2544	3569	0
+AgilityCourseLocation	Brimhaven Agility Arena	2806	3193	0
+AgilityCourseLocation	Canifis Rooftop Course	3506	3490	0
+AgilityCourseLocation	Colossal Wyrm Course	1649	2930	0
+AgilityCourseLocation	Draynor Village Rooftop Course	3103	3279	0
+AgilityCourseLocation	Falador Rooftop Course	3035	3342	0
+AgilityCourseLocation	Gnome Stronghold Agility Course	2474	3436	0
+AgilityCourseLocation	Penguin Agility Course	2638	4041	0
+AgilityCourseLocation	Pollnivneach Rooftop Course	3350	2963	0
+AgilityCourseLocation	Prifddinas Agility Course	3253	6109	0
+AgilityCourseLocation	Rellekka Rooftop Course	2624	3677	0
+AgilityCourseLocation	Seers' Village Rooftop Course	2728	3488	0
+AgilityCourseLocation	Shayzien Agility Course	1551	3632	0
+AgilityCourseLocation	Varrock Rooftop Course	3219	3414	0
+AgilityCourseLocation	Werewolf Agility Course	3542	3463	0
+AgilityCourseLocation	Wilderness Agility Course	2997	3916	0
+DungeonLocation	Abandoned Mine	3439	3232	0
+DungeonLocation	Abandoned Mine (secret entrance)	3452	3244	0
+DungeonLocation	Wine Cellar	1447	2938	0
+DungeonLocation	Backstage Entrance	1475	2927	0
+DungeonLocation	Alchemical Society	1388	2916	0
+DungeonLocation	Moonrise Brewery and Winery	1356	2920	0
+DungeonLocation	Ancient Cavern	2511	3508	0
+DungeonLocation	Ape Atoll Dungeon	2762	2703	0
+DungeonLocation	Ardougne Castle basement	2569	3296	0
+DungeonLocation	Ardougne Rat Pits	2560	3320	0
+DungeonLocation	Ardougne Sewers	2631	3294	0
+DungeonLocation	Ardougne Sewers	2586	3235	0
+DungeonLocation	Ardougne Sewers	2528	3303	0
+DungeonLocation	Asgarnian Ice Dungeon	3007	3150	0
+DungeonLocation	Barbarian camp jail	1581	3428	0
+DungeonLocation	Brimhaven Agility Arena	2808	3194	0
+DungeonLocation	Brimhaven Dungeon	2743	3154	0
+DungeonLocation	Brimhaven Dungeon	2759	3062	0
+DungeonLocation	Brimstail's Cave	2402	3419	0
+DungeonLocation	Callisto's Den	3292	3850	0
+DungeonLocation	Cam Torum	1435	3131	0
+DungeonLocation	Barracks	1640	3166	0
+DungeonLocation	Crypt	1692	3089	0
+DungeonLocation	Crypt	1692	3084	0
+DungeonLocation	Tunnel	1613	3174	0
+DungeonLocation	Tunnel	1622	3165	0
+DungeonLocation	Catacombs of Kourend	1636	3673	0
+DungeonLocation	Chambers of Xeric	1232	3573	0
+DungeonLocation	Champions' Challenge	3188	3355	0
+DungeonLocation	Chaos Druid Tower dungeon	2561	3356	0
+DungeonLocation	Chasm of Fire	1432	3670	0
+DungeonLocation	Clock Tower Dungeon	2568	3229	0
+DungeonLocation	Corporeal Beast cave	3202	3681	0
+DungeonLocation	Corsair Cove Dungeon	2522	2861	0
+DungeonLocation	Corsair Cove Dungeon	2482	2891	0
+DungeonLocation	Crabclaw Caves	1643	3449	0
+DungeonLocation	Crabclaw Caves Tunnel (quest)	1671	9800	0
+DungeonLocation	Crandor Dungeon	2833	3256	0
+DungeonLocation	Crash Island Dungeon	2920	2721	0
+DungeonLocation	Crumbling Tower basement	2130	2994	0
+DungeonLocation	Cave passage	1270	3435	0
+DungeonLocation	Cave passage	1258	3431	0
+DungeonLocation	Deep Wilderness Dungeon	3044	3924	0
+DungeonLocation	Draynor Manor basement	3114	3357	0
+DungeonLocation	Draynor Manor basement	3091	3362	0
+DungeonLocation	Draynor Sewers	3083	3272	0
+DungeonLocation	Draynor Sewers	3117	3244	0
+DungeonLocation	Dwarven Mine	3017	3450	0
+DungeonLocation	Dwarven Mine	3058	3377	0
+DungeonLocation	Ectofuntus dungeon	3651	3519	0
+DungeonLocation	Edgeville Dungeon	3096	3469	0
+DungeonLocation	Edgeville Dungeon	3115	3452	0
+DungeonLocation	Edgeville Dungeon	3087	3571	0
+DungeonLocation	Entrana Dungeon	2819	3374	0
+DungeonLocation	Escape Caves	3260	3833	0
+DungeonLocation	Escape Caves	3320	3831	0
+DungeonLocation	Escape Caves	3284	3808	0
+DungeonLocation	Escape Caves	3282	3775	0
+DungeonLocation	Miscellania and Etceteria Dungeon	2619	3865	0
+DungeonLocation	Mole Hole	2985	3387	0
+DungeonLocation	Mole Hole	2997	3376	0
+DungeonLocation	Ferox Enclave Dungeon	3153	3643	0
+DungeonLocation	Forsaken Tower basement	1381	3825	0
+DungeonLocation	Forthos Dungeon	1701	3574	0
+DungeonLocation	Forthos Dungeon	1669	3567	0
+DungeonLocation	Fortis Colosseum	1794	3107	0
+DungeonLocation	Fremennik Slayer Dungeon	2796	3615	0
+DungeonLocation	The Gauntlet	3227	6116	0
+DungeonLocation	Giants' Den	1419	3588	0
+DungeonLocation	Giants' Foundry	3360	3150	0
+DungeonLocation	Goblin Cave	2622	3393	0
+DungeonLocation	God Wars Dungeon	2917	3747	0
+DungeonLocation	Grand Tree Tunnels	2462	3496	0
+DungeonLocation	Gryphon Dungeon	3120	2490	0
+DungeonLocation	Gryphon Dungeon	3234	2418	0
+DungeonLocation	H.A.M. Hideout	3164	3252	0
+DungeonLocation	Headless Beast Cave	1211	3647	0
+DungeonLocation	Heroes' Guild mine	2891	3507	0
+DungeonLocation	Hespori Patch	1231	3729	0
+DungeonLocation	Hunter's End	3115	3677	0
+DungeonLocation	Hunter Guild Caverns	1557	3049	0
+DungeonLocation	Ice Queen's Lair	2846	3516	0
+DungeonLocation	Ice Queen's Lair	2856	3519	0
+DungeonLocation	Ice Queen's Lair	2822	3510	0
+DungeonLocation	Ice Troll Caves	2400	3889	0
+DungeonLocation	Ice Troll Caves	2315	3894	0
+DungeonLocation	Isle of Souls Dungeon	2308	2919	0
+DungeonLocation	Iorwerth Dungeon	3224	6044	0
+DungeonLocation	Iorwerth Camp cave	2200	3262	0
+DungeonLocation	Iorwerth Camp cave	3224	6014	0
+DungeonLocation	Jogre Dungeon	2824	3118	0
+DungeonLocation	Jormungand's Prison	2464	4012	0
+DungeonLocation	Kalphite Cave	3319	3122	0
+DungeonLocation	Kalphite Lair	3226	3108	0
+DungeonLocation	Karamja Dungeon	2855	3168	0
+DungeonLocation	Karuulm Slayer Dungeon	1308	3807	0
+DungeonLocation	Kasonde Shaw's Hideout	1191	3411	0
+DungeonLocation	King Black Dragon Lair	3016	3849	0
+DungeonLocation	Keldagrim Entrance	2730	3713	0
+DungeonLocation	Keldagrim Entrance	2795	3718	0
+DungeonLocation	Klenter's Pyramid	3294	2780	0
+DungeonLocation	Kraken (boss)	2279	10017	0
+DungeonLocation	Kraken Cove	2277	3611	0
+DungeonLocation	Lava Maze Dungeon	3068	3856	0
+DungeonLocation	Legends' Guild dungeon	2723	3375	0
+DungeonLocation	Lighthouse basement	2508	3644	0
+DungeonLocation	Lizardman Caves	1306	3574	0
+DungeonLocation	Lizardman Temple	1329	3669	0
+DungeonLocation	Lizardman Temple	1311	3686	0
+DungeonLocation	Lizardman Temple	1313	3663	0
+DungeonLocation	Lizardman Temple	1291	3657	0
+DungeonLocation	Lumbridge Castle cellar	3208	3218	0
+DungeonLocation	Lumbridge Swamp Caves	3168	3172	0
+DungeonLocation	Lunar Isle Mine	2141	3944	0
+DungeonLocation	Mage Arena Bank	3089	3956	0
+DungeonLocation	Neypotzli	1439	9602	0
+DungeonLocation	Melzar's Maze basement	2923	3250	0
+DungeonLocation	Mining Guild basement	3018	3339	0
+DungeonLocation	Miscellania and Etceteria Dungeon	2508	3846	0
+DungeonLocation	Morytania Spider Nest	3656	3409	0
+DungeonLocation	Mos Le'Harmless Cave	3747	2973	0
+DungeonLocation	Mos Le'Harmless Cave	3829	3062	0
+DungeonLocation	Mos Le'Harmless Cave	3814	3062	0
+DungeonLocation	Motherlode Mine	3059	9764	0
+DungeonLocation	Motherlode Mine	3055	9744	0
+DungeonLocation	Myreque Hideout	3494	3464	0
+DungeonLocation	Myreque Hideout	3488	3231	0
+DungeonLocation	Myreque Hideout	3508	3448	0
+DungeonLocation	Myths' Guild dungeon	2456	2847	0
+DungeonLocation	Myths' Guild dungeon	2444	2819	0
+DungeonLocation	Observatory Dungeon	2458	3186	0
+DungeonLocation	Observatory Dungeon	2436	3163	0
+DungeonLocation	Ogre Enclave	2505	3039	0
+DungeonLocation	Ourania Cave	2451	3231	0
+DungeonLocation	Paterdomus basement	3404	3506	0
+DungeonLocation	Paterdomus basement	3421	3484	0
+DungeonLocation	Port Phasmatys Brewery	3679	3498	0
+DungeonLocation	Port Sarim Rat Pits	3017	3232	0
+DungeonLocation	Quidamortem Cave	1213	3559	0
+DungeonLocation	Ranis Drakan's Crypt	3681	3231	0
+DungeonLocation	Red chinchompa hunting ground	2525	2894	0
+DungeonLocation	Revenant Caves	3124	3832	0
+DungeonLocation	Revenant Caves	3074	3655	0
+DungeonLocation	Revenant Caves	3067	3741	0
+DungeonLocation	River Elid Dungeon	3370	3132	0
+DungeonLocation	River Kelda	2835	10112	0
+DungeonLocation	Ruins of Camdozaal	2998	3493	0
+DungeonLocation	Salt Mine	2866	3941	0
+DungeonLocation	Scabaras Dungeon	3407	2848	0
+DungeonLocation	Skavid Caves	2521	3070	0
+DungeonLocation	Skavid Caves	2540	3054	0
+DungeonLocation	Skavid Caves	2552	3054	0
+DungeonLocation	Skavid Caves	2551	3035	0
+DungeonLocation	Skavid Caves (island)	2574	3028	0
+DungeonLocation	Skavid Caves (island)	2500	2991	0
+DungeonLocation	Skavid Caves	2528	3014	0
+DungeonLocation	Skavid Caves	2561	3025	0
+DungeonLocation	Scorpia cave	3243	3949	0
+DungeonLocation	Scorpia cave	3230	3952	0
+DungeonLocation	Scorpia cave	3231	3936	0
+DungeonLocation	Scrubfoot's Cave	2946	3507	0
+DungeonLocation	Shade Catacombs	3484	3321	0
+DungeonLocation	Shayzien Crypts	1482	3549	0
+DungeonLocation	Shayzien Prison	1464	3569	0
+DungeonLocation	Shellbane Gryphon Cave	3175	2478	0
+DungeonLocation	Shilo Village mine	2823	3001	0
+DungeonLocation	Silk Chasm	3320	3798	0
+DungeonLocation	Sisterhood Sanctuary	3727	3300	0
+DungeonLocation	Sisterhood Sanctuary	3724	3356	0
+DungeonLocation	Skeletal Tomb	3179	3684	0
+DungeonLocation	Slayer Tower basement	3416	3535	0
+DungeonLocation	Slepe basement	3718	3307	0
+DungeonLocation	Smoke Devil Dungeon	2411	3061	0
+DungeonLocation	Thermonuclear Smoke Devil (boss)	2377	9452	0
+DungeonLocation	Smoke Dungeon	3309	2962	0
+DungeonLocation	Sophanem Dungeon	3314	2797	0
+DungeonLocation	Sourhog Cave	3149	3347	0
+DungeonLocation	Stalker Den	1296	3374	0
+DungeonLocation	Stalker Den	1324	3364	0
+DungeonLocation	Stronghold of Security	3080	3420	0
+DungeonLocation	Stronghold Slayer Dungeon	2427	3424	0
+DungeonLocation	Taverley Dungeon	2883	3397	0
+DungeonLocation	Taverley Dungeon	2841	3424	0
+DungeonLocation	Temple - Desert Treasure 2	1174	3429	0
+DungeonLocation	Temple of Ikov	2676	3404	0
+DungeonLocation	Theatre of Blood	3676	3219	0
+DungeonLocation	Dragon Nest	1289	3134	0
+DungeonLocation	Passage to Gemstone Crab	1278	3168	0
+DungeonLocation	Passage to Gemstone Crab	1351	3124	0
+DungeonLocation	Passage to Gemstone Crab	1246	3036	0
+DungeonLocation	Tonali Cavern	1309	3104	0
+DungeonLocation	Tonali Cavern	1305	3035	0
+DungeonLocation	Tolna's rift	3308	3450	0
+DungeonLocation	Tombs of Amascut	3357	2711	0
+DungeonLocation	Tombs of Amascut	3358	9240	0
+DungeonLocation	Tower of Life dungeon	2649	3213	0
+DungeonLocation	Trahaearn Mine	3270	6049	0
+DungeonLocation	Tree Gnome Village Dungeon	2532	3155	0
+DungeonLocation	Troll Stronghold	2838	3690	0
+DungeonLocation	Troll Stronghold	2830	3677	0
+DungeonLocation	Troll Stronghold	2826	3647	0
+DungeonLocation	Tutorial Island mine	3110	3126	0
+DungeonLocation	Tutorial Island mine	3087	3119	0
+DungeonLocation	Ruins of Tapoyauik	1693	3231	0
+DungeonLocation	Ruins of Tapoyauik	1640	3221	0
+DungeonLocation	TzHaar City (Mor Ul Rek)	2862	9572	0
+DungeonLocation	Underground Pass	2312	3215	0
+DungeonLocation	Underground Pass	2433	3315	0
+DungeonLocation	Underground Pass	3336	5967	0
+DungeonLocation	Underwater	3760	3899	0
+DungeonLocation	Ruins of Uzer basement	3492	3090	0
+DungeonLocation	Wolf Den	1496	3132	0
+DungeonLocation	Varrock Sewers	3236	3458	0
+DungeonLocation	Varrock Sewers	3229	3504	0
+DungeonLocation	Vet'ion's Rest	3221	3788	0
+DungeonLocation	Volcanic Mine	3815	3808	0
+DungeonLocation	VTAM Corporation	3243	3383	0
+DungeonLocation	The Warrens	1812	3745	0
+DungeonLocation	Warriors' Guild basement	2832	3542	0
+DungeonLocation	Waterbirth Dungeon	2520	3740	0
+DungeonLocation	Waterbirth Dungeon	2542	3741	0
+DungeonLocation	Waterbirth Dungeon (sub-levels)	2545	10143	0
+DungeonLocation	Web Chasm	3184	3745	0
+DungeonLocation	Hole (shortcut to boat)	2853	3944	0
+DungeonLocation	Werewolf Agility Course	3542	3461	0
+DungeonLocation	White Knights' Castle Crypt	2964	3331	0
+DungeonLocation	White Wolf Tunnel	2876	3480	0
+DungeonLocation	White Wolf Tunnel	2819	3484	0
+DungeonLocation	Wilderness Agility Course Dungeon	3004	3963	0
+DungeonLocation	Wilderness God Wars Dungeon	3016	3739	0
+DungeonLocation	Wilderness Slayer Cave	3292	3746	0
+DungeonLocation	Wilderness Slayer Cave	3259	3666	0
+DungeonLocation	Witchaven Dungeon	2695	3283	0
+DungeonLocation	Wizards' Guild basement	2593	3085	0
+DungeonLocation	Wizards' Tower basement	3103	3162	0
+DungeonLocation	Woodcutting Guild dungeon	1603	3508	0
+DungeonLocation	Wyrmscraig Cavern	2562	2203	0
+DungeonLocation	Wyrmscraig Cavern	2540	2213	0
+DungeonLocation	Wyrmscraig Cavern	2529	2206	0
+DungeonLocation	Wyvern Cave	3745	3779	0
+DungeonLocation	Wyvern Cave (task only)	3677	3854	0
+DungeonLocation	Xeric's Lookout basement	1589	3526	0
+DungeonLocation	Yanille Agility Dungeon	2568	3122	0
+DungeonLocation	Yanille Agility Dungeon	2603	3078	0
+DungeonLocation	Zalcano's Prison	3280	6059	0
+DungeonLocation	Zogre cave	2484	3043	0
+MinigameLocation	Animation Room	2853	3537	0
+MinigameLocation	Barbarian Assault	2531	3569	0
+MinigameLocation	Brimhaven Agility Arena	2809	3191	0
+MinigameLocation	Burgh de Rott Ramble	3434	3487	0
+MinigameLocation	Burthorpe Games Room	2900	3565	0
+MinigameLocation	Castle Wars	2439	3092	0
+MinigameLocation	Castle Wars Portal	3140	3626	0
+MinigameLocation	Catapult Room	2842	3545	0
+MinigameLocation	Clan Wars	3133	3621	0
+MinigameLocation	Dummy Room	2857	3551	0
+MinigameLocation	Emir's Arena	3313	3238	0
+MinigameLocation	Fishing Trawler	2667	3163	0
+MinigameLocation	Fortis Colosseum	1807	9507	0
+MinigameLocation	Fortis Colosseum	1798	3107	0
+MinigameLocation	Games Zone	3142	3473	0
+MinigameLocation	Gnome Ball	2381	3488	0
+MinigameLocation	Gnome Restaurant	2436	3502	0
+MinigameLocation	Hallowed Sepulchre	3653	3386	1
+MinigameLocation	Impetuous Impulses	2425	4445	0
+MinigameLocation	Inferno	2495	5118	0
+MinigameLocation	Last Man Standing	3138	3635	0
+MinigameLocation	Mage Arena	3095	3957	0
+MinigameLocation	Mage Training Arena	3362	3318	0
+MinigameLocation	Mahogany Homes	2634	3295	0
+MinigameLocation	Mahogany Homes	2989	3363	0
+MinigameLocation	Mahogany Homes	1780	3623	0
+MinigameLocation	Mahogany Homes	3240	3471	0
+MinigameLocation	Mastering Mixology	1393	9326	0
+MinigameLocation	Mastering Mixology	1388	2920	0
+MinigameLocation	Nightmare Zone	2606	3115	0
+MinigameLocation	Pest Control Intermediate	2638	2641	0
+MinigameLocation	Pest Control Novice	2660	2637	0
+MinigameLocation	Pest Control Veteran	2632	2648	0
+MinigameLocation	Pyramid Plunder	3288	2787	0
+MinigameLocation	Ranging Guild	2671	3419	0
+MinigameLocation	Rat Pits	2561	3318	0
+MinigameLocation	Rat Pits	2913	10188	0
+MinigameLocation	Rat Pits	3015	3232	0
+MinigameLocation	Rat Pits	3266	3400	0
+MinigameLocation	Rogues' Den	2905	3537	0
+MinigameLocation	Shades of Mort'ton	3505	3315	0
+MinigameLocation	Shot Put Room	2863	3550	0
+MinigameLocation	Sorceress's Garden	3285	3180	0
+MinigameLocation	Soul Wars	2209	2855	0
+MinigameLocation	Soul Wars	3082	3474	0
+MinigameLocation	Tackle Organized Crime	1503	3635	0
+MinigameLocation	Tai Bwo Wannai Cleanup	2795	3066	0
+MinigameLocation	Tears of Guthix	3257	9517	0
+MinigameLocation	Temple Trekking	3479	3240	0
+MinigameLocation	The Gauntlet	3223	12505	1
+MinigameLocation	The Mess	1640	3626	0
+MinigameLocation	Tithe Farm	1796	3501	0
+MinigameLocation	Totem Fletching	1366	3368	0
+MinigameLocation	Trouble Brewing	3811	3021	0
+MinigameLocation	TzHaar Fight Cave	2437	5168	0
+MinigameLocation	TzHaar Fight Pit	2398	5177	0
+MinigameLocation	TzHaar-Ket-Rak's Challenges	2544	5111	0
+MinigameLocation	Volcanic Mine	3812	3810	0
+FairyRingLocation	Fairy Ring - AIQ	2995	3112	0
+FairyRingLocation	Fairy Ring - AIR	2699	3249	0
+FairyRingLocation	Fairy Ring - AIS	1430	3323	0
+FairyRingLocation	Fairy Ring - AJP	1648	3011	0
+FairyRingLocation	Fairy Ring - AJR	2779	3615	0
+FairyRingLocation	Fairy Ring - AJS	2499	3898	0
+FairyRingLocation	Fairy Ring - AKP	3283	2704	0
+FairyRingLocation	Fairy Ring - AKQ	2318	3617	0
+FairyRingLocation	Fairy Ring - AKR	1823	3539	0
+FairyRingLocation	Fairy Ring - AKS	2570	2958	0
+FairyRingLocation	Fairy Ring - ALP	2502	3638	0
+FairyRingLocation	Fairy Ring - ALQ	3598	3496	0
+FairyRingLocation	Fairy Ring - ALR	3059	4877	0
+FairyRingLocation	Fairy Ring - ALS	2643	3497	0
+FairyRingLocation	Fairy Ring - BIP	3409	3326	0
+FairyRingLocation	Fairy Ring - BIQ	3248	3095	0
+FairyRingLocation	Fairy Ring - BIS	2635	3268	0
+FairyRingLocation	Fairy Ring - BJP	2264	2976	0
+FairyRingLocation	Fairy Ring - BJS	2147	3069	0
+FairyRingLocation	Fairy Ring - BKP	2384	3037	0
+FairyRingLocation	Fairy Ring - BKR	3468	3433	0
+FairyRingLocation	Fairy Ring - BKS	2411	4436	0
+FairyRingLocation	Fairy Ring - BLP	2432	5127	0
+FairyRingLocation	Fairy Ring - BLR	2739	3353	0
+FairyRingLocation	Fairy Ring - BLS	1293	3495	0
+FairyRingLocation	Fairy Ring - CIP	2512	3886	0
+FairyRingLocation	Fairy Ring - CIQ	2527	3129	0
+FairyRingLocation	Fairy Ring - CIR	1303	3762	0
+FairyRingLocation	Fairy Ring - CIS	1636	3869	0
+FairyRingLocation	Fairy Ring - CJQ	3178	2445	0
+FairyRingLocation	Fairy Ring - CJR	2704	3578	0
+FairyRingLocation	Fairy Ring - CKQ	1358	2943	0
+FairyRingLocation	Fairy Ring - CKR	2800	3005	0
+FairyRingLocation	Fairy Ring - CKS	3446	3472	0
+FairyRingLocation	Fairy Ring - CLP	3081	3208	0
+FairyRingLocation	Fairy Ring - CLR	2737	2739	0
+FairyRingLocation	Fairy Ring - CLS	2681	3083	0
+FairyRingLocation	Fairy Ring - DIP	3036	4761	0
+FairyRingLocation	Fairy Ring - DIS	3109	3149	0
+FairyRingLocation	Fairy Ring - DJP	2657	3232	0
+FairyRingLocation	Fairy Ring - DJR	1452	3659	0
+FairyRingLocation	Fairy Ring - DKP	2899	3113	0
+FairyRingLocation	Fairy Ring - DKR	3126	3496	0
+FairyRingLocation	Fairy Ring - DKS	2743	3721	0
+FairyRingLocation	Fairy Ring - DLP	2923	10455	0
+FairyRingLocation	Fairy Ring - DLQ	3422	3018	0
+FairyRingLocation	Fairy Ring - DLR	2212	3101	0
+FarmingPatchLocation	Farming patch - Allotment	3793	2836	0
+FarmingPatchLocation	Farming patch - Allotment	1269	3730	0
+FarmingPatchLocation	Farming patch - Allotment/Flower	3289	6100	0
+FarmingPatchLocation	Farming patch - Allotment/Herb/Flower	1729	3558	0
+FarmingPatchLocation	Farming patch - Allotment/Herb/Flower	3598	3524	0
+FarmingPatchLocation	Farming patch - Allotment/Herb/Flower	3052	3309	0
+FarmingPatchLocation	Farming patch - Allotment/Herb/Flower	2810	3462	0
+FarmingPatchLocation	Farming patch - Allotment/Herb/Flower	2663	3375	0
+FarmingPatchLocation	Farming patch - Allotment/Herb/Flower	1587	3101	0
+FarmingPatchLocation	Farming patch - Anima/Herb	1235	3724	0
+FarmingPatchLocation	Farming patch - Belladonna	3084	3356	0
+FarmingPatchLocation	Farming patch - Belladonna	1449	3354	0
+FarmingPatchLocation	Farming patch - Bush	2938	3223	0
+FarmingPatchLocation	Farming patch - Bush	2589	3862	0
+FarmingPatchLocation	Farming patch - Bush	3182	3356	0
+FarmingPatchLocation	Farming patch - Bush	2615	3224	0
+FarmingPatchLocation	Farming patch - Bush/Flower	1259	3729	0
+FarmingPatchLocation	Farming patch - Cactus	3313	3201	0
+FarmingPatchLocation	Farming patch - Cactus	1264	3745	0
+FarmingPatchLocation	Farming patch - Calquat	2793	3099	0
+FarmingPatchLocation	Farming patch - Calquat	1365	3035	0
+FarmingPatchLocation	Farming patch - Calquat	3125	2403	0
+FarmingPatchLocation	Farming patch - Celastrus/Fruit Tree	1242	3755	0
+FarmingPatchLocation	Farming patch - Coral	3296	8861	0
+FarmingPatchLocation	Farming patch - Crystal Tree	3292	6120	0
+FarmingPatchLocation	Farming patch - Flower	1352	3025	0
+FarmingPatchLocation	Farming patch - Fruit Tree	2487	3181	0
+FarmingPatchLocation	Farming patch - Fruit Tree	2343	3160	0
+FarmingPatchLocation	Farming patch - Fruit Tree	2472	3445	0
+FarmingPatchLocation	Farming patch - Fruit Tree	2858	3432	0
+FarmingPatchLocation	Farming patch - Fruit Tree	2765	3211	0
+FarmingPatchLocation	Farming patch - Fruit Tree	1347	3058	0
+FarmingPatchLocation	Farming patch - Grapes	1807	3555	0
+FarmingPatchLocation	Farming patch - Hardwood	3707	3838	0
+FarmingPatchLocation	Farming patch - Hardwood	1683	2971	0
+FarmingPatchLocation	Farming patch - Hardwood	2472	2705	0
+FarmingPatchLocation	Farming patch - Herb	3789	2840	0
+FarmingPatchLocation	Farming patch - Herb	2847	3933	0
+FarmingPatchLocation	Farming patch - Herb	2828	3696	0
+FarmingPatchLocation	Farming patch - Hespori	1182	10068	0
+FarmingPatchLocation	Farming patch - Hops	2572	3102	0
+FarmingPatchLocation	Farming patch - Hops	2661	3523	0
+FarmingPatchLocation	Farming patch - Hops	3224	3313	0
+FarmingPatchLocation	Farming patch - Hops	2812	3334	0
+FarmingPatchLocation	Farming patch - Hops	1367	2938	0
+FarmingPatchLocation	Farming patch - Mushroom	3449	3471	0
+FarmingPatchLocation	Farming patch - Redwood	1233	3754	0
+FarmingPatchLocation	Farming patch - Seaweed	3730	10271	0
+FarmingPatchLocation	Farming patch - Spirit Tree	3056	3259	0
+FarmingPatchLocation	Farming patch - Spirit Tree	1690	3540	0
+FarmingPatchLocation	Farming patch - Spirit Tree	3614	3856	0
+FarmingPatchLocation	Farming patch - Spirit Tree	2799	3205	0
+FarmingPatchLocation	Farming patch - Spirit Tree	1254	3753	0
+FarmingPatchLocation	Farming patch - Tree	3226	3457	0
+FarmingPatchLocation	Farming patch - Tree	2933	3436	0
+FarmingPatchLocation	Farming patch - Tree	3189	3233	0
+FarmingPatchLocation	Farming patch - Tree	2434	3418	0
+FarmingPatchLocation	Farming patch - Tree	3005	3375	0
+FarmingPatchLocation	Farming patch - Tree	1234	3736	0
+FarmingPatchLocation	Farming patch - Tree	1366	3318	0
+MooringLocation	Port Sarim - Level 1	3050	3192	0
+MooringLocation	The Pandemonium - Level 1	3069	2986	0
+MooringLocation	Land's End - Level 5	1506	3402	0
+MooringLocation	Hosidius - Level 5	1726	3452	0
+MooringLocation	Musa Point - Level 10	2960	3147	0
+MooringLocation	Port Piscarillius - Level 15	1845	3687	0
+MooringLocation	Rimmington - Level 18	2905	3226	0
+MooringLocation	Catherby - Level 20	2796	3412	0
+MooringLocation	Brimhaven - Level 25	2757	3229	0
+MooringLocation	Ardougne - Level 28	2671	3265	0
+MooringLocation	Port Khazard - Level 30	2685	3161	0
+MooringLocation	Witchaven - Level 34	2746	3304	0
+MooringLocation	Entrana - Level 36	2878	3335	0
+MooringLocation	Civitas illa Fortis - Level 38	1774	3141	0
+MooringLocation	Corsair Cove - Level 40	2579	2843	0
+MooringLocation	Dognose Island - Level 40	3061	2639	0
+MooringLocation	Cairn Isle - Level 42	2749	2951	0
+MooringLocation	Chinchompa Island - Level 42	1892	3429	0
+MooringLocation	Sunset Coast - Level 44	1511	2975	0
+MooringLocation	Remote Island - Level 45	2971	2603	0
+MooringLocation	The Summer Shore - Level 45	3174	2367	0
+MooringLocation	The Little Pearl - Level 45	3354	2216	0
+MooringLocation	Aldarin - Level 46	1452	2970	0
+MooringLocation	Vatrachos Island - Level 46	1872	2985	0
+MooringLocation	The Onyx Crest - Level 47	2997	2288	0
+MooringLocation	Ruins of Unkah - Level 48	3143	2824	0
+MooringLocation	Shimmering Atoll - Level 49	1557	2771	0
+MooringLocation	Void Knights' Outpost - Level 50	2651	2678	0
+MooringLocation	Port Roberts - Level 50	1860	3306	0
+MooringLocation	Anglers' Retreat - Level 51	2467	2721	0
+MooringLocation	Last Light - Level 52	2848	2327	0
+MooringLocation	Red Rock - Level 52	2808	2510	0
+MooringLocation	Minotaurs' Rest - Level 54	1958	3117	0
+MooringLocation	Isle of Souls - Level 55	2282	2823	0
+MooringLocation	Isle of Bones - Level 56	2532	2531	0
+MooringLocation	Laguna Aurorae - Level 58	1202	2733	0
+MooringLocation	Charred Island - Level 60	2660	2395	0
+MooringLocation	Tear of the Soul - Level 61	2318	2774	0
+MooringLocation	Rellekka - Level 62	2630	3705	0
+MooringLocation	Wyrmscraig - Level 62	2567	2297	0
+MooringLocation	Wyrmscraig Cavern - Level 62	2773	8607	0
+MooringLocation	Wintumber Island - Level 63	2058	2606	0
+MooringLocation	The Crown Jewel - Level 64	1765	2659	0
+MooringLocation	Etceteria - Level 65	2611	3840	0
+MooringLocation	Port Tyras - Level 66	2144	3120	0
+MooringLocation	Lledrith Island - Level 66	2097	3188	0
+MooringLocation	Deepfin Point - Level 67	1923	2758	0
+MooringLocation	Jatizso - Level 68	2412	3780	0
+MooringLocation	Neitiznot - Level 68	2308	3783	0
+MooringLocation	Rainbow's End - Level 69	2344	2270	0
+MooringLocation	Prifddinas - Level 70	2158	3324	0
+MooringLocation	Sunbleak Island - Level 72	2189	2327	0
+MooringLocation	Ynysdail - Level 73	2222	3466	0
+MooringLocation	Waterbirth Island - Level 74	2543	3765	0
+MooringLocation	Piscatoris - Level 75	2303	3690	0
+MooringLocation	Lunar Isle - Level 76	2151	3880	0
+MooringLocation	Buccaneers' Haven - Level 76	2080	3690	0
+MooringLocation	Drumstick Isle - Level 79	2150	3530	0
+MooringLocation	Weiss - Level 80	2860	3972	0
+MooringLocation	Brittle Isle - Level 81	1954	4056	0
+MooringLocation	Grimstone - Level 87	2927	4056	0
+RareTreeLocation	Willow tree - Level 30	2710	3510	0
+RareTreeLocation	Teak tree - Level 35	2774	2697	0
+RareTreeLocation	Teak tree - Level 35	3510	3073	0
+RareTreeLocation	Teak tree - Level 35	3440	2789	0
+RareTreeLocation	Teak tree - Level 35	3129	2446	0
+RareTreeLocation	Teak tree - Level 35	3832	3067	0
+RareTreeLocation	Teak tree - Level 35	2837	2907	0
+RareTreeLocation	Teak tree - Level 35	2899	2897	0
+RareTreeLocation	Teak tree - Level 35	2333	3049	0
+RareTreeLocation	Teak tree - Level 35	3309	6123	0
+RareTreeLocation	Teak tree - Level 35	1540	2802	0
+RareTreeLocation	Teak tree - Level 35	1694	2989	0
+RareTreeLocation	Teak tree - Level 35	1363	3143	0
+RareTreeLocation	Teak tree - Level 35	1326	3169	0
+RareTreeLocation	Teak tree - Level 35	1257	3009	0
+RareTreeLocation	Swaying tree - Level 40	2738	3639	0
+RareTreeLocation	Mature juniper tree - Level 42	1690	3524	0
+RareTreeLocation	Maple tree - Level 45	1231	3704	0
+RareTreeLocation	Maple tree - Level 45	1293	3756	0
+RareTreeLocation	Maple tree - Level 45	1640	3496	0
+RareTreeLocation	Maple tree - Level 45	1613	3494	0
+RareTreeLocation	Maple tree - Level 45	1560	3636	0
+RareTreeLocation	Maple tree - Level 45	1646	3590	0
+RareTreeLocation	Maple tree - Level 45	2550	3869	0
+RareTreeLocation	Maple tree - Level 45	2712	3382	0
+RareTreeLocation	Maple tree - Level 45	2720	3465	0
+RareTreeLocation	Maple tree - Level 45	2726	3501	0
+RareTreeLocation	Maple tree - Level 45	2728	3481	0
+RareTreeLocation	Maple tree - Level 45	2748	3466	0
+RareTreeLocation	Maple tree - Level 45	2710	3570	0
+RareTreeLocation	Maple tree - Level 45	2254	2808	0
+RareTreeLocation	Maple tree - Level 45	2209	3427	0
+RareTreeLocation	Maple tree - Level 45	3233	6179	0
+RareTreeLocation	Maple tree - Level 45	1362	2862	0
+RareTreeLocation	Maple tree - Level 45	1398	2856	0
+RareTreeLocation	Maple tree - Level 45	1389	3381	0
+RareTreeLocation	Maple tree - Level 45	1370	3344	0
+RareTreeLocation	Maple tree - Level 45	1392	3339	0
+RareTreeLocation	Maple tree - Level 45	1431	3352	0
+RareTreeLocation	Maple tree - Level 45	2578	2199	0
+RareTreeLocation	Maple tree - Level 45	2561	2191	0
+RareTreeLocation	Mahogany tree - Level 50	1237	3770	0
+RareTreeLocation	Mahogany tree - Level 50	2716	2710	0
+RareTreeLocation	Mahogany tree - Level 50	2725	2735	0
+RareTreeLocation	Mahogany tree - Level 50	3824	3053	0
+RareTreeLocation	Mahogany tree - Level 50	2946	2908	0
+RareTreeLocation	Mahogany tree - Level 50	3301	6129	0
+RareTreeLocation	Mahogany tree - Level 50	1586	2786	0
+RareTreeLocation	Mahogany tree - Level 50	1249	3077	0
+RareTreeLocation	Mahogany tree - Level 50	1263	3002	0
+RareTreeLocation	Teak/Mahogany trees - Level 50	2602	3895	0
+RareTreeLocation	Teak/Mahogany trees - Level 50	3810	3058	0
+RareTreeLocation	Teak/Mahogany trees - Level 50	2194	2991	0
+RareTreeLocation	Teak/Mahogany trees - Level 50	2821	3084	0
+RareTreeLocation	Yew tree - Level 60	1217	3688	0
+RareTreeLocation	Yew tree - Level 60	1353	3731	0
+RareTreeLocation	Yew tree - Level 60	1529	3452	0
+RareTreeLocation	Yew tree - Level 60	1591	3421	0
+RareTreeLocation	Yew tree - Level 60	1647	3508	0
+RareTreeLocation	Yew tree - Level 60	1621	3512	0
+RareTreeLocation	Yew tree - Level 60	1593	3491	0
+RareTreeLocation	Yew tree - Level 60	1583	3499	0
+RareTreeLocation	Yew tree - Level 60	1696	3554	0
+RareTreeLocation	Yew tree - Level 60	1625	3677	0
+RareTreeLocation	Yew tree - Level 60	1625	3669	0
+RareTreeLocation	Yew tree - Level 60	1642	3683	0
+RareTreeLocation	Yew tree - Level 60	1642	3663	0
+RareTreeLocation	Yew tree - Level 60	1642	3533	0
+RareTreeLocation	Yew tree - Level 60	1671	3657	0
+RareTreeLocation	Yew tree - Level 60	1680	3657	0
+RareTreeLocation	Yew tree - Level 60	1572	3618	0
+RareTreeLocation	Yew tree - Level 60	1553	3551	0
+RareTreeLocation	Yew tree - Level 60	1496	3582	0
+RareTreeLocation	Yew tree - Level 60	1733	3119	0
+RareTreeLocation	Yew tree - Level 60	1749	3106	0
+RareTreeLocation	Yew tree - Level 60	1498	3245	0
+RareTreeLocation	Yew tree - Level 60	1296	3409	0
+RareTreeLocation	Yew tree - Level 60	1361	3320	0
+RareTreeLocation	Yew tree - Level 60	1380	3323	0
+RareTreeLocation	Yew tree - Level 60	1354	3289	0
+RareTreeLocation	Yew tree - Level 60	1412	2992	0
+RareTreeLocation	Yew tree - Level 60	2217	3141	0
+RareTreeLocation	Yew tree - Level 60	3288	6066	0
+RareTreeLocation	Yew tree - Level 60	3305	6032	0
+RareTreeLocation	Yew tree - Level 60	2315	3610	0
+RareTreeLocation	Yew tree - Level 60	2331	3514	0
+RareTreeLocation	Yew tree - Level 60	2358	3510	0
+RareTreeLocation	Yew tree - Level 60	2360	3471	0
+RareTreeLocation	Yew tree - Level 60	2434	3432	0
+RareTreeLocation	Yew tree - Level 60	2493	3396	0
+RareTreeLocation	Yew tree - Level 60	2495	3490	0
+RareTreeLocation	Yew tree - Level 60	2733	3334	0
+RareTreeLocation	Yew tree - Level 60	2757	3431	0
+RareTreeLocation	Yew tree - Level 60	2714	3460	0
+RareTreeLocation	Yew tree - Level 60	2995	3312	0
+RareTreeLocation	Yew tree - Level 60	3018	3316	0
+RareTreeLocation	Yew tree - Level 60	3041	3320	0
+RareTreeLocation	Yew tree - Level 60	3052	3272	0
+RareTreeLocation	Yew tree - Level 60	2931	3231	0
+RareTreeLocation	Yew tree - Level 60	3085	3481	0
+RareTreeLocation	Yew tree - Level 60	3085	3469	0
+RareTreeLocation	Yew tree - Level 60	3146	3255	0
+RareTreeLocation	Yew tree - Level 60	3151	3231	0
+RareTreeLocation	Yew tree - Level 60	3165	3220	0
+RareTreeLocation	Yew tree - Level 60	3184	3227	0
+RareTreeLocation	Yew tree - Level 60	3251	3364	0
+RareTreeLocation	Yew tree - Level 60	3204	3504	0
+RareTreeLocation	Yew tree - Level 60	3208	3500	0
+RareTreeLocation	Yew tree - Level 60	3221	3503	0
+RareTreeLocation	Yew tree - Level 60	3248	3473	0
+RareTreeLocation	Yew tree - Level 60	3266	3494	0
+RareTreeLocation	Yew tree - Level 60	3270	3471	0
+RareTreeLocation	Yew tree - Level 60	3304	3470	0
+RareTreeLocation	Yew tree - Level 60	3249	3202	0
+RareTreeLocation	Yew tree - Level 60	3674	3447	0
+RareTreeLocation	Yew tree - Level 60	3684	3385	0
+RareTreeLocation	Yew tree - Level 60	2147	2972	0
+RareTreeLocation	Yew tree - Level 60	2165	2863	0
+RareTreeLocation	Yew tree - Level 60	2340	2762	0
+RareTreeLocation	Yew tree - Level 60	2077	2707	0
+RareTreeLocation	Yew tree - Level 60	1950	2786	0
+RareTreeLocation	Yew tree - Level 60	1224	2781	0
+RareTreeLocation	Yew tree - Level 60	3276	2339	0
+RareTreeLocation	Yew tree - Level 60	2412	4464	0
+RareTreeLocation	Yew tree - Level 60	2465	4427	0
+RareTreeLocation	Yew tree - Level 60	2491	4426	0
+RareTreeLocation	Yew tree - Level 60	2542	2184	0
+RareTreeLocation	Yew/Jatoba trees - Level 60	3144	2520	0
+RareTreeLocation	Willow/Yew trees - Level 60	2476	2707	0
+RareTreeLocation	Maple/Yew trees - Level 60	2476	2893	0
+RareTreeLocation	Maple/Yew trees - Level 60	1379	2876	0
+RareTreeLocation	Maple/Yew trees - Level 60	2086	2737	0
+RareTreeLocation	Maple/Yew trees - Level 60	2074	2723	0
+RareTreeLocation	Maple/Yew trees - Level 60	2061	2720	0
+RareTreeLocation	Maple/Yew trees - Level 60	1358	3302	0
+RareTreeLocation	Blisterwood tree - Level 62	3631	3362	0
+RareTreeLocation	Sulliuscep - Level 65	3662	3802	0
+RareTreeLocation	Sulliuscep - Level 65	3662	3781	0
+RareTreeLocation	Sulliuscep - Level 65	3677	3806	0
+RareTreeLocation	Sulliuscep - Level 65	3677	3733	0
+RareTreeLocation	Sulliuscep - Level 65	3682	3775	0
+RareTreeLocation	Sulliuscep - Level 65	3682	3758	0
+RareTreeLocation	Camphor tree - Level 66	3192	2487	0
+RareTreeLocation	Camphor tree - Level 66	3204	2481	0
+RareTreeLocation	Camphor/Mahogany trees - Level 66	3245	2397	0
+RareTreeLocation	Camphor/Jatoba trees - Level 66	3109	2413	0
+RareTreeLocation	Magic tree - Level 75	1373	3821	0
+RareTreeLocation	Magic tree - Level 75	1389	3821	0
+RareTreeLocation	Magic tree - Level 75	1610	3443	0
+RareTreeLocation	Magic tree - Level 75	1578	3488	0
+RareTreeLocation	Magic tree - Level 75	1685	3740	0
+RareTreeLocation	Magic tree - Level 75	1681	3689	0
+RareTreeLocation	Magic tree - Level 75	1751	3564	0
+RareTreeLocation	Magic tree - Level 75	1796	3600	0
+RareTreeLocation	Magic tree - Level 75	1394	3164	0
+RareTreeLocation	Magic tree - Level 75	1323	2974	0
+RareTreeLocation	Magic tree - Level 75	1455	3321	0
+RareTreeLocation	Magic tree - Level 75	1387	3281	0
+RareTreeLocation	Magic tree - Level 75	1328	3059	0
+RareTreeLocation	Magic tree - Level 75	1328	3033	0
+RareTreeLocation	Magic tree - Level 75	3355	3312	0
+RareTreeLocation	Magic tree - Level 75	3368	3312	0
+RareTreeLocation	Magic tree - Level 75	2284	3141	0
+RareTreeLocation	Magic tree - Level 75	3229	6101	0
+RareTreeLocation	Magic tree - Level 75	2371	3427	0
+RareTreeLocation	Magic tree - Level 75	2432	3411	0
+RareTreeLocation	Magic tree - Level 75	2490	3414	0
+RareTreeLocation	Magic tree - Level 75	2704	3397	0
+RareTreeLocation	Magic tree - Level 75	2695	3423	0
+RareTreeLocation	Magic tree - Level 75	2443	2845	0
+RareTreeLocation	Magic tree - Level 75	3043	2640	0
+RareTreeLocation	Magic tree - Level 75	2090	3178	0
+RareTreeLocation	Magic tree - Level 75	3175	3931	0
+RareTreeLocation	Bloodwood tree - Level 77	2599	7780	0
+RareTreeLocation	Bloodwood tree - Level 77	2696	7823	0
+RareTreeLocation	Ironwood tree - Level 80	2223	2341	0
+RareTreeLocation	Ironwood tree - Level 80	2221	2322	0
+RareTreeLocation	Ironwood tree - Level 80	2205	2321	0
+RareTreeLocation	Redwood tree - Level 90	1569	3493	0
+RareTreeLocation	Redwood tree - Level 90	1569	3483	0
+RareTreeLocation	Rosewood tree - Level 92	2152	3540	0
+RareTreeLocation	Rosewood tree - Level 92	2136	3546	0
+RareTreeLocation	Rosewood tree - Level 92	2149	3557	0
+RunecraftingAltarLocation	Air Altar - Level 1	2985	3293	0
+RunecraftingAltarLocation	Mind Altar - Level 2	2982	3514	0
+RunecraftingAltarLocation	Water Altar - Level 5	3185	3165	0
+RunecraftingAltarLocation	Earth Altar - Level 9	3306	3474	0
+RunecraftingAltarLocation	Fire Altar - Level 14	3313	3255	0
+RunecraftingAltarLocation	Body Altar - Level 20	3053	3445	0
+RunecraftingAltarLocation	Cosmic Altar - Level 27	2408	4377	0
+RunecraftingAltarLocation	Chaos Altar - Level 35	3060	3591	0
+RunecraftingAltarLocation	Astral Altar - Level 40	2158	3864	0
+RunecraftingAltarLocation	Nature Altar - Level 44	2869	3019	0
+RunecraftingAltarLocation	Law Altar - Level 54	2858	3381	0
+RunecraftingAltarLocation	Death Altar - Level 65	1860	4639	0
+RunecraftingAltarLocation	Blood Altar - Level 77	1716	3827	0
+RunecraftingAltarLocation	True Blood Altar - Level 77	3625	9717	0
+RunecraftingAltarLocation	Soul Altar - Level 90	1814	3856	0
+RunecraftingAltarLocation	Wrath Altar - Level 95	2446	2825	0
+TransportationPointLocation	Ship to Sunset Coast	1443	2976	0
+TransportationPointLocation	Ship to Brimhaven / Rimmington	2675	3275	0
+TransportationPointLocation	Ship to Fishing Platform	2722	3304	0
+TransportationPointLocation	Ship to Ardougne / Rimmington	2772	3234	0
+TransportationPointLocation	Ship to Ardougne / Brimhaven	2915	3224	0
+TransportationPointLocation	Ship to Keep Le Faye	2804	3421	0
+TransportationPointLocation	Ship to Rimmington	2577	2839	0
+TransportationPointLocation	Ship to Port Phasmatys	3791	3561	0
+TransportationPointLocation	Ship to Fossil Island	3361	3448	0
+TransportationPointLocation	Ship to Port Sarim	2833	3334	0
+TransportationPointLocation	Ship to Ardougne	2779	3271	0
+TransportationPointLocation	Ship to Port Phasmatys	3682	2951	0
+TransportationPointLocation	Ship to Rellekka	2657	3988	0
+TransportationPointLocation	Ship to Rellekka	2470	3994	0
+TransportationPointLocation	Ship to Ape Atoll	2891	2726	0
+TransportationPointLocation	Ship to Rellekka	2420	3780	0
+TransportationPointLocation	Ship to Port Sarim/The Pandemonium	2954	3145	0
+TransportationPointLocation	Ship to Port Khazard	2763	2957	0
+TransportationPointLocation	Ship to Port Sarim/Port Piscarilius	1503	3398	0
+TransportationPointLocation	Ship to Pirates' Cove	2137	3899	0
+TransportationPointLocation	Ship to Rellekka	2579	3846	0
+TransportationPointLocation	Ship to Rellekka	2310	3779	0
+TransportationPointLocation	Ship to Port Sarim/Musa Point	3065	3003	0
+TransportationPointLocation	Ship to Port Sarim	2659	2675	0
+TransportationPointLocation	Ship to Lunar Isle	2223	3796	0
+TransportationPointLocation	Ship to Rellekka	2212	3794	0
+TransportationPointLocation	Ship to Dragontooth Island	3703	3487	0
+TransportationPointLocation	Ship to Mos Le'Harmless	3709	3497	0
+TransportationPointLocation	Ship to Port Sarim/Land's End	1823	3692	0
+TransportationPointLocation	Ship to Great Kourend	3054	3244	0
+TransportationPointLocation	Ship to Entrana	3046	3233	0
+TransportationPointLocation	Ship to Musa Point/The Pandemonium	3029	3218	0
+TransportationPointLocation	Ship to Crandor	3045	3205	0
+TransportationPointLocation	Ship to Pest Control	3039	3201	0
+TransportationPointLocation	Ship to Jatizso/Neitiznot	2639	3710	0
+TransportationPointLocation	Ship to Miscellania	2627	3692	0
+TransportationPointLocation	Ship to Pirates' Cove	2620	3695	0
+TransportationPointLocation	Ship to Waterbirth	2618	3685	0
+TransportationPointLocation	Ship to Weiss/Iceberg	2707	3735	0
+TransportationPointLocation	Ship to Ungael	2638	3698	0
+TransportationPointLocation	Ship to Corsair Cove	2909	3227	0
+TransportationPointLocation	Ship to Aldarin	1492	2985	0
+TransportationPointLocation	Ship to Rellekka	2549	3758	0
+TransportationPointLocation	Ship to Rellekka	2847	3967	0
+TransportationPointLocation	Ship to Rellekka	2276	4034	0
+TransportationPointLocation	Rowboat to Molch/Molch Island/Shayzien	1383	3663	0
+TransportationPointLocation	Rowboat to Port Phasmatys	2161	5117	0
+TransportationPointLocation	Rowboat to Meiyerditch	3522	3168	0
+TransportationPointLocation	Rowboat to Hosidius	1780	3417	0
+TransportationPointLocation	Rowboat to North Custodia Pass	1281	3386	0
+TransportationPointLocation	Rowboat to South Custodia Pass	1256	3395	0
+TransportationPointLocation	Rowboat to Barge/Camp/North of Island	3759	3902	0
+TransportationPointLocation	Rowboat to Hemenster	2598	3426	0
+TransportationPointLocation	Rowboat to Fishing Colony	2368	3487	0
+TransportationPointLocation	Rowboat to Gnome Stronghold	2356	3641	0
+TransportationPointLocation	Rowboat to Fishing Guild	2613	3439	0
+TransportationPointLocation	Rowboat to Crabclaw Isle	1779	3457	0
+TransportationPointLocation	Rowboat to Mushroom Forest	3582	3973	0
+TransportationPointLocation	Rowboat to Misthalin Mystery	3238	3141	0
+TransportationPointLocation	Rowboat to Molch Island/Shayzien/Battlefront	1343	3646	0
+TransportationPointLocation	Rowboat to Molch/Shayzien/Battlefront	1368	3641	0
+TransportationPointLocation	Rowboat to Mort Myre	3518	3284	0
+TransportationPointLocation	Rowboat to Mort'ton	3498	3380	0
+TransportationPointLocation	Rowboat to Barge/Digsite/North of Island	3723	3807	0
+TransportationPointLocation	Rowboat to Lithkren	3659	3849	0
+TransportationPointLocation	Rowboat to Barge/Camp/Sea	3733	3894	0
+TransportationPointLocation	Rowboat to Slepe	3670	3545	0
+TransportationPointLocation	Rowboat to Braindeath Island	3680	3538	0
+TransportationPointLocation	Rowboat to Molch/Molch Island/Battlefront	1405	3612	0
+TransportationPointLocation	Rowboat to Port Phasmatys	3661	3279	0
+TransportationPointLocation	Rowboat to The Stranglewood	1228	3470	0
+TransportationPointLocation	Rowboat to Mount Quidamortem	1193	3452	0
+TransportationPointLocation	Rowboat to Tal Teklan/Kastori	1398	3245	0
+TransportationPointLocation	Rowboat to Kastori/Gloomthorn Trail	1258	3124	0
+TransportationPointLocation	Rowboat to Tal Teklan/Gloomthorn Trail	1389	3074	0
+TransportationPointLocation	Ogre Boat to Karamja	2653	2964	0
+TransportationPointLocation	Ogre Boat to Feldip	2757	3085	0
+TransportationPointLocation	Rowboat to The Summer Shore/Eastern Coast	3196	2532	0
+TransportationPointLocation	Rowboat to The Summer Shore/Northern Coast	3264	2462	0
+TransportationPointLocation	Rowboat to The Northern Coast/Eastern Coast	3190	2371	0
+TransportationPointLocation	Rowboat to Isle of Souls	2320	2780	0
+TransportationPointLocation	Rowboat to Tear of the Soul	2291	2796	0
+TransportationPointLocation	Rowboat to Corsair Cove	2469	2725	0
+TransportationPointLocation	Rowboat to Anglers' Retreat	2542	2843	0
+TransportationPointLocation	Rowboat to Stonecutter Outpost	1876	2974	0
+TransportationPointLocation	Rowboat to Vatrachos Island	1772	2962	0
+TransportationPointLocation	Charter Ship	1455	2968	0
+TransportationPointLocation	Charter Ship	2760	3238	0
+TransportationPointLocation	Charter Ship	2791	3415	0
+TransportationPointLocation	Charter Ship	1743	3136	0
+TransportationPointLocation	Charter Ship	2589	2851	0
+TransportationPointLocation	Charter Ship	1943	2753	0
+TransportationPointLocation	Charter Ship	2954	3158	0
+TransportationPointLocation	Charter Ship	2999	3032	0
+TransportationPointLocation	Charter Ship	2673	3143	0
+TransportationPointLocation	Charter Ship	3669	2931	0
+TransportationPointLocation	Charter Ship	3702	3503	0
+TransportationPointLocation	Charter Ship	3037	3191	0
+TransportationPointLocation	Charter Ship	2805	2502	0
+TransportationPointLocation	Charter Ship	2141	3123	0
+TransportationPointLocation	Charter Ship	3061	2999	0
+TransportationPointLocation	Charter Ship	2156	3331	0
+TransportationPointLocation	Charter Ship	3180	6083	0
+TransportationPointLocation	Charter Ship	3186	2367	0
+TransportationPointLocation	Charter Ship	1513	2970	0
+TransportationPointLocation	Ferry to Ruins of Unkah	3269	3142	0
+TransportationPointLocation	Ferry to Al Kharid	3145	2843	0
+TransportationPointLocation	Lovakengj Minecart Network - Arceuus	1673	3832	0
+TransportationPointLocation	Lovakengj Minecart Network - Farming Guild	1219	3738	0
+TransportationPointLocation	Minecart to Keldagrim	3139	3504	0
+TransportationPointLocation	Lovakengj Minecart Network - Hosidius South	1805	3480	0
+TransportationPointLocation	Lovakengj Minecart Network - Hosidius West	1656	3542	0
+TransportationPointLocation	Minecart to Keldagrim	2995	9836	0
+TransportationPointLocation	Keldagrim Minecart System	2908	10170	0
+TransportationPointLocation	Lovakengj Minecart Network - Kingstown	1697	3658	0
+TransportationPointLocation	Lovakengj Minecart Network - Kourend Woodland	1570	3464	0
+TransportationPointLocation	Lovakengj Minecart Network - Lovakengj	1524	3725	0
+TransportationPointLocation	Lovakengj Minecart Network - Mount Quidamortem	1253	3550	0
+TransportationPointLocation	Lovakengj Minecart Network - Northern Tundras	1646	3930	0
+TransportationPointLocation	Lovakengj Minecart Network - Port Piscarilius	1760	3708	0
+TransportationPointLocation	Lovakengj Minecart Network - Shayzien East	1586	3622	0
+TransportationPointLocation	Lovakengj Minecart Network - Shayzien West	1413	3579	0
+TransportationPointLocation	Minecart to Keldagrim	2874	9870	0
+TransportationPointLocation	Cart to Brimhaven	2833	2958	0
+TransportationPointLocation	Cart to Shilo Village	2780	3214	0
+TransportationPointLocation	Canoe	3111	3409	0
+TransportationPointLocation	Canoe	3202	3344	0
+TransportationPointLocation	Canoe	3130	3509	0
+TransportationPointLocation	Canoe	3241	3238	0
+TransportationPointLocation	Canoe	3155	3630	0
+TransportationPointLocation	Canoe	2439	3137	0
+TransportationPointLocation	Canoe	2484	3192	0
+TransportationPointLocation	Canoe	2576	3262	0
+TransportationPointLocation	Canoe	2572	3358	0
+TransportationPointLocation	Canoe	2524	3409	0
+TransportationPointLocation	Gnome Glider	3278	3213	0
+TransportationPointLocation	Gnome Glider	2712	2804	0
+TransportationPointLocation	Gnome Glider	2971	2974	0
+TransportationPointLocation	Gnome Glider	2540	2969	0
+TransportationPointLocation	Gnome Glider	2460	3502	0
+TransportationPointLocation	Gnome Glider	2845	3501	0
+TransportationPointLocation	Hot Air Balloon	3298	3480	0
+TransportationPointLocation	Hot Air Balloon	2458	3108	0
+TransportationPointLocation	Hot Air Balloon	2478	3459	0
+TransportationPointLocation	Hot Air Balloon	2936	3422	0
+TransportationPointLocation	Hot Air Balloon	2921	3301	0
+TransportationPointLocation	Spirit Tree	2554	3259	0
+TransportationPointLocation	Spirit Tree	2485	2850	0
+TransportationPointLocation	Spirit Tree	2459	3446	0
+TransportationPointLocation	Spirit Tree	2538	3166	0
+TransportationPointLocation	Spirit Tree	3184	3510	0
+TransportationPointLocation	Spirit Tree	1202	2787	0
+TransportationPointLocation	Spirit Tree	3274	6124	0
+TransportationPointLocation	Carpet to Bedabin/Pollnivneach/Uzer	3311	3107	0
+TransportationPointLocation	Carpet to Shantay Pass	3183	3042	0
+TransportationPointLocation	Carpet to Shantay Pass	3351	3001	0
+TransportationPointLocation	Carpet to Nardah/Sophanem/Menaphos	3345	2943	0
+TransportationPointLocation	Carpet to Pollnivneach	3399	2916	0
+TransportationPointLocation	Carpet to Pollnivneach	3288	2814	0
+TransportationPointLocation	Carpet to Pollnivneach	3244	2812	0
+TransportationPointLocation	Carpet to Shantay Pass	3468	3111	0
+TransportationPointLocation	Teleport to Library Archive	1623	3808	0
+TransportationPointLocation	Teleport to Mos Le'Harmless	3784	2828	0
+TransportationPointLocation	Teleport to Rune Essence	2681	3325	0
+TransportationPointLocation	Teleport to Rune Essence	2592	3089	0
+TransportationPointLocation	Teleport to Sorceress's Garden	3320	3141	0
+TransportationPointLocation	Teleport to Prifddinas Library	3254	6082	2
+TransportationPointLocation	Mountain Guide	1275	3559	0
+TransportationPointLocation	Mountain Guide	1270	3477	0
+TransportationPointLocation	Mountain Guide	1400	3538	0
+TransportationPointLocation	Guide to Auburn Valley	1486	3230	0
+TransportationPointLocation	Guide to Quetzacalli Gorge	1358	3310	0
+TransportationPointLocation	Altar to Skotizo	1662	10047	0
+TransportationPointLocation	Fairy Ring to Al Kharid	2483	4471	0
+TransportationPointLocation	Fairy Ring to Shack	2451	4471	0
+TransportationPointLocation	Mushtree	3674	3871	0
+TransportationPointLocation	Mushtree	3676	3755	0
+TransportationPointLocation	Mushtree	3757	3756	0
+TransportationPointLocation	Portal to Guilds	2456	2856	0
+TransportationPointLocation	Portal to Edgeville/Ferox Enclave	2204	2858	0
+TransportationPointLocation	Teleporter - The Palace	2592	6424	0
+TransportationPointLocation	Teleporter - The Plaza	2616	6417	0
+TransportationPointLocation	Teleporter - The Cathedral	2651	6405	0
+TransportationPointLocation	Teleporter - Western Residential District	2642	6434	0
+TransportationPointLocation	Teleporter - Eastern Residential District	2690	6415	0
+TransportationPointLocation	Teleporter - Northern Science District	2610	6379	0
+TransportationPointLocation	Teleporter - Southern Science District	2598	6341	0
+TransportationPointLocation	Railway Station	2941	10179	0
+TransportationPointLocation	Wilderness Lever to Deserted Keep	2559	3309	0
+TransportationPointLocation	Wilderness Lever to Deserted Keep	3088	3474	0
+TransportationPointLocation	Wilderness Lever to Ardougne/Edgeville	3154	3924	0
+TransportationPointLocation	Return Portal	2083	2732	0
+TransportationPointLocation	Quetzal	1388	2899	0
+TransportationPointLocation	Quetzal	1410	3363	0
+TransportationPointLocation	Quetzal	1701	3037	0
+TransportationPointLocation	Quetzal	1671	2933	0
+TransportationPointLocation	Quetzal	1447	3108	0
+TransportationPointLocation	Quetzal	1776	3111	0
+TransportationPointLocation	Quetzal	1584	3055	0
+TransportationPointLocation	Quetzal	1343	3020	0
+TransportationPointLocation	Quetzal	1511	3222	0
+TransportationPointLocation	Quetzal	1612	3302	0
+TransportationPointLocation	Quetzal	1547	2997	0
+TransportationPointLocation	Quetzal	1436	3169	0
+TransportationPointLocation	Quetzal	1225	3089	0
+TransportationPointLocation	Quetzal to Varrock	1699	3142	0
+TransportationPointLocation	Quetzal to Varlamore	3279	3413	0
+TeleportLocationData	Varrock - lvl 25	3213	3424	0
+TeleportLocationData	Varrock GE - lvl 25	3164	3478	0
+TeleportLocationData	Lumbridge - lvl 31	3222	3218	0
+TeleportLocationData	Falador - lvl 37	2965	3381	0
+TeleportLocationData	Camelot - lvl 45	2757	3477	0
+TeleportLocationData	Camelot Bank - lvl 45	2726	3485	0
+TeleportLocationData	Kourend - lvl 48	1643	3672	0
+TeleportLocationData	Ardougne - lvl 51	2664	3306	0
+TeleportLocationData	Civitas illa Fortis - lvl 54	1681	3133	0
+TeleportLocationData	Watchtower - lvl 58	2547	3114	0
+TeleportLocationData	Watchtower Yanille - lvl 58	2584	3097	0
+TeleportLocationData	Trollheim - lvl 61	2891	3678	0
+TeleportLocationData	Ape Atoll - lvl 64	2796	2791	0
+TeleportLocationData	Ancient - Paddewwa - lvl 54	3097	9880	0
+TeleportLocationData	Ancient - Senntisten - lvl 60	3319	3336	0
+TeleportLocationData	Ancient - Kharyrll - lvl 66	3494	3473	0
+TeleportLocationData	Ancient - Lassar - lvl 72	3002	3472	0
+TeleportLocationData	Ancient - Dareeyak - lvl 78	2969	3695	0
+TeleportLocationData	Ancient - Carrallanger - lvl 84	3157	3667	0
+TeleportLocationData	Ancient - Annakarl - lvl 90	3288	3888	0
+TeleportLocationData	Ancient - Ghorrock - lvl 96	2977	3872	0
+TeleportLocationData	Lunar - Moonclan - lvl 69	2113	3915	0
+TeleportLocationData	Lunar - Ourania - lvl 71	2468	3246	0
+TeleportLocationData	Lunar - Waterbirth - lvl 72	2546	3755	0
+TeleportLocationData	Lunar - Barbarian - lvl 75	2543	3568	0
+TeleportLocationData	Lunar - Khazard - lvl 78	2636	3167	0
+TeleportLocationData	Lunar - Fishing Guild - lvl 85	2612	3391	0
+TeleportLocationData	Lunar - Catherby - lvl 87	2802	3449	0
+TeleportLocationData	Lunar - Ice Plateau - lvl 89	2973	3939	0
+TeleportLocationData	Arceuus - Arceuus Library - lvl 6	1632	3838	0
+TeleportLocationData	Arceuus - Draynor Manor - lvl 17	3108	3352	0
+TeleportLocationData	Arceuus - Battlefront - lvl 23	1349	3739	0
+TeleportLocationData	Arceuus - Mind Altar - lvl 28	2979	3509	0
+TeleportLocationData	Arceuus - Salve Graveyard - lvl 40	3433	3461	0
+TeleportLocationData	Arceuus - Fenkenstrain's Castle - lvl 48	3548	3528	0
+TeleportLocationData	Arceuus - West Ardougne - lvl 61	2500	3291	0
+TeleportLocationData	Arceuus - Harmony Island - lvl 65	3797	2866	0
+TeleportLocationData	Arceuus - Cemetery - lvl 71	2978	3763	0
+TeleportLocationData	Arceuus - Barrows - lvl 83	3565	3315	0
+TeleportLocationData	Arceuus - Ape Atoll - lvl 90	2770	2703	0
+TeleportLocationData	Games Necklace - Barbarian Assault	2520	3571	0
+TeleportLocationData	Games Necklace - Burthorpe Games Room	2898	3554	0
+TeleportLocationData	Games Necklace - Tears of Guthix	3245	9500	0
+TeleportLocationData	Games Necklace - Corporeal Beast	2967	4384	0
+TeleportLocationData	Games Necklace - Wintertodt Camp	1624	3938	0
+TeleportLocationData	Ring of Dueling - Emir's Arena	3315	3235	0
+TeleportLocationData	Ring of Dueling - Ferox Enclave	3151	3636	0
+TeleportLocationData	Ring of Dueling - Castle Wars	2441	3091	0
+TeleportLocationData	Ring of Dueling - Fortis Colosseum	1793	3107	0
+TeleportLocationData	Combat Bracelet - Warriors' Guild	2883	3549	0
+TeleportLocationData	Combat Bracelet - Champions' Guild	3189	3368	0
+TeleportLocationData	Combat Bracelet - Edgeville Monastery	3053	3487	0
+TeleportLocationData	Combat Bracelet - Ranging Guild	2654	3441	0
+TeleportLocationData	Skills Necklace - Fishing Guild	2613	3390	0
+TeleportLocationData	Skills Necklace - Mining Guild	3049	9762	0
+TeleportLocationData	Skills Necklace - Crafting Guild	2934	3294	0
+TeleportLocationData	Skills Necklace - Cooking Guild	3145	3438	0
+TeleportLocationData	Skills Necklace - Woodcutting Guild	1662	3505	0
+TeleportLocationData	Skills Necklace - Farming Guild	1249	3717	0
+TeleportLocationData	Amulet of Glory - Edgeville	3087	3496	0
+TeleportLocationData	Amulet of Glory - Karamja	2918	3176	0
+TeleportLocationData	Amulet of Glory - Draynor Village	3105	3251	0
+TeleportLocationData	Amulet of Glory - Al-Kharid	3293	3163	0
+TeleportLocationData	Ring of Wealth - Miscellania	2535	3862	0
+TeleportLocationData	Ring of Wealth - Grand Exchange	3162	3480	0
+TeleportLocationData	Ring of Wealth - Falador Park	2995	3375	0
+TeleportLocationData	Ring of Wealth - Dondakan	2831	10165	0
+TeleportLocationData	Slayer Ring - Slayer Tower	3423	3536	0
+TeleportLocationData	Slayer Ring - Fremennik Slayer Dungeon	2800	9998	0
+TeleportLocationData	Slayer Ring - Fremennik Slayer Dungeon (inside)	2800	3615	0
+TeleportLocationData	Slayer Ring - Tarn's Lair	3187	4601	0
+TeleportLocationData	Slayer Ring - Stronghold Slayer Cave	2433	3421	0
+TeleportLocationData	Slayer Ring - Dark Beasts	2028	4638	0
+TeleportLocationData	Slayer Ring - Wyrmscraig Cavern	2773	8633	0
+TeleportLocationData	Slayer Ring - Wyrmscraig Cavern (inside)	2533	2206	0
+TeleportLocationData	Digsite Pendant - Digsite	3339	3445	0
+TeleportLocationData	Digsite Pendant - House on the Hill	3763	3869	0
+TeleportLocationData	Digsite Pendant - Lithkren	3547	10456	0
+TeleportLocationData	Necklace of Passage - Wizards' Tower	3114	3181	0
+TeleportLocationData	Necklace of Passage - Jorral's Outpost	2431	3348	0
+TeleportLocationData	Necklace of Passage - Desert eagle station of the eagle transport system	3406	3157	0
+TeleportLocationData	Necklace of Passage - Wyrmscraig	2591	2221	0
+TeleportLocationData	Burning Amulet - Chaos Temple (lvl 15)	3234	3637	0
+TeleportLocationData	Burning Amulet - Bandit Camp (lvl 17)	3038	3651	0
+TeleportLocationData	Burning Amulet - Lava Maze (lvl 41)	3028	3840	0
+TeleportLocationData	Pendant of Ates - North Aldarin	1425	2995	0
+TeleportLocationData	Pendant of Ates - The Darkfrost	1490	3284	0
+TeleportLocationData	Pendant of Ates - Ralos' Rise	1459	3137	0
+TeleportLocationData	Pendant of Ates - Twilight Temple	1666	3223	0
+TeleportLocationData	Pendant of Ates - Kastori	1366	3086	0
+TeleportLocationData	Pendant of Ates - Nemus Retreat	1364	3277	0
+TeleportLocationData	Giantsoul Amulet - Bryophyta's Lair	3174	9898	0
+TeleportLocationData	Giantsoul Amulet - Obor's Lair	3096	9833	0
+TeleportLocationData	Giantsoul Amulet - Branda and Eldric's Lair	2952	9574	0
+TeleportLocationData	Cowbell Amulet - Cow field	3259	3276	0
+TeleportLocationData	Sailors' Amulet - The Pandemonium	3060	2974	0
+TeleportLocationData	Sailors' Amulet - Port Roberts	1889	3292	0
+TeleportLocationData	Sailors' Amulet - Red Rock	2797	2521	0
+TeleportLocationData	Sailors' Amulet - Deepfin Point	1943	2758	0
+TeleportLocationData	Xeric's Talisman - Xeric's Lookout	1576	3528	0
+TeleportLocationData	Xeric's Talisman - Xeric's Glade	1754	3564	0
+TeleportLocationData	Xeric's Talisman - Xeric's Inferno	1504	3819	0
+TeleportLocationData	Xeric's Talisman - Xeric's Heart	1641	3670	0
+TeleportLocationData	Xeric's Talisman - Xeric's Honour	1254	3559	0
+TeleportLocationData	Skull Sceptre - Stronghold of Security	3081	3421	0
+TeleportLocationData	Mythical Cape - Myth's Guild	2458	2851	0
+TeleportLocationData	Ectophial - Ectofuntus	3660	3522	0
+TeleportLocationData	Chronicle - Champions' Guild	3202	3357	0
+TeleportLocationData	Royal Seed Pod - Grand Tree	2465	3495	0
+TeleportLocationData	Enchanted Lyre - Rellekka	2664	3643	0
+TeleportLocationData	Enchanted Lyre - Waterbirth Island	2550	3756	0
+TeleportLocationData	Enchanted Lyre - Neitiznot	2336	3801	0
+TeleportLocationData	Enchanted Lyre - Jatizso	2409	3809	0
+TeleportLocationData	Icy Basalt - Weiss	2846	3940	0
+TeleportLocationData	Stony Basalt - Troll Stronghold (with 73 Agility)	2838	3693	0
+TeleportLocationData	Stony Basalt - Troll Stronghold	2844	3693	0
+TeleportLocationData	Kharedst's Memoirs - Lunch by the Lancalliums (Hosidius)	1713	3612	0
+TeleportLocationData	Kharedst's Memoirs - The Fisher's Flute (Piscarilius)	1802	3748	0
+TeleportLocationData	Kharedst's Memoirs - History and Hearsay (Shayzien)	1478	3576	0
+TeleportLocationData	Kharedst's Memoirs - Jewelry of Jubilation (Lovakengj)	1544	3762	0
+TeleportLocationData	Kharedst's Memoirs - A Dark Disposition (Arceuus)	1680	3746	0
+TeleportLocationData	Pharaoh's Sceptre - Jalsavrah (Pyramid Plunder)	3288	2795	0
+TeleportLocationData	Pharaoh's Sceptre - Jaleustrophos (Agility Pyramid)	3341	2827	0
+TeleportLocationData	Pharaoh's Sceptre - Jaldraocht (Desert Treasure Pyramid)	3232	2897	0
+TeleportLocationData	Pharaoh's Sceptre - Jaltevas (Necropolis Obelisk)	3313	2720	0
+TeleportLocationData	Camulet - Enakhra's Temple	3190	2923	0
+TeleportLocationData	Teleport crystal - Lletya	2330	3172	0
+TeleportLocationData	Teleport crystal - Prifddinas	3264	6065	0
+TeleportLocationData	Drakan's medallion - Ver Sinhaza	3649	3230	0
+TeleportLocationData	Drakan's medallion - Darkmeyer	3592	3337	0
+TeleportLocationData	Drakan's medallion - Slepe	3808	9700	0
+TeleportLocationData	Drakan's medallion - Castle Drakan	3557	3358	0
+TeleportLocationData	Ring of the elements - Air Altar	2981	3276	0
+TeleportLocationData	Ring of the elements - Water Altar	3166	3158	0
+TeleportLocationData	Ring of the elements - Earth Altar	3288	3468	0
+TeleportLocationData	Ring of the elements - Fire Altar	3315	3278	0
+TeleportLocationData	Ring of shadows - Lassar Undercity	2588	6435	0
+TeleportLocationData	Ring of shadows - The Stranglewood	1175	3422	0
+TeleportLocationData	Obelisk - 13	3156	3620	0
+TeleportLocationData	Obelisk - 19	3227	3667	0
+TeleportLocationData	Obelisk - 27	3035	3732	0
+TeleportLocationData	Obelisk - 35	3106	3794	0
+TeleportLocationData	Obelisk - 44	2980	3866	0
+TeleportLocationData	Obelisk - 50	3307	3916	0
+TeleportLocationData	Wilderness crabs teleport	3348	3783	0
+TeleportLocationData	Canoe (No departure) - 35	3141	3796	0
+TeleportLocationData	Ardougne Cloak - Monastery	2606	3222	0
+TeleportLocationData	Ardougne Cloak - Farm	2673	3375	0
+TeleportLocationData	Explorer's Ring	3052	3292	0
+TeleportLocationData	Karamja Gloves - Gem Mine (Underground)	2827	2997	0
+TeleportLocationData	Karamja Gloves - Duradel	2870	2981	0
+TeleportLocationData	Desert Amulet - Nardah	3425	2928	0
+TeleportLocationData	Desert Amulet - Kalphite Cave	3322	3122	0
+TeleportLocationData	Morytania Legs - Slime Pit (Underground)	3654	3516	0
+TeleportLocationData	Morytania Legs - Burgh de Rott	3482	3231	0
+TeleportLocationData	Fremennik Sea Boots	2640	3675	0
+TeleportLocationData	Kandarin Headgear	2729	3411	0
+TeleportLocationData	Wilderness Sword	3377	3891	0
+TeleportLocationData	Western Banner	2329	3685	0
+TeleportLocationData	Rada's Blessing	1311	3795	0
+TeleportLocationData	Rada's Blessing	1553	3454	0
+TeleportLocationData	Ghommal's Hilt - God Wars Dungeon	2898	3709	0
+TeleportLocationData	Ghommal's Hilt - Mor Ul Rek	2554	5130	0
+TeleportLocationData	Digsite Teleport	3324	3412	0
+TeleportLocationData	Iorwerth Camp Teleport	2193	3257	0
+TeleportLocationData	Feldip Hills Teleport	2542	2925	0
+TeleportLocationData	Lumberyard Teleport	3303	3487	0
+TeleportLocationData	Lunar Isle Teleport	2093	3912	0
+TeleportLocationData	Mort'ton	3489	3288	0
+TeleportLocationData	Mos Le'Harmless Teleport	3701	2996	0
+TeleportLocationData	Nardah Teleport	3421	2917	0
+TeleportLocationData	Pest Control Teleport	2657	2660	0
+TeleportLocationData	Piscatoris Teleport	2339	3648	0
+TeleportLocationData	Tai Bwo Wannai Teleport	2788	3066	0
+TeleportLocationData	Zul-Andra Teleport	2197	3056	0
+TeleportLocationData	Key Master Teleport	2686	9882	0
+TeleportLocationData	Revenant Cave Teleport	3127	3833	0
+TeleportLocationData	Watson Teleport	1645	3579	0
+TeleportLocationData	Spider cave teleport	3658	3403	0
+TeleportLocationData	Colossal Wyrm Teleport	1641	2921	0
+TeleportLocationData	Chasm of Fire teleport	1311	9882	0
+TeleportLocationData	Ardeaglais teleport	2543	2216	0
+TeleportLocationData	Achievement Cape - Two-pints	2574	3324	0
+TeleportLocationData	Achievement Cape - Jarr	3300	3121	0
+TeleportLocationData	Achievement Cape - Sir Rebral	2977	3345	0
+TeleportLocationData	Achievement Cape - Thorodin	2659	3627	0
+TeleportLocationData	Achievement Cape - Flax Keeper	2744	3444	0
+TeleportLocationData	Achievement Cape - Pirate Jackie the Fruit	2810	3191	0
+TeleportLocationData	Achievement Cape - Kaleb Paramaya	2861	2995	1
+TeleportLocationData	Achievement Cape - Jungle forester	2795	2945	0
+TeleportLocationData	Achievement Cape - TzHaar-Mej	2455	5133	0
+TeleportLocationData	Achievement Cape - Elise	1647	3666	0
+TeleportLocationData	Achievement Cape - Hatius Cosaintus	3239	3220	0
+TeleportLocationData	Achievement Cape - Le-sabrè	3465	3477	0
+TeleportLocationData	Achievement Cape - Toby	3224	3414	0
+TeleportLocationData	Achievement Cape - Lesser Fanatic	3122	3516	0
+TeleportLocationData	Achievement Cape - Elder Gnome child	2467	3459	0
+TeleportLocationData	Achievement Cape - Twiggy O'Korn	3097	3226	0
+TeleportLocationData	Construction Cape - Rimmington	2954	3224	0
+TeleportLocationData	Construction Cape - Taverley	2894	3465	0
+TeleportLocationData	Construction Cape - Pollnivneach	3340	3004	0
+TeleportLocationData	Construction Cape - Hosidius	1744	3517	0
+TeleportLocationData	Construction Cape - Rellekka	2670	3632	0
+TeleportLocationData	Construction Cape - Aldarin	1422	2966	0
+TeleportLocationData	Construction Cape - Brimhaven	2758	3178	0
+TeleportLocationData	Construction Cape - Yanille	2544	3095	0
+TeleportLocationData	Construction Cape - Prifddinas	3239	6076	0
+TeleportLocationData	Crafting Cape	2931	3286	0
+TeleportLocationData	Farming Cape	1248	3725	0
+TeleportLocationData	Fishing Cape - Fishing Guild	2604	3401	0
+TeleportLocationData	Fishing Cape - Otto's Grotto	2504	3484	0
+TeleportLocationData	Hunter Cape - Carnivorous Chinchompa Area	2556	2916	0
+TeleportLocationData	Hunter Cape - Black Chinchompa Area	3144	3772	0
+TeleportLocationData	Strength Cape	2865	3546	0
+TeleportLocationData	Quest Cape	2729	3348	0
+TeleportLocationData	Music Cape - Falo the Bard	2689	3547	0
+FishingSpotLocation	Anchovies	1372	2985	0
+FishingSpotLocation	Anchovies	1313	2963	0
+FishingSpotLocation	Anchovies	3274	3140	0
+FishingSpotLocation	Anchovies	3266	3148	0
+FishingSpotLocation	Shark	2698	2703	0
+FishingSpotLocation	Anchovies	1774	2993	0
+FishingSpotLocation	Shark	1769	2966	0
+FishingSpotLocation	Shark	1573	2954	0
+FishingSpotLocation	Shark / Lobster	1579	2963	0
+FishingSpotLocation	Shark / Lobster	1585	2951	0
+FishingSpotLocation	Salmon	1393	3313	0
+FishingSpotLocation	Salmon	1396	3304	0
+FishingSpotLocation	Salmon	1458	3330	0
+FishingSpotLocation	Anchovies	2497	3548	0
+FishingSpotLocation	Anchovies	2509	3562	0
+FishingSpotLocation	Anchovies	2514	3575	0
+FishingSpotLocation	Salmon	3103	3424	0
+FishingSpotLocation	Salmon	3109	3433	0
+FishingSpotLocation	Rum deal (Quest)	2112	5074	0
+FishingSpotLocation	Rum deal (Quest)	2161	5061	0
+FishingSpotLocation	Rum deal (Quest)	2172	5074	0
+FishingSpotLocation	Tai Bwo Wannai Trio (Quest)	2767	3165	0
+FishingSpotLocation	Shark	3472	3192	0
+FishingSpotLocation	Shark	3486	3182	0
+FishingSpotLocation	Shark	3497	3174	0
+FishingSpotLocation	Shark	3513	3177	0
+FishingSpotLocation	Shark	3528	3164	0
+FishingSpotLocation	Shark	3537	3177	0
+FishingSpotLocation	Shark	3545	3179	0
+FishingSpotLocation	Shark	3553	3177	0
+FishingSpotLocation	Shark	3559	3173	0
+FishingSpotLocation	Shark	3564	3174	0
+FishingSpotLocation	Shark / Lobster / Anchovies	2836	3431	0
+FishingSpotLocation	Shark / Lobster / Anchovies	2844	3429	0
+FishingSpotLocation	Shark / Lobster / Anchovies	2853	3423	0
+FishingSpotLocation	Shark / Lobster / Anchovies	2859	3426	0
+FishingSpotLocation	Cave eel	2921	5808	0
+FishingSpotLocation	Tetra	2927	5778	0
+FishingSpotLocation	Tetra	2921	5787	0
+FishingSpotLocation	Lava eel	2788	8781	0
+FishingSpotLocation	House Keys	1737	3101	0
+FishingSpotLocation	Salmon	1290	3382	0
+FishingSpotLocation	Salmon	1260	3408	0
+FishingSpotLocation	Salmon	1250	3400	0
+FishingSpotLocation	Anchovies	3084	3228	0
+FishingSpotLocation	Salmon	2841	3356	0
+FishingSpotLocation	Salmon	2842	3359	0
+FishingSpotLocation	Salmon	2847	3361	0
+FishingSpotLocation	Anchovies	2875	3331	0
+FishingSpotLocation	Anchovies	2878	3334	0
+FishingSpotLocation	Anchovies	2878	3339	0
+FishingSpotLocation	Anchovies	2875	3342	0
+FishingSpotLocation	Lobster (Approval only)	2577	3854	0
+FishingSpotLocation	Karambwanji	2806	3014	0
+FishingSpotLocation	Karambwan	2898	3119	0
+FishingSpotLocation	Karambwan	2911	3119	0
+FishingSpotLocation	Salmon	1269	3707	0
+FishingSpotLocation	Shark	1209	3687	0
+FishingSpotLocation	Shark	1221	3714	0
+FishingSpotLocation	Shark	1199	3736	0
+FishingSpotLocation	Shark	1208	3749	0
+FishingSpotLocation	Anchovies	2511	2838	0
+FishingSpotLocation	Fishing Contest (Quest)	2626	3415	0
+FishingSpotLocation	Fishing Contest (Quest)	2631	3425	0
+FishingSpotLocation	Fishing Contest (Quest)	2629	3435	0
+FishingSpotLocation	Fishing Contest (Quest)	2636	3444	0
+FishingSpotLocation	Shark / Lobster	2604	3423	0
+FishingSpotLocation	Shark / Lobster	2605	3417	0
+FishingSpotLocation	Shark / Lobster	2611	3413	0
+FishingSpotLocation	Minnow	2609	3444	0
+FishingSpotLocation	Minnow	2617	3444	0
+FishingSpotLocation	Anchovies	2788	3273	0
+FishingSpotLocation	Anchovies	2794	3279	0
+FishingSpotLocation	Anchovies	2793	3283	0
+FishingSpotLocation	Salmon	1715	3612	0
+FishingSpotLocation	Shark / Lobster / Anchovies	1817	3603	0
+FishingSpotLocation	Shark / Lobster / Anchovies	1827	3605	0
+FishingSpotLocation	Shark / Lobster / Anchovies	1828	3614	0
+FishingSpotLocation	Shark / Lobster / Anchovies	1840	3619	0
+FishingSpotLocation	Shark / Lobster / Anchovies	1838	3595	0
+FishingSpotLocation	Salmon	1584	3566	0
+FishingSpotLocation	Salmon	3239	5997	0
+FishingSpotLocation	Shark	3185	6027	0
+FishingSpotLocation	Shark	2161	3275	0
+FishingSpotLocation	Salmon	2215	3245	0
+FishingSpotLocation	Salmon	3293	6005	0
+FishingSpotLocation	Salmon	2269	3253	0
+FishingSpotLocation	Shark	2281	2841	0
+FishingSpotLocation	Lobster	2280	2975	0
+FishingSpotLocation	Anchovies	2162	2782	0
+FishingSpotLocation	Shark / Lobster	2400	3780	0
+FishingSpotLocation	Shark / Lobster	2412	3780	0
+FishingSpotLocation	Shark / Lobster	2419	3789	0
+FishingSpotLocation	Anchovies	1329	3010	0
+FishingSpotLocation	Lobster	3139	2800	0
+FishingSpotLocation	Salmon	1723	3685	0
+FishingSpotLocation	Anchovies	1534	3414	0
+FishingSpotLocation	Shark / Lobster / Anchovies	1484	3432	0
+FishingSpotLocation	Salmon	3238	3241	0
+FishingSpotLocation	Salmon	3237	3253	0
+FishingSpotLocation	Frog spawn, Cave eel	3244	9570	0
+FishingSpotLocation	Frog spawn, Cave eel	3153	9544	0
+FishingSpotLocation	Anchovies	3244	3153	0
+FishingSpotLocation	Shark	2774	2740	0
+FishingSpotLocation	Lobster	1374	2841	0
+FishingSpotLocation	Greater siren	1370	3632	0
+FishingSpotLocation	Slimy eel	3439	3273	0
+FishingSpotLocation	Slimy eel	3480	3433	0
+FishingSpotLocation	Slimy eel	3485	3448	0
+FishingSpotLocation	Slimy eel	3425	3409	0
+FishingSpotLocation	Slimy eel	3432	3415	0
+FishingSpotLocation	Infernal Eel	2443	5104	0
+FishingSpotLocation	Infernal Eel	2476	5077	0
+FishingSpotLocation	Infernal Eel	2537	5086	0
+FishingSpotLocation	Sturgeon, Salmon, Trout	1271	3546	0
+FishingSpotLocation	Sturgeon, Salmon, Trout	1265	3541	0
+FishingSpotLocation	Sturgeon, Salmon, Trout	1253	3542	0
+FishingSpotLocation	Anchovies	2995	3158	0
+FishingSpotLocation	Anchovies	2985	3176	0
+FishingSpotLocation	Lobster / Anchovies	2925	3179	0
+FishingSpotLocation	Lobster	2456	2893	0
+FishingSpotLocation	Salmon	2466	3151	0
+FishingSpotLocation	Sturgeon, Salmon, Trout	2500	3509	0
+FishingSpotLocation	Sturgeon, Salmon, Trout	2504	3495	0
+FishingSpotLocation	Sturgeon, Salmon, Trout	2505	3515	0
+FishingSpotLocation	Sturgeon, Salmon, Trout	2520	3518	0
+FishingSpotLocation	Monkfish	2308	3700	0
+FishingSpotLocation	Anglerfish	1831	3773	0
+FishingSpotLocation	Lobster / Anchovies	1762	3796	0
+FishingSpotLocation	Lobster / Anchovies	1745	3802	0
+FishingSpotLocation	Shark / Lobster	3186	6102	0
+FishingSpotLocation	Shark / Lobster	3187	6123	0
+FishingSpotLocation	Shark / Lobster	3250	6182	0
+FishingSpotLocation	Shark / Lobster	3258	6180	0
+FishingSpotLocation	Shark / Lobster	3258	6197	0
+FishingSpotLocation	Shark / Lobster	2162	3350	0
+FishingSpotLocation	Shark / Lobster	2163	3371	0
+FishingSpotLocation	Shark / Lobster	2226	3430	0
+FishingSpotLocation	Shark / Lobster	2234	3428	0
+FishingSpotLocation	Shark / Lobster	2234	3445	0
+FishingSpotLocation	Lobster	2641	3696	0
+FishingSpotLocation	Shark	2649	3708	0
+FishingSpotLocation	Anchovies	2632	3694	0
+FishingSpotLocation	Salmon	2560	3374	0
+FishingSpotLocation	Salmon	2565	3370	0
+FishingSpotLocation	Salmon	2526	3412	0
+FishingSpotLocation	Salmon	2536	3405	0
+FishingSpotLocation	Salmon	2507	3420	0
+FishingSpotLocation	Salmon	1545	3186	0
+FishingSpotLocation	Shark	1675	3490	0
+FishingSpotLocation	Anchovies	1676	3469	0
+FishingSpotLocation	Lobster	1668	3479	0
+FishingSpotLocation	Salmon	2725	3524	0
+FishingSpotLocation	Salmon	2714	3531	0
+FishingSpotLocation	Anchovies	1565	3326	0
+FishingSpotLocation	Shark	1586	3299	0
+FishingSpotLocation	Salmon	2854	2977	0
+FishingSpotLocation	Salmon	2858	2973	0
+FishingSpotLocation	Shark	1218	3146	0
+FishingSpotLocation	Salmon	1265	3132	0
+FishingSpotLocation	Lava eel	2893	9764	0
+FishingSpotLocation	Lava eel	2889	9766	0
+FishingSpotLocation	Lava eel	2883	9765	0
+FishingSpotLocation	Harpoonfish	3047	3002	0
+FishingSpotLocation	Harpoonfish	3050	2995	0
+FishingSpotLocation	Harpoonfish	3036	2996	0
+FishingSpotLocation	Harpoonfish	3035	2962	0
+FishingSpotLocation	Harpoonfish	3047	2957	0
+FishingSpotLocation	Harpoonfish	3045	2954	0
+FishingSpotLocation	Salmon	1623	3235	0
+FishingSpotLocation	Salmon	2389	3422	0
+FishingSpotLocation	Salmon	2382	3415	0
+FishingSpotLocation	Shrimp	3100	3091	0
+FishingSpotLocation	Salmon	1646	3558	0
+FishingSpotLocation	Anchovies	3049	3704	0
+FishingSpotLocation	Dark Crab	3362	3802	0
+FishingSpotLocation	Dark Crab	3347	3813	0
+FishingSpotLocation	Lava eel	3071	3840	0
+FishingSpotLocation	Dark Crab	3186	3925	0
+FishingSpotLocation	Shark / Lobster	2574	2219	0
+FishingSpotLocation	Lava eel	2802	8598	0
+FishingSpotLocation	Sacred eel	2183	3068	0
+FishingSpotLocation	Sacred eel	2195	3067	0
+HunterAreaLocation	Copper longtail (9)	1357	2977	0
+HunterAreaLocation	Ruby harvest (15)	1342	2934	0
+HunterAreaLocation	Wild kebbit (23)<br>Ruby harvest (15)	1387	3392	0
+HunterAreaLocation	Copper longtail (9)	1349	3346	0
+HunterAreaLocation	Pyre Fox (57)	1616	2999	0
+HunterAreaLocation	Sunlight Antelope (72)	1745	3008	0
+HunterAreaLocation	Black salamander (67)	3294	3673	0
+HunterAreaLocation	Swamp lizard (29)	3553	3438	0
+HunterAreaLocation	Swamp lizard (29)	3535	3445	0
+HunterAreaLocation	Red salamander (59)	2644	2401	0
+HunterAreaLocation	Spotted kebbit (43)<br>Dark kebbit (57)<br>Dashing kebbit (69)	2379	3599	0
+HunterAreaLocation	Crimson swift (1)<br>Feldip Weasel (7)<br>Tropical wagtail (19)<br>Spined larupia (31)<br>Barb-tailed kebbit (33)<br>Black warlock (45)<br>Carnivorous chinchompa (63)	2557	2912	0
+HunterAreaLocation	Herbiboar (80)	3693	3800	0
+HunterAreaLocation	Herbiboar (80)	3701	3809	0
+HunterAreaLocation	Herbiboar (80)	3703	3829	0
+HunterAreaLocation	Herbiboar (80)	3749	3850	0
+HunterAreaLocation	Herbiboar (80)	3684	3870	0
+HunterAreaLocation	Fish shoal (44)	3743	10295	0
+HunterAreaLocation	Carnivorous chinchompa (63)	2269	3408	0
+HunterAreaLocation	Carnivorous chinchompa (63)	3293	6160	0
+HunterAreaLocation	Copper longtail (9)	2207	2964	0
+HunterAreaLocation	Chinchompa (53)	2127	2950	0
+HunterAreaLocation	Crimson swift (1)	2158	2822	0
+HunterAreaLocation	Moonlight Antelope (91)	1559	9420	0
+HunterAreaLocation	Sunlight Moth (65)	1556	3091	0
+HunterAreaLocation	Sunlight Moth (65)	1575	3020	0
+HunterAreaLocation	Embertailed Jerboa (39)	1515	3047	0
+HunterAreaLocation	Horned graahk (41)	2786	3001	0
+HunterAreaLocation	Crimson swift (1)	1184	3595	0
+HunterAreaLocation	Ruby harvest (15)	1512	3478	0
+HunterAreaLocation	Chinchompa (53)	1481	3504	0
+HunterAreaLocation	Copper longtail (9)	1556	3436	0
+HunterAreaLocation	Embertailed Jerboa (39)	1671	3001	0
+HunterAreaLocation	Bluegill (35)<br>Common tench (51)<br>Mottled eel (68)<br>Greater siren (87)	1363	3632	0
+HunterAreaLocation	Cerulean twitch (11)<br>Snowy knight (35)<br>Sapphire glacialis (25)	1443	3235	0
+HunterAreaLocation	Orange salamander (47)	3285	2739	0
+HunterAreaLocation	Red salamander (59)	2447	3219	0
+HunterAreaLocation	Red salamander (59)	2475	3240	0
+HunterAreaLocation	Common kebbit (3)<br>Copper longtail (9)<br>Ruby harvest (15)<br>Wild kebbit (23)<br>Ferret (27)<br>White rabbit (27)<br>Prickly kebbit (37)<br>Razor-backed kebbit (49)<br>Chinchompa (53)	2335	3584	0
+HunterAreaLocation	Sandworms (15)	1840	3802	0
+HunterAreaLocation	Tecu Salamander (79)	1475	3096	0
+HunterAreaLocation	Polar kebbit (1)<br>Cerulean twitch (11)<br>Sapphire glacialis (25)<br>Snowy knight (35)<br>Sabre-toothed kebbit (51)<br>Sabre-toothed kyatt (55)	2719	3780	0
+HunterAreaLocation	Swamp lizard (29)	3677	3405	0
+HunterAreaLocation	Crimson swift (1)	1372	3135	0
+HunterAreaLocation	Carnivorous chinchompa (63)	1315	3169	0
+HunterAreaLocation	Tropical wagtail (19)	1269	3102	0
+HunterAreaLocation	Black warlock (45)	1282	3021	0
+HunterAreaLocation	Golden warbler (5)<br>Desert devil (13)<br>Orange salamander (47)	3401	3104	0
+HunterAreaLocation	Letvek (76)	2564	7772	0
+HunterAreaLocation	Letvek (76)	2540	7766	0
+HunterAreaLocation	Stymphike (82)	2653	7845	0
+HunterAreaLocation	Black chinchompa (73)	3142	3771	0
+HunterAreaLocation	Wyrmscraig goat (60)	2571	2195	0
+MiningSiteLocation	5 Gold	3322	2875	0
+MiningSiteLocation	8 Iron<br>5 Silver<br>6 Coal<br>5 Gold	1430	2882	0
+MiningSiteLocation	3 Copper<br>1 Tin<br>7 Iron<br>5 Silver<br>3 Coal<br>2 Mithril<br>2 Adamantite	3298	3312	0
+MiningSiteLocation	2 Iron<br>2 Gold	3298	3282	0
+MiningSiteLocation	4 Mithril	1847	5414	0
+MiningSiteLocation	2 Mithril	1826	5392	0
+MiningSiteLocation	8 Mithril	1840	5397	0
+MiningSiteLocation	8 Limestone	2322	3269	0
+MiningSiteLocation	8 Limestone	3346	6021	0
+MiningSiteLocation	1 Dense essence	1763	3860	0
+MiningSiteLocation	1 Dense essence	1763	3844	0
+MiningSiteLocation	5 Iron<br>5 Coal	2670	9680	0
+MiningSiteLocation	6 Iron<br>4 Coal	2599	3232	0
+MiningSiteLocation	2 Blurite	3063	9582	0
+MiningSiteLocation	2 Blurite	3049	9568	0
+MiningSiteLocation	6 Iron	1618	2991	0
+MiningSiteLocation	16 Iron<br>20 Coal<br>22 Mithril<br>8 Adamantite	3086	3763	0
+MiningSiteLocation	2 Clay<br>2 Coal<br>36 Sandstone<br>34 Granite	3171	2912	0
+MiningSiteLocation	5 Tin<br>4 Coal	3078	3421	0
+MiningSiteLocation	3 Copper<br>1 Tin	2471	3255	0
+MiningSiteLocation	20 Hard rock	1502	3869	0
+MiningSiteLocation	17 Hard rock	1485	3882	0
+MiningSiteLocation	22 Hard rock	1471	3865	0
+MiningSiteLocation	10 Gold	2732	3225	0
+MiningSiteLocation	6 Gold	2743	3150	0
+MiningSiteLocation	5 Iron<br>4 Coal<br>16 Calcified rocks<br>2 Mithril<br>1 Adamantite	1510	9540	0
+MiningSiteLocation	8 Barronite<br>1 Clay<br>2 Tin<br>1 Copper	2934	5811	0
+MiningSiteLocation	10 Barronite<br>2 Copper<br>2 Clay<br>1 Tin	2914	5811	0
+MiningSiteLocation	7 Coal<br>1 Runite	2374	3850	0
+MiningSiteLocation	10 Coal<br>3 Adamantite<br>2 Runite	2698	8785	0
+MiningSiteLocation	11 Coal	2640	2390	0
+MiningSiteLocation	3 Iron<br>3 Coal	3400	3170	0
+MiningSiteLocation	18 Coal	2580	3484	0
+MiningSiteLocation	6 Clay<br>6 Silver<br>7 Gold	2939	3283	0
+MiningSiteLocation	3 Gold	2860	3287	0
+MiningSiteLocation	7 Coal<br>1 Mithril	2831	3296	0
+MiningSiteLocation	3 Coal<br>3 Adamantite	2835	3245	0
+MiningSiteLocation	7 Mithril	2819	3247	0
+MiningSiteLocation	8 Iron<br>3 Coal<br>6 Mithril	1281	3412	0
+MiningSiteLocation	3 Daeyalt essence	3631	3340	0
+MiningSiteLocation	3 Tin<br>4 Copper<br>6 Iron<br>5 Mithril	1945	2805	0
+MiningSiteLocation	5 Silver<br>7 Lead<br>6 Gold<br>7 Nickel	1932	2790	0
+MiningSiteLocation	7 Iron<br>7 Lead	1996	9205	0
+MiningSiteLocation	23 Coal<br>4 Adamantite	1944	9204	0
+MiningSiteLocation	6 Iron<br>3 Mithril	1932	9186	0
+MiningSiteLocation	12 Nickel	2067	9208	0
+MiningSiteLocation	21 Coal<br>6 Adamantite<br>4 Runite	2090	9201	0
+MiningSiteLocation	4 Copper<br>4 Tin<br>3 Iron<br>4 Coal	3299	3021	0
+MiningSiteLocation	1 Iron<br>9 Silver	3309	9645	0
+MiningSiteLocation	3 Iron	3322	9616	0
+MiningSiteLocation	3 Iron	3312	9621	0
+MiningSiteLocation	3 Iron<br>2 Silver	3311	9628	0
+MiningSiteLocation	5 Tin<br>2 Iron<br>8 Coal<br>2 Gold<br>1 Adamantite	3039	9763	0
+MiningSiteLocation	4 Copper<br>3 Iron<br>3 Coal<br>2 Mithril<br>2 Adamantite	3037	9775	0
+MiningSiteLocation	2 Clay<br>3 Tin<br>2 Iron	3051	9820	0
+MiningSiteLocation	3 Clay<br>4 Copper	3028	9809	0
+MiningSiteLocation	3 Copper<br>2 Tin<br>2 Iron	3031	9828	0
+MiningSiteLocation	3 Copper<br>3 Tin<br>4 Coal	2405	3867	0
+MiningSiteLocation	7 Clay	3424	3164	0
+MiningSiteLocation	2 Copper<br>2 Tin<br>3 Iron<br>3 Silver<br>6 Coal<br>1 Mithril<br>2 Adamantite	3138	9874	0
+MiningSiteLocation	2 Copper<br>6 Tin<br>3 Iron<br>2 Coal	2907	3362	0
+MiningSiteLocation	3 Rock	2638	2996	0
+MiningSiteLocation	4 Rock	2579	2998	0
+MiningSiteLocation	3 Rock	2567	2961	0
+MiningSiteLocation	4 Clay<br>2 Copper<br>7 Tin<br>9 Iron<br>1 Coal<br>2 Mithril	2630	3142	0
+MiningSiteLocation	7 Iron<br>20 Coal<br>3 Mithril<br>5 Adamantite<br>2 Runite	3770	3815	0
+MiningSiteLocation	3 Copper	2310	3853	0
+MiningSiteLocation	1 Runite	2963	3933	0
+MiningSiteLocation	1 Runite	2975	3937	0
+MiningSiteLocation	1 Runite	2947	3914	0
+MiningSiteLocation	9 Clay<br>8 Iron<br>4 Silver<br>11 Coal<br>4 Gold<br>4 Mithril<br>3 Adamantite	2489	9916	0
+MiningSiteLocation	2 Tin<br>3 Copper<br>8 Iron<br>2 Coal<br>3 Clay<br>2 Mithril	3183	2502	0
+MiningSiteLocation	3 Iron<br>2 Coal<br>9 Granite<br>9 Sandstone	3248	2352	0
+MiningSiteLocation	3 Coal<br>3 Adamantite<br>4 Nickel	2911	4084	0
+MiningSiteLocation	2 Coal<br>3 Runite	2901	4084	0
+MiningSiteLocation	2 Coal<br>4 Nickel	2909	4062	0
+MiningSiteLocation	10 Gold	2163	3415	0
+MiningSiteLocation	10 Gold	3187	6167	0
+MiningSiteLocation	3 Coal<br>2 Runite	2940	9884	0
+MiningSiteLocation	5 Coal	2939	9898	0
+MiningSiteLocation	3 Coal	2921	9904	0
+MiningSiteLocation	2 Mithril<br>2 Adamantite	2914	9916	0
+MiningSiteLocation	10 Clay<br>11 Copper<br>4 Tin<br>9 Iron<br>2 Silver	1777	3489	0
+MiningSiteLocation	4 Adamantite<br>2 Runite	2277	3159	0
+MiningSiteLocation	1 Runite	2279	9237	0
+MiningSiteLocation	2 Adamantite	2262	9244	0
+MiningSiteLocation	3 Clay<br>3 Tin<br>3 Copper<br>10 Iron<br>3 Silver<br>6 Coal<br>4 Gold<br>2 Mithril	2195	2793	0
+MiningSiteLocation	11 Tin<br>7 Iron<br>8 Coal<br>15 Mithril<br>11 Adamantite	2396	3812	0
+MiningSiteLocation	1 Iron<br>1 Silver<br>1 Coal<br>2 Mithril<br>2 Adamantite	2848	3033	0
+MiningSiteLocation	4 Gold	2856	9579	0
+MiningSiteLocation	4 Adamantite<br>5 Mithril	1211	3657	0
+MiningSiteLocation	9 Iron<br>2 Mithril	2724	3693	0
+MiningSiteLocation	9 Coal	2937	10232	0
+MiningSiteLocation	2 Copper<br>5 Coal	2872	10119	0
+MiningSiteLocation	4 Iron<br>1 Gold	2818	10156	0
+MiningSiteLocation	5 Tin	2864	10170	0
+MiningSiteLocation	1 Runite	3045	10263	0
+MiningSiteLocation	2 Runite	3059	3884	0
+MiningSiteLocation	6 Iron<br>8 Coal	2709	3331	0
+MiningSiteLocation	5 Iron<br>5 Coal	2694	3332	0
+MiningSiteLocation	4 Iron<br>6 Coal<br>1 Mithril	1476	3779	0
+MiningSiteLocation	3 Volcanic sulphur	1445	3870	0
+MiningSiteLocation	2 Volcanic sulphur	1427	3870	0
+MiningSiteLocation	33 Coal<br>58 Lovakite	1430	3849	0
+MiningSiteLocation	12 Coal<br>22 Lovakite	1447	3840	0
+MiningSiteLocation	5 Copper<br>5 Tin	3226	3146	0
+MiningSiteLocation	7 Coal<br>5 Mithril<br>2 Adamantite	3148	3149	0
+MiningSiteLocation	2 Silver<br>1 Gold<br>1 Gem rock<br>6 Lunar	2163	10347	0
+MiningSiteLocation	3 Gem rock<br>4 Lunar	2165	10325	0
+MiningSiteLocation	3 Silver<br>3 Lunar	2140	10318	0
+MiningSiteLocation	4 Gold<br>1 Lunar	2125	10327	0
+MiningSiteLocation	2 Gold<br>5 Lunar	2124	10342	0
+MiningSiteLocation	26 Amethyst	3022	9704	0
+MiningSiteLocation	4 Iron<br>37 Coal<br>5 Mithril<br>2 Adamantite	3040	9740	0
+MiningSiteLocation	8 Iron<br>20 Coal<br>10 Mithril<br>8 Adamantite<br>2 Runite	3032	9720	0
+MiningSiteLocation	36 Amethyst	3006	9711	0
+MiningSiteLocation	9 Coal	2526	3891	0
+MiningSiteLocation	4 Coal	2504	10287	0
+MiningSiteLocation	3 Silver<br>3 Gold	2458	5167	0
+MiningSiteLocation	6 Silver<br>7 Gold	2513	5074	0
+MiningSiteLocation	3 Iron<br>4 Coal<br>2 Adamantite<br>3 Runite	2499	5062	0
+MiningSiteLocation	6 Iron<br>5 Coal	1278	3814	0
+MiningSiteLocation	4 Adamantite<br>2 Runite	1936	9020	0
+MiningSiteLocation	5 Sandstone<br>5 Granite	3319	2708	0
+MiningSiteLocation	5 Coal<br>2 Mithril<br>1 Adamantite	1977	9041	0
+MiningSiteLocation	8 Iron<br>3 Silver<br>6 Lead<br>4 Gem rock<br>4 Gold	2978	2254	0
+MiningSiteLocation	3 Copper<br>3 Tin<br>5 Iron<br>3 Coal<br>8 Lead	3055	9367	0
+MiningSiteLocation	1 Iron<br>4 Coal<br>4 Mithril<br>1 Adamantite	3056	3945	0
+MiningSiteLocation	5 Copper<br>6 Tin<br>5 Iron<br>2 Silver<br>1 Mithril	1759	3718	0
+MiningSiteLocation	2 Clay<br>2 Copper<br>2 Tin<br>3 Iron	2337	3640	0
+MiningSiteLocation	2 Copper<br>2 Tin<br>2 Mithril	2651	3172	0
+MiningSiteLocation	4 Copper<br>4 Tin<br>4 Iron<br>3 Adamantite	1480	3086	0
+MiningSiteLocation	4 Clay<br>3 Silver<br>7 Coal	2682	3704	0
+MiningSiteLocation	2 Clay<br>5 Copper<br>2 Tin<br>6 Iron<br>2 Gold	2977	3240	0
+MiningSiteLocation	3 Clay<br>5 Iron<br>3 Coal<br>1 Adamantite	3377	2777	0
+MiningSiteLocation	1 Copper<br>1 Tin<br>5 Iron<br>2 Silver<br>1 Coal	3172	2871	0
+MiningSiteLocation	7 Basalt<br>15 Te salt<br>12 Efh salt<br>12 Urt salt	2835	10334	0
+MiningSiteLocation	5 Iron<br>5 Gold	1671	3284	0
+MiningSiteLocation	7 Coal<br>3 Mithril<br>2 Adamantite	1631	3277	0
+MiningSiteLocation	3 Clay<br>3 Iron<br>4 Coal<br>2 Mithril<br>2 Adamantite	1601	3645	0
+MiningSiteLocation	7 Gem rock	2822	3001	0
+MiningSiteLocation	7 Limestone	3371	3498	0
+MiningSiteLocation	6 Iron<br>14 Coal	3888	9749	0
+MiningSiteLocation	5 Clay<br>6 Iron<br>4 Silver<br>10 Coal<br>3 Gold<br>4 Mithril	1747	2955	0
+MiningSiteLocation	3 Iron<br>3 Coal<br>3 Mithril<br>3 Adamantite<br>1 Runite	1169	3323	0
+MiningSiteLocation	4 Coal<br>5 Mithril	2221	9003	0
+MiningSiteLocation	3 Coal<br>4 Adamantite	2224	8977	0
+MiningSiteLocation	7 Iron<br>4 Coal<br>5 Gold<br>4 Mithril<br>4 Adamantite<br>1 Gemstone Crab	1352	3112	0
+MiningSiteLocation	9 Silver<br>8 Clay<br>1 Gemstone Crab	1272	3173	0
+MiningSiteLocation	13 Copper<br>10 Iron<br>7 Coal<br>1 Gemstone Crab	1238	3043	0
+MiningSiteLocation	26 Iron<br>8 Silver<br>19 Coal<br>14 Gold<br>7 Mithril<br>10 Soft clay<br>7 Adamantite<br>4 Runite	3295	12387	0
+MiningSiteLocation	10 Clay	3415	3160	0
+MiningSiteLocation	14 Iron	2567	7735	0
+MiningSiteLocation	9 Copper<br>6 Tin<br>4 Iron	3286	3365	0
+MiningSiteLocation	3 Clay<br>8 Tin<br>3 Iron<br>3 Silver	3176	3370	0
+MiningSiteLocation	2 Clay<br>2 Silver<br>2 Gold<br>1 Mithril	1891	2987	0
+MiningSiteLocation	2 Iron<br>2 Coal<br>2 Clay<br>4 Gold	1893	2975	0
+MiningSiteLocation	3 Iron	3766	3757	0
+MiningSiteLocation	6 Iron<br>11 Coal<br>4 Gold<br>1 Mithril<br>6 Adamantite	3192	3930	0
+MiningSiteLocation	2 Iron<br>3 Coal	3104	3569	0
+MiningSiteLocation	34 Coal	3013	3589	0
+MiningSiteLocation	10 Silver<br>7 Lead<br>2 Coal<br>6 Nickel<br>1 Runite	2807	8593	0
+MiningSiteLocation	9 Sunstone<br>5 Coal<br>2 Mithril<br>1 Runite	2613	2237	0
+MiningSiteLocation	13 Sunstone<br>5 Iron<br>8 Coal	2597	2239	0
+MiningSiteLocation	4 Iron<br>3 Nickel	2224	3476	0
+MiningSiteLocation	5 Mithril<br>8 Adamantite	2267	9892	0
+MiningSiteLocation	2 Mithril<br>2 Runite	2249	9878	0
