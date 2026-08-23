@@ -131,6 +131,10 @@ public final class Map3DPanel extends JPanel
 	private static final long MINIMAP_CACHE_BUDGET_BYTES = 128L * 1024L * 1024L;
 	private static final float WARP_CAMERA_HEIGHT_TILES = 22.0f;
 	private static final long STATE_SAVE_INTERVAL_NANOS = 1_500_000_000L;
+	private static final float STREAM_PRIORITY_MOVEMENT_EPSILON = 0.05f;
+	private static final double STREAM_PRIORITY_DIRECT_DOT = 0.60;
+	private static final double STREAM_PRIORITY_FORWARD_DOT = 0.10;
+	private static final double STREAM_PRIORITY_SIDE_DOT = -0.35;
 
 	private final TerrainRegionLoader loader = new TerrainRegionLoader();
 	private final TerrainRenderer renderer = new TerrainRenderer();
@@ -146,6 +150,7 @@ public final class Map3DPanel extends JPanel
 	private MapViewerPlugin activePlugin;
 	private Map3DLayer active3DLayer;
 	private final int regionId;
+	private final int initialLoadRegionId;
 	private final int originRegionX;
 	private final int originRegionY;
 	private final ExecutorService regionLoaderExecutor = Executors.newSingleThreadExecutor(r -> {
@@ -259,6 +264,8 @@ public final class Map3DPanel extends JPanel
 	private Tile lastPluginOverlayCameraTile;
 	private Set<Integer> lastPluginOverlayRegionIds = Set.of();
 	private volatile boolean pluginOverlayDirty = true;
+	private final Vector3f lastStreamPriorityCameraPosition = new Vector3f();
+	private boolean lastStreamPriorityCameraPositionValid;
 
 	public Map3DPanel(Path cacheDirectory, int regionId, Runnable exitAction)
 	{
@@ -291,10 +298,11 @@ public final class Map3DPanel extends JPanel
 		this.initialState = this.initialFocusTile == null && settings != null ? settings.viewer3DState() : null;
 		this.lastSavedState = initialState;
 		this.regionId = regionId;
+		this.initialLoadRegionId = initialLoadRegionId(regionId, this.initialFocusTile, this.initialState);
 		this.originRegionX = TerrainScene.regionX(regionId);
 		this.originRegionY = TerrainScene.regionY(regionId);
 		this.currentScene = TerrainScene.empty(originRegionX, originRegionY);
-		this.streamCenterRegionId = regionId;
+		this.streamCenterRegionId = initialLoadRegionId;
 		this.exitAction = exitAction;
 		this.failureAction = failureAction;
 		setOpaque(true);
@@ -1539,6 +1547,20 @@ public final class Map3DPanel extends JPanel
 		float worldZ = originRegionY * TerrainScene.REGION_SIZE + SceneScale.REGION_CENTER_TILES - tile.y - 0.5f;
 		float worldY = warpCameraHeight(tile, targetRegionId);
 		camera.setPosition(new Vector3f(worldX, worldY, worldZ));
+		lastStreamPriorityCameraPositionValid = false;
+	}
+
+	private static int initialLoadRegionId(int fallbackRegionId, Tile initialFocusTile, Viewer3DState initialState)
+	{
+		if (isValidWorldTile(initialFocusTile))
+		{
+			return regionIdForTile(initialFocusTile);
+		}
+		if (initialState != null && initialState.isValid())
+		{
+			return initialState.regionId();
+		}
+		return fallbackRegionId;
 	}
 
 	private void hideLoadingOverlay()
@@ -2102,11 +2124,11 @@ public final class Map3DPanel extends JPanel
 		npcHoverOverlay.setInfo(null);
 		renderer.setScene(currentScene);
 		updateTileHud();
-		detail.setText("Loading region " + regionId + "...");
-		desiredRegionIds = Set.of(regionId);
-		loadedMeshes.put(regionId, TerrainMesh.empty(regionId));
+		detail.setText("Loading region " + initialLoadRegionId + "...");
+		desiredRegionIds = Set.of(initialLoadRegionId);
+		loadedMeshes.put(initialLoadRegionId, TerrainMesh.empty(initialLoadRegionId));
 		rebuildScene();
-		queueRegion(regionId);
+		queueRegion(initialLoadRegionId);
 		pumpRegionQueue();
 	}
 
@@ -2218,12 +2240,12 @@ public final class Map3DPanel extends JPanel
 		{
 			failedRegionIds.add(requestedRegionId);
 			System.err.println("Failed to load 3D region " + requestedRegionId + ": " + rootMessage(failure));
-				if (!cameraInitialized && requestedRegionId == regionId)
-				{
-					detail.setText("Failed to load center region: " + rootMessage(failure));
-					reportStartupFailure(CACHE_LOAD_FAILURE_PREFIX + " " + rootMessage(failure));
-					return;
-				}
+			if (!cameraInitialized && requestedRegionId == initialLoadRegionId)
+			{
+				detail.setText("Failed to load center region: " + rootMessage(failure));
+				reportStartupFailure(CACHE_LOAD_FAILURE_PREFIX + " " + rootMessage(failure));
+				return;
+			}
 			updateStreamStatus();
 			pumpRegionQueue();
 			return;
@@ -2242,7 +2264,7 @@ public final class Map3DPanel extends JPanel
 
 		loadedMeshes.put(requestedRegionId, mesh);
 		loadedRegionIds.add(requestedRegionId);
-		if (!cameraInitialized && requestedRegionId == regionId)
+		if (!cameraInitialized && requestedRegionId == initialLoadRegionId)
 		{
 			initializeCamera(mesh);
 		}
@@ -2283,7 +2305,7 @@ public final class Map3DPanel extends JPanel
 			streamCenterRegionId = nextCenter;
 		}
 
-		List<Integer> desiredRegions = desiredRegionIds(streamCenterRegionId, cameraTile());
+		List<Integer> desiredRegions = desiredRegionIds(streamCenterRegionId, cameraTile(), streamingPriorityDirection());
 		Set<Integer> desiredRegionSet = Set.copyOf(desiredRegions);
 		boolean desiredRegionsChanged = !desiredRegionSet.equals(desiredRegionIds);
 		desiredRegionIds = desiredRegionSet;
@@ -2334,7 +2356,7 @@ public final class Map3DPanel extends JPanel
 			|| loadedRegionIds.size() + failedRegionIds.size() < desiredRegionIds.size();
 	}
 
-	private List<Integer> desiredRegionIds(int centerRegionId, Tile centerTile)
+	private List<Integer> desiredRegionIds(int centerRegionId, Tile centerTile, Vector3fc priorityDirection)
 	{
 		int centerX = TerrainScene.regionX(centerRegionId);
 		int centerY = TerrainScene.regionY(centerRegionId);
@@ -2351,9 +2373,88 @@ public final class Map3DPanel extends JPanel
 			}
 		}
 		regions.sort(Comparator
-			.comparingInt((Integer id) -> chebyshevDistance(centerX, centerY, id))
+			.comparingInt((Integer id) -> regionPriorityBucket(centerRegionId, id, priorityDirection))
+			.thenComparingInt(id -> chebyshevDistance(centerX, centerY, id))
+			.thenComparingDouble(id -> -regionDirectionDot(id, priorityDirection))
 			.thenComparingInt(id -> manhattanDistance(centerX, centerY, id)));
 		return regions;
+	}
+
+	private Vector3f streamingPriorityDirection()
+	{
+		Vector3fc position = camera.position();
+		Vector3f direction = new Vector3f();
+		if (lastStreamPriorityCameraPositionValid)
+		{
+			float dx = position.x() - lastStreamPriorityCameraPosition.x;
+			float dz = position.z() - lastStreamPriorityCameraPosition.z;
+			float distanceSquared = dx * dx + dz * dz;
+			if (distanceSquared > STREAM_PRIORITY_MOVEMENT_EPSILON * STREAM_PRIORITY_MOVEMENT_EPSILON)
+			{
+				direction.set(dx, 0.0f, dz).normalize();
+			}
+		}
+		if (direction.lengthSquared() <= 0.000001f)
+		{
+			camera.direction(direction);
+			direction.y = 0.0f;
+			if (direction.lengthSquared() > 0.000001f)
+			{
+				direction.normalize();
+			}
+		}
+		if (direction.lengthSquared() <= 0.000001f)
+		{
+			direction.set(0.0f, 0.0f, -1.0f);
+		}
+		lastStreamPriorityCameraPosition.set(position);
+		lastStreamPriorityCameraPositionValid = true;
+		return direction;
+	}
+
+	private int regionPriorityBucket(int centerRegionId, int regionId, Vector3fc priorityDirection)
+	{
+		if (regionId == centerRegionId)
+		{
+			return 0;
+		}
+		double dot = regionDirectionDot(regionId, priorityDirection);
+		if (dot >= STREAM_PRIORITY_DIRECT_DOT)
+		{
+			return 1;
+		}
+		if (dot >= STREAM_PRIORITY_FORWARD_DOT)
+		{
+			return 2;
+		}
+		return dot >= STREAM_PRIORITY_SIDE_DOT ? 3 : 4;
+	}
+
+	private double regionDirectionDot(int regionId, Vector3fc priorityDirection)
+	{
+		if (priorityDirection == null)
+		{
+			return 0.0;
+		}
+		Vector3fc position = camera.position();
+		double dx = regionCenterSceneX(regionId) - position.x();
+		double dz = regionCenterSceneZ(regionId) - position.z();
+		double length = Math.hypot(dx, dz);
+		if (length <= 0.000001)
+		{
+			return 1.0;
+		}
+		return (dx / length) * priorityDirection.x() + (dz / length) * priorityDirection.z();
+	}
+
+	private double regionCenterSceneX(int regionId)
+	{
+		return (TerrainScene.regionX(regionId) - originRegionX) * (double) TerrainScene.REGION_SIZE;
+	}
+
+	private double regionCenterSceneZ(int regionId)
+	{
+		return (originRegionY - TerrainScene.regionY(regionId)) * (double) TerrainScene.REGION_SIZE;
 	}
 
 	private static int streamStartOffset(int gridSize, int localTile)
@@ -2372,7 +2473,7 @@ public final class Map3DPanel extends JPanel
 	{
 		if (!cameraInitialized)
 		{
-			detail.setText("Loading center region " + regionId + "...");
+			detail.setText("Loading center region " + initialLoadRegionId + "...");
 			return;
 		}
 
