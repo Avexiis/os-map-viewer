@@ -30,7 +30,7 @@ Plugins are loaded from JAR files with Java `ServiceLoader`. See [PLUGIN_API.md]
 
 ## RuneLite Cache Dependency
 
-The experimental map printer uses a shaded RuneLite cache JAR that is bundled with this repository:
+This project uses a shaded RuneLite cache JAR that is bundled with this repository:
 
 `lib/runelite-cache/cache-<version>-SNAPSHOT-shaded.jar`
 
