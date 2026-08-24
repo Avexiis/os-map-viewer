@@ -14,12 +14,13 @@
 
 - Map icon tooltips include location data adapted from RuneLite's core world map plugin.
 
-RuneLite and its Shortest Path hub plugin are licensed under the BSD 2-Clause License:
+RuneLite and its Shortest Path hub plugin, as well as the source repository for https://osrs.world, are licensed under the BSD 2-Clause License:
 
 ```text
 BSD 2-Clause License
 
-Copyright (c) 2016-2017, Adam <Adam@sigterm.info>
+Copyright (c) 2016-2017, Adam <Adam@sigterm.info> (RuneLite)
+Copyright (c) 2022-2023, dennisdev (OSRS.world)
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
