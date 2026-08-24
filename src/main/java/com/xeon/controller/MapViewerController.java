@@ -76,6 +76,7 @@ public class MapViewerController
 	private static final Color RAIL_BACKGROUND = new Color(0x1B1D22);
 	private static final Color WARNING_ORANGE = new Color(0xD98C20);
 	private static final int DEFAULT_3D_REGION_ID = 12850;
+	private static final boolean DEVELOPER_MODE_BUILD_ENABLED = true;
 	private static final String GITHUB_URL = "https://github.com/Avexiis/os-map-viewer";
 	private static final String RELEASE_URL = "https://github.com/Avexiis/os-map-viewer/releases/tag/Release";
 	private static final String DISCORD_URL = "https://discord.gg/W59sFN7auq";
@@ -89,6 +90,9 @@ public class MapViewerController
 			+ "The map printing process can be quite resource intensive and should only be attempted "
 			+ "on devices with at least 10GB of RAM not in use. If your PC cannot handle this, or if "
 			+ "the operation fails, please check the GitHub for the latest release version of OS Map Viewer.";
+	private static final String DEVELOPER_MODE_DESCRIPTION =
+		"Enables source-build developer tools in the 3D viewer. NPC spawn editing only works while no "
+			+ "plugin is active, and it can modify source JSON/TSV data files.";
 	private static final double FULL_JUMP_ZOOM = Double.POSITIVE_INFINITY;
 	private static final MemoryPreset[] MEMORY_PRESETS = new MemoryPreset[]{
 		new MemoryPreset("512 MB", 512),
@@ -800,6 +804,7 @@ public class MapViewerController
 		if (map3DPanel != null)
 		{
 			map3DPanel.setActivePlugin(activePlugin);
+			map3DPanel.setDeveloperModeAvailable(developerModeCurrentlyAvailable());
 		}
 		for (PluginHandle handle : plugins)
 		{
@@ -1157,6 +1162,24 @@ public class MapViewerController
 		styleToolbarButton(print);
 		print.addActionListener(e -> promptPrintNewMap(dialog));
 		list.add(experimentalOptionRow(printDescription, print));
+		if (DEVELOPER_MODE_BUILD_ENABLED)
+		{
+			JTextArea developerDescription = wrappedText(DEVELOPER_MODE_DESCRIPTION, 470, 72);
+			JCheckBox developerMode = new JCheckBox("Developer Mode", settings.developerModeEnabled());
+			developerMode.addActionListener(e -> {
+				if (developerMode.isSelected() && enabledPluginCount() > 0)
+				{
+					developerMode.setSelected(false);
+					setStatus("Disable active plugins before enabling developer mode");
+					return;
+				}
+				settings.setDeveloperModeEnabled(developerMode.isSelected());
+				sync3DPluginState();
+				setStatus(developerMode.isSelected() ? "Developer mode enabled" : "Developer mode disabled");
+			});
+			list.add(Box.createVerticalStrut(8));
+			list.add(experimentalOptionRow(developerDescription, developerMode));
+		}
 
 		JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
 		JButton close = new JButton("Close");
@@ -1166,7 +1189,7 @@ public class MapViewerController
 
 		dialog.add(list, BorderLayout.CENTER);
 		dialog.add(buttons, BorderLayout.SOUTH);
-		dialog.setSize(580, 285);
+		dialog.setSize(580, DEVELOPER_MODE_BUILD_ENABLED ? 390 : 285);
 		dialog.setLocationRelativeTo(frame);
 		dialog.setVisible(true);
 	}
@@ -1392,7 +1415,8 @@ public class MapViewerController
 				active == null || !active.installed ? null : active.plugin,
 				this::exit3DViewer,
 				this::handle3DViewerFailure,
-				startupTile);
+				startupTile,
+				developerModeCurrentlyAvailable());
 		}
 		catch (RuntimeException ex)
 		{
@@ -1567,6 +1591,13 @@ public class MapViewerController
 			}
 		}
 		return count;
+	}
+
+	private boolean developerModeCurrentlyAvailable()
+	{
+		return DEVELOPER_MODE_BUILD_ENABLED
+			&& settings.developerModeEnabled()
+			&& enabledPluginCount() == 0;
 	}
 
 	private void chooseMapBackgroundColor()

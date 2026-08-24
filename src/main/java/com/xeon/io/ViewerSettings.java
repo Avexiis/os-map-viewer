@@ -66,6 +66,9 @@ public final class ViewerSettings
 	private static final String KEY_3D_TILE_HOVER_COLOR = "viewer3d.state.tileHoverColor";
 	private static final String KEY_3D_CACHE_ASK_ON_OPEN = "viewer3d.cache.askOnOpen";
 	private static final String KEY_3D_CACHE_AUTO_DETECT = "viewer3d.cache.autoDetect";
+	private static final String KEY_DEVELOPER_MODE_ENABLED = "developer.mode.enabled";
+	private static final String KEY_DEVELOPER_NPC_BACKUP_PROMPT_SUPPRESSED =
+		"developer.npcSpawnBackupPrompt.suppressed";
 	private static final String FIELD_WORLD_TILE_X = "worldTileX";
 	private static final String FIELD_WORLD_TILE_Y = "worldTileY";
 	private static final String FIELD_CAMERA_Y = "cameraY";
@@ -290,6 +293,26 @@ public final class ViewerSettings
 	{
 		configManager.setBoolean(CORE, KEY_3D_CACHE_ASK_ON_OPEN, askOnOpen);
 		configManager.setBoolean(CORE, KEY_3D_CACHE_AUTO_DETECT, autoDetect);
+	}
+
+	public boolean developerModeEnabled()
+	{
+		return configManager.getBoolean(CORE, KEY_DEVELOPER_MODE_ENABLED, false);
+	}
+
+	public void setDeveloperModeEnabled(boolean value)
+	{
+		configManager.setBoolean(CORE, KEY_DEVELOPER_MODE_ENABLED, value);
+	}
+
+	public boolean developerNpcSpawnBackupPromptSuppressed()
+	{
+		return configManager.getBoolean(CORE, KEY_DEVELOPER_NPC_BACKUP_PROMPT_SUPPRESSED, false);
+	}
+
+	public void setDeveloperNpcSpawnBackupPromptSuppressed(boolean value)
+	{
+		configManager.setBoolean(CORE, KEY_DEVELOPER_NPC_BACKUP_PROMPT_SUPPRESSED, value);
 	}
 
 	private Viewer3DState viewer3DStateObject()

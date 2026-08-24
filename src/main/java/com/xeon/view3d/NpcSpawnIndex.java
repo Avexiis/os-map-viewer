@@ -27,13 +27,18 @@ package com.xeon.view3d;
 
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonToken;
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.Reader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import net.runelite.cache.region.Region;
@@ -41,6 +46,10 @@ import net.runelite.cache.region.Region;
 final class NpcSpawnIndex
 {
 	private static final String SPAWN_RESOURCE = "/com/xeon/application/data/npc-spawns-osrs.json";
+	private static final String CUSTOM_SPAWN_RESOURCE = "/com/xeon/application/data/npc-spawns-custom.tsv";
+	private static final Path SOURCE_DATA_DIR = Path.of("src", "main", "resources", "com", "xeon", "application", "data");
+	private static final Path SOURCE_SPAWN_PATH = SOURCE_DATA_DIR.resolve("npc-spawns-osrs.json");
+	private static final Path SOURCE_CUSTOM_SPAWN_PATH = SOURCE_DATA_DIR.resolve("npc-spawns-custom.tsv");
 	private static volatile NpcSpawnIndex defaultIndex;
 
 	private final Map<Integer, List<NpcSpawn>> byRegion;
@@ -69,6 +78,24 @@ final class NpcSpawnIndex
 		}
 	}
 
+	static void reloadDefault()
+	{
+		synchronized (NpcSpawnIndex.class)
+		{
+			defaultIndex = loadResource();
+		}
+	}
+
+	static Path sourceSpawnPath()
+	{
+		return SOURCE_SPAWN_PATH.toAbsolutePath().normalize();
+	}
+
+	static Path sourceCustomSpawnPath()
+	{
+		return SOURCE_CUSTOM_SPAWN_PATH.toAbsolutePath().normalize();
+	}
+
 	List<NpcSpawn> spawnsForRegion(int regionId)
 	{
 		return byRegion.getOrDefault(regionId, List.of());
@@ -76,25 +103,44 @@ final class NpcSpawnIndex
 
 	private static NpcSpawnIndex loadResource()
 	{
-		try (InputStream in = NpcSpawnIndex.class.getResourceAsStream(SPAWN_RESOURCE))
+		Map<Integer, List<NpcSpawn>> byRegion = new HashMap<>();
+		try (Reader reader = openReader(SOURCE_SPAWN_PATH, SPAWN_RESOURCE))
 		{
-			if (in == null)
+			if (reader == null)
 			{
 				System.err.println("NPC spawn resource is missing: " + SPAWN_RESOURCE);
 				return new NpcSpawnIndex(Map.of());
 			}
-			return read(new JsonReader(new InputStreamReader(in, StandardCharsets.UTF_8)));
+			readJson(new JsonReader(reader), byRegion);
 		}
 		catch (IOException | RuntimeException ex)
 		{
 			System.err.println("Failed to load NPC spawns: " + ex.getMessage());
 			return new NpcSpawnIndex(Map.of());
 		}
+		try
+		{
+			readCustomTsv(byRegion);
+		}
+		catch (IOException | RuntimeException ex)
+		{
+			System.err.println("Failed to load custom NPC spawns: " + ex.getMessage());
+		}
+		return new NpcSpawnIndex(byRegion);
 	}
 
-	private static NpcSpawnIndex read(JsonReader reader) throws IOException
+	private static Reader openReader(Path sourcePath, String resourcePath) throws IOException
 	{
-		Map<Integer, List<NpcSpawn>> byRegion = new HashMap<>();
+		if (Files.isRegularFile(sourcePath))
+		{
+			return Files.newBufferedReader(sourcePath, StandardCharsets.UTF_8);
+		}
+		InputStream in = NpcSpawnIndex.class.getResourceAsStream(resourcePath);
+		return in == null ? null : new InputStreamReader(in, StandardCharsets.UTF_8);
+	}
+
+	private static void readJson(JsonReader reader, Map<Integer, List<NpcSpawn>> byRegion) throws IOException
+	{
 		reader.beginArray();
 		while (reader.hasNext())
 		{
@@ -106,7 +152,6 @@ final class NpcSpawnIndex
 			byRegion.computeIfAbsent(spawn.regionId(), ignored -> new ArrayList<>()).add(spawn);
 		}
 		reader.endArray();
-		return new NpcSpawnIndex(byRegion);
 	}
 
 	private static NpcSpawn readSpawn(JsonReader reader) throws IOException
@@ -154,14 +199,170 @@ final class NpcSpawnIndex
 		return new NpcSpawn(id, Objects.toString(name, ""), x, y, plane);
 	}
 
+	private static void readCustomTsv(Map<Integer, List<NpcSpawn>> byRegion) throws IOException
+	{
+		try (Reader reader = openReader(SOURCE_CUSTOM_SPAWN_PATH, CUSTOM_SPAWN_RESOURCE))
+		{
+			if (reader == null)
+			{
+				return;
+			}
+			try (BufferedReader buffered = new BufferedReader(reader))
+			{
+				String headerLine = buffered.readLine();
+				if (headerLine == null)
+				{
+					return;
+				}
+				String[] headers = parseHeaderLine(headerLine);
+				String line;
+				while ((line = buffered.readLine()) != null)
+				{
+					if (line.isBlank() || line.startsWith("#"))
+					{
+						continue;
+					}
+					NpcSpawn spawn = readCustomSpawn(line, headers);
+					if (spawn == null || spawn.id() < 0 || spawn.plane() < 0 || spawn.plane() >= Region.Z)
+					{
+						continue;
+					}
+					byRegion.computeIfAbsent(spawn.regionId(), ignored -> new ArrayList<>()).add(spawn);
+				}
+			}
+		}
+	}
+
+	private static String[] parseHeaderLine(String headerLine)
+	{
+		String normalized = headerLine;
+		if (normalized.startsWith("# "))
+		{
+			normalized = normalized.substring(2);
+		}
+		else if (normalized.startsWith("#"))
+		{
+			normalized = normalized.substring(1);
+		}
+		return normalized.split("\t", -1);
+	}
+
+	private static NpcSpawn readCustomSpawn(String line, String[] headers)
+	{
+		String[] fields = line.split("\t", -1);
+		Map<String, String> values = new HashMap<>();
+		for (int i = 0; i < headers.length; i++)
+		{
+			values.put(headers[i], i < fields.length ? fields[i] : "");
+		}
+
+		int id = parseInt(values.get("id"), -1);
+		int x = parseInt(values.get("x"), Integer.MIN_VALUE);
+		int y = parseInt(values.get("y"), Integer.MIN_VALUE);
+		int plane = parseInt(values.getOrDefault("level", values.get("plane")), 0);
+		if (id < 0 || x == Integer.MIN_VALUE || y == Integer.MIN_VALUE)
+		{
+			return null;
+		}
+		return new NpcSpawn(
+			id,
+			Objects.toString(values.get("name"), ""),
+			x,
+			y,
+			plane,
+			parseFaceDirection(values.get("faceDirection")),
+			parseWalk(values.get("walk")),
+			SpawnSource.TSV
+		);
+	}
+
+	private static int parseInt(String value, int fallback)
+	{
+		if (value == null || value.isBlank())
+		{
+			return fallback;
+		}
+		try
+		{
+			return Integer.parseInt(value.trim());
+		}
+		catch (NumberFormatException ex)
+		{
+			return fallback;
+		}
+	}
+
+	private static Integer parseFaceDirection(String value)
+	{
+		if (value == null || value.isBlank() || "default".equalsIgnoreCase(value.trim()))
+		{
+			return null;
+		}
+		int numeric = parseInt(value, Integer.MIN_VALUE);
+		if (numeric >= 0 && numeric <= 7)
+		{
+			return numeric;
+		}
+		return switch (value.trim().toLowerCase(Locale.ROOT).replace("_", "").replace("-", "").replace(" ", ""))
+		{
+			case "northwest", "nw" -> 0;
+			case "north", "n" -> 1;
+			case "northeast", "ne" -> 2;
+			case "west", "w" -> 3;
+			case "east", "e" -> 4;
+			case "southwest", "sw" -> 5;
+			case "south", "s" -> 6;
+			case "southeast", "se" -> 7;
+			default -> null;
+		};
+	}
+
+	private static Boolean parseWalk(String value)
+	{
+		if (value == null || value.isBlank() || "default".equalsIgnoreCase(value.trim()))
+		{
+			return null;
+		}
+		return switch (value.trim().toLowerCase(Locale.ROOT))
+		{
+			case "true", "yes", "y", "1", "enabled", "enable" -> Boolean.TRUE;
+			case "false", "no", "n", "0", "disabled", "disable" -> Boolean.FALSE;
+			default -> null;
+		};
+	}
+
+	enum SpawnSource
+	{
+		JSON,
+		TSV
+	}
+
 	record NpcSpawn(
 		int id,
 		String name,
 		int worldX,
 		int worldY,
-		int plane
+		int plane,
+		Integer faceDirection,
+		Boolean walkEnabled,
+		SpawnSource source
 	)
 	{
+		private NpcSpawn(int id, String name, int worldX, int worldY, int plane)
+		{
+			this(id, name, worldX, worldY, plane, null, null, SpawnSource.JSON);
+		}
+
+		NpcSpawn
+		{
+			name = Objects.toString(name, "");
+			source = source == null ? SpawnSource.JSON : source;
+			if (faceDirection != null && (faceDirection < 0 || faceDirection > 7))
+			{
+				faceDirection = null;
+			}
+		}
+
 		private int regionId()
 		{
 			return TerrainScene.regionId(Math.floorDiv(worldX, Region.X), Math.floorDiv(worldY, Region.Y));

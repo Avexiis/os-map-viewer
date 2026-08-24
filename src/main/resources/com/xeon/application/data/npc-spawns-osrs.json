@@ -109907,13 +109907,6 @@
     "id": 1799
   },
   {
-    "level": 0,
-    "name": "Cecilia",
-    "x": 2990,
-    "y": 3384,
-    "id": 3267
-  },
-  {
     "level": 2,
     "name": "White Knight",
     "x": 2957,
@@ -137026,13 +137019,6 @@
   },
   {
     "level": 0,
-    "name": "Clerk",
-    "x": 3181,
-    "y": 3471,
-    "id": 10759
-  },
-  {
-    "level": 0,
     "name": "Abigaila",
     "x": 3185,
     "y": 3516,
@@ -137044,34 +137030,6 @@
     "x": 3193,
     "y": 3489,
     "id": 6708
-  },
-  {
-    "level": 0,
-    "name": "Relobo Blinyo (logs)",
-    "x": 3152,
-    "y": 3489,
-    "id": 5451
-  },
-  {
-    "level": 0,
-    "name": "Bob Barter (herbs)",
-    "x": 3156,
-    "y": 3481,
-    "id": 5449
-  },
-  {
-    "level": 0,
-    "name": "Hofuthand (weapons and armour)",
-    "x": 3156,
-    "y": 3498,
-    "id": 5452
-  },
-  {
-    "level": 0,
-    "name": "Banker",
-    "x": 3163,
-    "y": 3489,
-    "id": 1633
   },
   {
     "level": 0,
@@ -137089,13 +137047,6 @@
   },
   {
     "level": 0,
-    "name": "Grand Exchange Clerk",
-    "x": 3164,
-    "y": 3491,
-    "id": 2151
-  },
-  {
-    "level": 0,
     "name": "Brugsen Bursen",
     "x": 3165,
     "y": 3477,
@@ -137107,41 +137058,6 @@
     "x": 3165,
     "y": 3488,
     "id": 2148
-  },
-  {
-    "level": 0,
-    "name": "Grand Exchange Clerk",
-    "x": 3165,
-    "y": 3491,
-    "id": 2150
-  },
-  {
-    "level": 0,
-    "name": "Banker",
-    "x": 3166,
-    "y": 3489,
-    "id": 1634
-  },
-  {
-    "level": 0,
-    "name": "Banker",
-    "x": 3166,
-    "y": 3490,
-    "id": 3089
-  },
-  {
-    "level": 0,
-    "name": "Murky Matt (runes)",
-    "x": 3173,
-    "y": 3481,
-    "id": 5450
-  },
-  {
-    "level": 0,
-    "name": "Farid Morrisane (ores and bars)",
-    "x": 3173,
-    "y": 3498,
-    "id": 3115
   },
   {
     "level": 0,
@@ -157900,13 +157816,6 @@
   },
   {
     "level": 0,
-    "name": "Master smithing tutor",
-    "x": 3187,
-    "y": 3423,
-    "id": 3225
-  },
-  {
-    "level": 0,
     "name": "Financial Wizard",
     "x": 3187,
     "y": 3436,
@@ -170171,7 +170080,7 @@
   },
   {
     "level": 0,
-    "name": "Orsaga\u0027s chinchompa",
+    "name": "Orsaga's chinchompa",
     "x": 1569,
     "y": 9458,
     "id": 13137

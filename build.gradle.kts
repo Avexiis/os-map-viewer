@@ -20,19 +20,35 @@ val lwjglBundledNativeClassifiers = linkedSetOf(
     "natives-macos",
     "natives-macos-arm64"
 )
-val nvidiaPrimeEnvironment = mapOf(
+val nvidiaPrimeEnvironment = linkedMapOf(
     "__NV_PRIME_RENDER_OFFLOAD" to "1",
     "__VK_LAYER_NV_optimus" to "NVIDIA_only",
-    "__GLX_VENDOR_LIBRARY_NAME" to "nvidia"
+    "__GLX_VENDOR_LIBRARY_NAME" to "nvidia",
+    "DRI_PRIME" to "1"
 )
+fun primePropertyEnabled(value: String): Boolean
+{
+    return value.equals("true", ignoreCase = true)
+        || value.equals("yes", ignoreCase = true)
+        || value.equals("on", ignoreCase = true)
+        || value == "1"
+}
+
 val useNvidiaPrime = providers.gradleProperty("osmapviewer.nvidiaPrime")
-    .map { value ->
-        value.equals("true", ignoreCase = true)
-            || value.equals("yes", ignoreCase = true)
-            || value.equals("on", ignoreCase = true)
-            || value == "1"
-    }
+    .orElse(providers.environmentVariable("OSMAPVIEWER_NVIDIA_PRIME"))
+    .map(::primePropertyEnabled)
     .orElse(false)
+val nvidiaPrimeProvider = providers.gradleProperty("osmapviewer.nvidiaPrimeProvider")
+    .orElse(providers.environmentVariable("OSMAPVIEWER_NVIDIA_PRIME_PROVIDER"))
+
+fun JavaExec.useNvidiaPrimeOffload()
+{
+    environment(nvidiaPrimeEnvironment)
+    nvidiaPrimeProvider.orNull
+        ?.takeIf { it.isNotBlank() }
+        ?.let { environment("__NV_PRIME_RENDER_OFFLOAD_PROVIDER", it) }
+    systemProperty("osmapviewer.nvidiaPrime", "true")
+}
 
 repositories {
     mavenCentral()
@@ -52,10 +68,21 @@ application {
 }
 
 tasks.named<JavaExec>("run") {
+    workingDir = projectDir
     if (useNvidiaPrime.get())
     {
-        environment(nvidiaPrimeEnvironment)
+        useNvidiaPrimeOffload()
     }
+}
+
+tasks.register<JavaExec>("runNvidiaPrime") {
+    group = "application"
+    description = "Runs OS Map Viewer with NVIDIA PRIME render offload enabled for hybrid-GPU Linux systems."
+    dependsOn(tasks.named("classes"))
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set(application.mainClass)
+    workingDir = projectDir
+    useNvidiaPrimeOffload()
 }
 
 val generatedResourcesDir = layout.buildDirectory.dir("generated/resources/main")

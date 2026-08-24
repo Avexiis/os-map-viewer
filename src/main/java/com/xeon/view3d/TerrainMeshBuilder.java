@@ -145,6 +145,7 @@ final class TerrainMeshBuilder
 			npcSpawnIndex,
 			npcDefinitionProvider,
 			npcCollisionMap,
+			objectManager,
 			modelProvider,
 			animationProvider,
 			textureProvider,

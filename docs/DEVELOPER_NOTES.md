@@ -54,3 +54,29 @@ The inclusion of this Gradle script is purely an open-source measure. OS Map Vie
 The 3D viewer should keep cache-specific renderer extensions in `com.xeon.view3d`. Do not import bundled plugin packages into core viewer code, and do not modify the RuneLite cache module for viewer-only fields.
 
 NPC rendering follows that rule. `view3d` owns the extra NPC definition decoding, spawn index loading, Maya-sequence approximation, and NPC wander collision helper used by the renderer. NPC wander may use the bundled 2D collision resource, but camera collision must not use that map because it is tile-based and has no object mesh height.
+
+## NVIDIA PRIME Development Launch
+
+Hybrid-GPU Linux machines using discrete NVIDIA graphics may need NVIDIA PRIME render offload for the 3D viewer to use the discrete GPU. The normal Gradle `run` task does not force this, so forks and machines with correct OS-level GPU routing are unaffected.
+
+For local development, use either:
+
+```bash
+./gradlew runNvidiaPrime
+```
+
+or:
+
+```bash
+./gradlew run -Posmapviewer.nvidiaPrime=true
+```
+
+In IntelliJ, run the Gradle task `runNvidiaPrime`, or put `-Posmapviewer.nvidiaPrime=true` in the Gradle run configuration's arguments field.
+
+If a system needs an explicit PRIME provider name, pass it as:
+
+```bash
+./gradlew runNvidiaPrime -Posmapviewer.nvidiaPrimeProvider=NVIDIA-G0
+```
+
+The equivalent environment variables are `OSMAPVIEWER_NVIDIA_PRIME=true` and `OSMAPVIEWER_NVIDIA_PRIME_PROVIDER=NVIDIA-G0`, but the dedicated task is preferred because Gradle daemon environment changes can be stale between runs.

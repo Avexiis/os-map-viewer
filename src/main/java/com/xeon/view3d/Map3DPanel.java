@@ -62,10 +62,15 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.awt.geom.AffineTransform;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -85,8 +90,10 @@ import javax.swing.JCheckBox;
 import javax.swing.JColorChooser;
 import javax.swing.JComponent;
 import javax.swing.JComboBox;
+import javax.swing.JFileChooser;
 import javax.swing.JLayeredPane;
 import javax.swing.JLabel;
+import javax.swing.JMenu;
 import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
@@ -166,6 +173,7 @@ public final class Map3DPanel extends JPanel
 	private final Set<Integer> queuedRegionIds = new HashSet<>();
 	private final Set<Integer> loadingRegionIds = new HashSet<>();
 	private final Set<Integer> failedRegionIds = new HashSet<>();
+	private final Set<Integer> npcReloadAfterLoadRegionIds = new HashSet<>();
 	private final JToggleButton lockCameraButton = new JToggleButton("Lock Camera");
 	private final JToggleButton debugOverlayButton = new JToggleButton("Debug");
 	private final JToggleButton viewControlsButton = new JToggleButton("View Controls");
@@ -242,6 +250,7 @@ public final class Map3DPanel extends JPanel
 	private boolean npcOutlinesVisible = true;
 	private boolean npcHoverTextVisible = true;
 	private boolean minimapVisible = true;
+	private boolean developerModeAvailable;
 	private Color npcOutlineColor = new Color(Viewer3DState.DEFAULT_NPC_OUTLINE_COLOR_ARGB, true);
 	private Color tileHoverSelectorColor = new Color(Viewer3DState.DEFAULT_TILE_HOVER_COLOR_ARGB, true);
 	private boolean cameraInitialized;
@@ -289,6 +298,14 @@ public final class Map3DPanel extends JPanel
 	                  ViewerSettings settings, MapViewerPlugin activePlugin, Runnable exitAction,
 	                  Consumer<String> failureAction, Tile initialFocusTile)
 	{
+		this(cacheDirectory, regionId, atlasPath, mapCacheBudgetBytes, settings, activePlugin, exitAction,
+			failureAction, initialFocusTile, false);
+	}
+
+	public Map3DPanel(Path cacheDirectory, int regionId, Path atlasPath, long mapCacheBudgetBytes,
+	                  ViewerSettings settings, MapViewerPlugin activePlugin, Runnable exitAction,
+	                  Consumer<String> failureAction, Tile initialFocusTile, boolean developerModeAvailable)
+	{
 		super(new BorderLayout());
 		this.cacheDirectory = cacheDirectory;
 		this.atlasPath = atlasPath;
@@ -326,6 +343,7 @@ public final class Map3DPanel extends JPanel
 		sceneLayer = buildSceneLayer();
 		setMapBackgroundColor(settings == null ? Color.BLACK : settings.mapBackgroundColor());
 		setActivePlugin(activePlugin);
+		setDeveloperModeAvailable(developerModeAvailable);
 
 		add(sceneLayer, BorderLayout.CENTER);
 		JPanel footer = buildFooterPanel();
@@ -404,6 +422,12 @@ public final class Map3DPanel extends JPanel
 		{
 			minimapOverlay.setPlugin(plugin);
 		}
+	}
+
+	public void setDeveloperModeAvailable(boolean developerModeAvailable)
+	{
+		this.developerModeAvailable = developerModeAvailable;
+		renderer.setNpcPickingEnabled(developerModeAvailable);
 	}
 
 	public void focusTile(Tile tile)
@@ -1765,6 +1789,11 @@ public final class Map3DPanel extends JPanel
 			{
 				canvas.requestFocusInWindow();
 				updateHoveredTile(e);
+				if (handleDeveloperPopupTrigger(e))
+				{
+					pluginPopupHandledDuringPressRelease = true;
+					return;
+				}
 				if (handlePluginPopupTrigger(e))
 				{
 					pluginPopupHandledDuringPressRelease = true;
@@ -1783,6 +1812,11 @@ public final class Map3DPanel extends JPanel
 				if (e.isPopupTrigger() && pluginPopupHandledDuringPressRelease)
 				{
 					pluginPopupHandledDuringPressRelease = false;
+					return;
+				}
+				if (handleDeveloperPopupTrigger(e))
+				{
+					pluginPopupHandledDuringPressRelease = true;
 					return;
 				}
 				if (handlePluginPopupTrigger(e))
@@ -1898,6 +1932,64 @@ public final class Map3DPanel extends JPanel
 		updateHoveredTile(event);
 	}
 
+	private boolean handleDeveloperPopupTrigger(MouseEvent event)
+	{
+		if (!developerModeAvailable || !event.isPopupTrigger() && !SwingUtilities.isRightMouseButton(event))
+		{
+			return false;
+		}
+		updateHoveredTile(event);
+		TerrainRenderer.NpcHoverInfo npc = renderer.pickHoveredNpcInfo();
+		Tile tile = hoveredTile();
+		if (npc == null && tile == null)
+		{
+			return false;
+		}
+
+		JPopupMenu popup = new JPopupMenu();
+		if (npc != null)
+		{
+			addDeveloperNpcActions(popup, npc, tile);
+		}
+		else
+		{
+			JMenuItem spawn = new JMenuItem("Spawn NPC...");
+			spawn.addActionListener(e -> promptSpawnNpc(tile));
+			popup.add(spawn);
+		}
+		if (popup.getComponentCount() == 0)
+		{
+			return false;
+		}
+		popup.show(canvas, event.getX(), event.getY());
+		event.consume();
+		return true;
+	}
+
+	private void addDeveloperNpcActions(JPopupMenu popup, TerrainRenderer.NpcHoverInfo npc, Tile tile)
+	{
+		JMenuItem delete = new JMenuItem("Delete NPC");
+		delete.addActionListener(e -> deleteNpcSpawn(npc));
+		popup.add(delete);
+
+		JMenu faceDirection = new JMenu("Change Face Direction");
+		for (NpcFaceDirection direction : NpcFaceDirection.values())
+		{
+			JMenuItem item = new JMenuItem(direction.toString());
+			item.addActionListener(e -> changeNpcFaceDirection(npc, direction));
+			faceDirection.add(item);
+		}
+		popup.add(faceDirection);
+
+		JMenuItem spawnTile = new JMenuItem("Change Spawn Tile...");
+		spawnTile.addActionListener(e -> changeNpcSpawnTile(npc, tile));
+		popup.add(spawnTile);
+
+		JMenuItem walk = new JMenuItem(npc.currentlyWalkingEnabled() ? "Disable Walk" : "Enable Walk");
+		walk.addActionListener(e -> setNpcWalkOverride(npc, !npc.currentlyWalkingEnabled()));
+		popup.add(walk);
+	}
+
 	private boolean handlePluginPopupTrigger(MouseEvent event)
 	{
 		if (active3DLayer == null || !event.isPopupTrigger() && !SwingUtilities.isRightMouseButton(event))
@@ -1964,6 +2056,374 @@ public final class Map3DPanel extends JPanel
 		warpCameraToTile(warpTarget);
 		event.consume();
 		return true;
+	}
+
+	private void deleteNpcSpawn(TerrainRenderer.NpcHoverInfo npc)
+	{
+		NpcSpawnEditor.Entry entry = entryFor(npc);
+		int answer = JOptionPane.showConfirmDialog(
+			this,
+			"Delete NPC " + entry.id() + " at " + entry.worldX() + "," + entry.worldY() + "," + entry.plane() + "?",
+			"Delete NPC Spawn",
+			JOptionPane.YES_NO_OPTION,
+			JOptionPane.WARNING_MESSAGE
+		);
+		if (answer != JOptionPane.YES_OPTION)
+		{
+			return;
+		}
+		Set<Integer> regions = Set.of(regionIdForWorldTile(entry.worldX(), entry.worldY()));
+		performNpcSpawnEdit(
+			NpcSpawnEditor.filesForDelete(entry),
+			regions,
+			"Deleted NPC spawn " + entry.id(),
+			() -> NpcSpawnEditor.delete(entry)
+		);
+	}
+
+	private void changeNpcFaceDirection(TerrainRenderer.NpcHoverInfo npc, NpcFaceDirection direction)
+	{
+		NpcSpawnEditor.Entry original = entryFor(npc);
+		NpcSpawnEditor.Entry next = new NpcSpawnEditor.Entry(
+			original.id(),
+			original.name(),
+			original.worldX(),
+			original.worldY(),
+			original.plane(),
+			direction.faceDirection(),
+			original.walkEnabled(),
+			NpcSpawnIndex.SpawnSource.TSV
+		);
+		Set<Integer> regions = Set.of(regionIdForWorldTile(original.worldX(), original.worldY()));
+		performNpcSpawnEdit(
+			NpcSpawnEditor.filesForOverride(original),
+			regions,
+			"Changed NPC face direction",
+			() -> NpcSpawnEditor.saveOverride(original, next)
+		);
+	}
+
+	private void changeNpcSpawnTile(TerrainRenderer.NpcHoverInfo npc, Tile clickedTile)
+	{
+		NpcSpawnEditor.Entry original = entryFor(npc);
+		Tile defaultTile = clickedTile == null
+			? new Tile(original.worldX(), original.worldY(), original.plane())
+			: clickedTile;
+		Tile nextTile = promptTile("Change Spawn Tile", defaultTile);
+		if (nextTile == null)
+		{
+			return;
+		}
+
+		NpcSpawnEditor.Entry next = new NpcSpawnEditor.Entry(
+			original.id(),
+			original.name(),
+			nextTile.x,
+			nextTile.y,
+			nextTile.z,
+			original.faceDirection(),
+			original.walkEnabled(),
+			NpcSpawnIndex.SpawnSource.TSV
+		);
+		Set<Integer> regions = new LinkedHashSet<>();
+		regions.add(regionIdForWorldTile(original.worldX(), original.worldY()));
+		regions.add(regionIdForWorldTile(next.worldX(), next.worldY()));
+		performNpcSpawnEdit(
+			NpcSpawnEditor.filesForOverride(original),
+			regions,
+			"Changed NPC spawn tile",
+			() -> NpcSpawnEditor.saveOverride(original, next)
+		);
+	}
+
+	private void setNpcWalkOverride(TerrainRenderer.NpcHoverInfo npc, boolean enabled)
+	{
+		NpcSpawnEditor.Entry original = entryFor(npc);
+		NpcSpawnEditor.Entry next = new NpcSpawnEditor.Entry(
+			original.id(),
+			original.name(),
+			original.worldX(),
+			original.worldY(),
+			original.plane(),
+			original.faceDirection(),
+			enabled,
+			NpcSpawnIndex.SpawnSource.TSV
+		);
+		Set<Integer> regions = Set.of(regionIdForWorldTile(original.worldX(), original.worldY()));
+		performNpcSpawnEdit(
+			NpcSpawnEditor.filesForOverride(original),
+			regions,
+			enabled ? "Enabled NPC walk" : "Disabled NPC walk",
+			() -> NpcSpawnEditor.saveOverride(original, next)
+		);
+	}
+
+	private void promptSpawnNpc(Tile tile)
+	{
+		if (tile == null)
+		{
+			return;
+		}
+		NpcSpawnEditor.Entry entry = promptNpcSpawn(tile);
+		if (entry == null)
+		{
+			return;
+		}
+		Set<Integer> regions = Set.of(regionIdForWorldTile(entry.worldX(), entry.worldY()));
+		performNpcSpawnEdit(
+			NpcSpawnEditor.filesForOverride(null),
+			regions,
+			"Added NPC spawn " + entry.id(),
+			() -> NpcSpawnEditor.saveOverride(null, entry)
+		);
+	}
+
+	private NpcSpawnEditor.Entry promptNpcSpawn(Tile tile)
+	{
+		NumberField id = new NumberField(8);
+		JComboBox<NpcFaceDirection> face = new JComboBox<>(NpcFaceDirection.values());
+		JComboBox<NpcWalkOverride> walk = new JComboBox<>(NpcWalkOverride.values());
+		JPanel panel = new JPanel(new GridLayout(0, 2, 8, 6));
+		panel.add(new JLabel("NPC ID"));
+		panel.add(id);
+		panel.add(new JLabel("Tile"));
+		panel.add(new JLabel(tile.x + "," + tile.y + "," + tile.z));
+		panel.add(new JLabel("Face Direction"));
+		panel.add(face);
+		panel.add(new JLabel("Walk"));
+		panel.add(walk);
+
+		int answer = JOptionPane.showConfirmDialog(
+			this,
+			panel,
+			"Spawn NPC",
+			JOptionPane.OK_CANCEL_OPTION,
+			JOptionPane.PLAIN_MESSAGE
+		);
+		if (answer != JOptionPane.OK_OPTION)
+		{
+			return null;
+		}
+		Integer npcId = id.getInt(null);
+		if (npcId == null || npcId < 0)
+		{
+			JOptionPane.showMessageDialog(this, "NPC ID must be a non-negative number.", "Spawn NPC", JOptionPane.ERROR_MESSAGE);
+			return null;
+		}
+		String npcName;
+		try
+		{
+			npcName = npcName(npcId);
+		}
+		catch (IOException | RuntimeException ex)
+		{
+			JOptionPane.showMessageDialog(this, "Failed to load NPC " + npcId + ": " + rootMessage(ex), "Spawn NPC", JOptionPane.ERROR_MESSAGE);
+			return null;
+		}
+		if (npcName.isBlank())
+		{
+			JOptionPane.showMessageDialog(this, "NPC ID " + npcId + " was not found in the cache.", "Spawn NPC", JOptionPane.ERROR_MESSAGE);
+			return null;
+		}
+		NpcFaceDirection selectedFace = (NpcFaceDirection) face.getSelectedItem();
+		NpcWalkOverride selectedWalk = (NpcWalkOverride) walk.getSelectedItem();
+		return new NpcSpawnEditor.Entry(
+			npcId,
+			npcName,
+			tile.x,
+			tile.y,
+			tile.z,
+			selectedFace == null ? null : selectedFace.faceDirection(),
+			selectedWalk == null ? null : selectedWalk.walkEnabled(),
+			NpcSpawnIndex.SpawnSource.TSV
+		);
+	}
+
+	private String npcName(int npcId) throws IOException
+	{
+		TerrainRegionLoader.Session session = loaderSession();
+		return session.npcName(npcId);
+	}
+
+	private Tile promptTile(String title, Tile fallback)
+	{
+		NumberField x = new NumberField(6);
+		NumberField y = new NumberField(6);
+		NumberField plane = new NumberField(2);
+		x.setInt(fallback == null ? null : fallback.x);
+		y.setInt(fallback == null ? null : fallback.y);
+		plane.setInt(fallback == null ? 0 : fallback.z);
+		JPanel panel = new JPanel(new GridLayout(0, 2, 8, 6));
+		panel.add(new JLabel("X"));
+		panel.add(x);
+		panel.add(new JLabel("Y"));
+		panel.add(y);
+		panel.add(new JLabel("Plane"));
+		panel.add(plane);
+		int answer = JOptionPane.showConfirmDialog(this, panel, title, JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+		if (answer != JOptionPane.OK_OPTION)
+		{
+			return null;
+		}
+		Integer worldX = x.getInt(null);
+		Integer worldY = y.getInt(null);
+		Integer z = plane.getInt(0);
+		if (worldX == null || worldY == null || z == null || z < 0 || z >= PLANE_COUNT)
+		{
+			JOptionPane.showMessageDialog(this, "Enter a valid tile and plane 0-3.", title, JOptionPane.ERROR_MESSAGE);
+			return null;
+		}
+		return new Tile(worldX, worldY, z);
+	}
+
+	private void performNpcSpawnEdit(
+		List<Path> changedFiles,
+		Set<Integer> changedRegions,
+		String successMessage,
+		NpcSpawnEditTask task
+	)
+	{
+		if (!confirmNpcSpawnBackup(changedFiles))
+		{
+			return;
+		}
+		try
+		{
+			task.run();
+			reloadNpcSpawnRegions(changedRegions);
+			detail.setText(successMessage);
+		}
+		catch (IOException | RuntimeException ex)
+		{
+			JOptionPane.showMessageDialog(this, ex.getMessage(), "NPC Spawn Edit Failed", JOptionPane.ERROR_MESSAGE);
+		}
+	}
+
+	private boolean confirmNpcSpawnBackup(List<Path> changedFiles)
+	{
+		if (settings != null && settings.developerNpcSpawnBackupPromptSuppressed())
+		{
+			return true;
+		}
+
+		JCheckBox doNotAskAgain = new JCheckBox("Do not ask again");
+		JPanel panel = new JPanel(new BorderLayout(0, 8));
+		panel.add(new JLabel("Back up affected NPC spawn files before editing?"), BorderLayout.NORTH);
+		panel.add(doNotAskAgain, BorderLayout.SOUTH);
+		int answer = JOptionPane.showConfirmDialog(
+			this,
+			panel,
+			"Back Up NPC Spawn Data",
+			JOptionPane.YES_NO_CANCEL_OPTION,
+			JOptionPane.WARNING_MESSAGE
+		);
+		if (answer == JOptionPane.CANCEL_OPTION || answer == JOptionPane.CLOSED_OPTION)
+		{
+			return false;
+		}
+		if (settings != null && doNotAskAgain.isSelected())
+		{
+			settings.setDeveloperNpcSpawnBackupPromptSuppressed(true);
+		}
+		if (answer != JOptionPane.YES_OPTION)
+		{
+			return true;
+		}
+
+		JFileChooser chooser = new JFileChooser();
+		chooser.setDialogTitle("Choose Backup Folder");
+		chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+		chooser.setCurrentDirectory(Path.of("").toAbsolutePath().normalize().toFile());
+		if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION)
+		{
+			return false;
+		}
+
+		Path targetDir = chooser.getSelectedFile().toPath().toAbsolutePath().normalize();
+		try
+		{
+			backupNpcSpawnFiles(changedFiles, targetDir);
+			return true;
+		}
+		catch (IOException ex)
+		{
+			JOptionPane.showMessageDialog(this, ex.getMessage(), "NPC Spawn Backup Failed", JOptionPane.ERROR_MESSAGE);
+			return false;
+		}
+	}
+
+	private void backupNpcSpawnFiles(List<Path> changedFiles, Path targetDir) throws IOException
+	{
+		Files.createDirectories(targetDir);
+		String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
+		for (Path path : new LinkedHashSet<>(changedFiles))
+		{
+			if (path == null || !Files.isRegularFile(path))
+			{
+				continue;
+			}
+			String fileName = path.getFileName() == null ? "npc-spawns" : path.getFileName().toString();
+			Path target = targetDir.resolve(fileName + "." + timestamp + ".bak");
+			Files.copy(path, target, StandardCopyOption.REPLACE_EXISTING);
+		}
+	}
+
+	private void reloadNpcSpawnRegions(Set<Integer> regionIds)
+	{
+		NpcSpawnIndex.reloadDefault();
+		TerrainRegionLoader.Session session = loaderSession;
+		if (session != null)
+		{
+			session.reloadNpcSpawnIndex();
+		}
+		for (int changedRegionId : regionIds)
+		{
+			reloadNpcSpawnRegion(changedRegionId);
+		}
+		rebuildScene();
+		pumpRegionQueue();
+	}
+
+	private void reloadNpcSpawnRegion(int changedRegionId)
+	{
+		if (loadingRegionIds.contains(changedRegionId))
+		{
+			npcReloadAfterLoadRegionIds.add(changedRegionId);
+			return;
+		}
+		TerrainMesh existing = loadedMeshes.remove(changedRegionId);
+		if (existing != null)
+		{
+			existing.releaseVertexData();
+		}
+		loadedRegionIds.remove(changedRegionId);
+		failedRegionIds.remove(changedRegionId);
+		queuedRegionIds.remove(changedRegionId);
+		regionLoadQueue.removeIf(region -> region == changedRegionId);
+		if (desiredRegionIds.contains(changedRegionId))
+		{
+			loadedMeshes.put(changedRegionId, TerrainMesh.empty(changedRegionId));
+			queueRegion(changedRegionId);
+		}
+	}
+
+	private static NpcSpawnEditor.Entry entryFor(TerrainRenderer.NpcHoverInfo npc)
+	{
+		return new NpcSpawnEditor.Entry(
+			npc.npcId(),
+			npc.spawnName(),
+			npc.spawnWorldX(),
+			npc.spawnWorldY(),
+			npc.spawnPlane(),
+			npc.faceDirection(),
+			npc.walkEnabled(),
+			npc.source()
+		);
+	}
+
+	private static int regionIdForWorldTile(int x, int y)
+	{
+		return TerrainScene.regionId(Math.floorDiv(x, TerrainScene.REGION_SIZE), Math.floorDiv(y, TerrainScene.REGION_SIZE));
 	}
 
 	private Map3DMouseEvent to3DMouseEvent(MouseEvent event, Tile tile, boolean popup)
@@ -2251,6 +2711,23 @@ public final class Map3DPanel extends JPanel
 		}
 
 		loadingRegionIds.remove(requestedRegionId);
+		if (npcReloadAfterLoadRegionIds.remove(requestedRegionId))
+		{
+			if (mesh != null)
+			{
+				mesh.releaseVertexData();
+			}
+			failedRegionIds.remove(requestedRegionId);
+			if (isRegionDesired(requestedRegionId))
+			{
+				loadedMeshes.put(requestedRegionId, TerrainMesh.empty(requestedRegionId));
+				queueRegion(requestedRegionId);
+				rebuildScene();
+			}
+			updateStreamStatus();
+			pumpRegionQueue();
+			return;
+		}
 		if (failure != null)
 		{
 			failedRegionIds.add(requestedRegionId);
@@ -3172,6 +3649,72 @@ public final class Map3DPanel extends JPanel
 		MapAreaSearchPanel searchPanel
 	)
 	{
+	}
+
+	@FunctionalInterface
+	private interface NpcSpawnEditTask
+	{
+		void run() throws IOException;
+	}
+
+	private enum NpcFaceDirection
+	{
+		DEFAULT("Default", null),
+		NORTH_WEST("North-West", 0),
+		NORTH("North", 1),
+		NORTH_EAST("North-East", 2),
+		WEST("West", 3),
+		EAST("East", 4),
+		SOUTH_WEST("South-West", 5),
+		SOUTH("South", 6),
+		SOUTH_EAST("South-East", 7);
+
+		private final String label;
+		private final Integer faceDirection;
+
+		NpcFaceDirection(String label, Integer faceDirection)
+		{
+			this.label = label;
+			this.faceDirection = faceDirection;
+		}
+
+		private Integer faceDirection()
+		{
+			return faceDirection;
+		}
+
+		@Override
+		public String toString()
+		{
+			return label;
+		}
+	}
+
+	private enum NpcWalkOverride
+	{
+		DEFAULT("Default", null),
+		ENABLED("Enabled", Boolean.TRUE),
+		DISABLED("Disabled", Boolean.FALSE);
+
+		private final String label;
+		private final Boolean walkEnabled;
+
+		NpcWalkOverride(String label, Boolean walkEnabled)
+		{
+			this.label = label;
+			this.walkEnabled = walkEnabled;
+		}
+
+		private Boolean walkEnabled()
+		{
+			return walkEnabled;
+		}
+
+		@Override
+		public String toString()
+		{
+			return label;
+		}
 	}
 
 	private enum ViewDistanceOption

@@ -27,15 +27,22 @@ package com.xeon.view3d;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Supplier;
+import net.runelite.cache.ObjectManager;
 import net.runelite.cache.definitions.ModelDefinition;
+import net.runelite.cache.definitions.ObjectDefinition;
 import net.runelite.cache.definitions.SequenceDefinition;
 import net.runelite.cache.item.RSTextureProvider;
 import net.runelite.cache.models.JagexColor;
+import net.runelite.cache.region.Location;
+import net.runelite.cache.region.Position;
 import net.runelite.cache.region.Region;
 
 final class NpcMeshBuilder
@@ -60,6 +67,10 @@ final class NpcMeshBuilder
 	private static final int MAX_WANDER_STEPS = 8;
 	private static final int LOGIN_SCREEN_RENDER_PROP = 0x1;
 	private static final int LOGIN_SCREEN_WALK_PROP = 0x2;
+	private static final int SERVICE_OBJECT_SEARCH_RADIUS_TILES = 3;
+	private static final int MAX_OBJECT_TRANSFORM_DEPTH = 8;
+	private static final int TYPE_GAME_OBJECT = 10;
+	private static final int TYPE_GAME_OBJECT_DIAGONAL = 11;
 	private static final int[][] FORWARD_TURN_ORDERS = new int[][]{
 		{0, -1, 1},
 		{0, 1, -1},
@@ -77,6 +88,7 @@ final class NpcMeshBuilder
 		NpcSpawnIndex spawnIndex,
 		NpcDefinitionProvider definitionProvider,
 		NpcWanderCollisionMap collisionMap,
+		ObjectManager objectManager,
 		ObjectModelProvider modelProvider,
 		ObjectAnimationProvider animationProvider,
 		RSTextureProvider textureProvider,
@@ -150,8 +162,9 @@ final class NpcMeshBuilder
 				)
 			);
 
-			AnimationChoice walkChoice = walkChoice(definition, animationProvider);
-			boolean walking = walkChoice.walking() && canWander(definition, spawn, region, plane, collisionMap);
+			AnimationChoice walkChoice = walkChoice(definition, spawn, animationProvider);
+			boolean walking = walkChoice.walking()
+				&& canWander(definition, spawn, region, plane, collisionMap, objectManager);
 			NpcMeshEntry walkEntry = null;
 			if (walking)
 			{
@@ -174,6 +187,7 @@ final class NpcMeshBuilder
 				region,
 				heightMaps,
 				collisionMap,
+				objectManager,
 				definition,
 				spawn,
 				plane,
@@ -215,7 +229,11 @@ final class NpcMeshBuilder
 			|| (definition.loginScreenProps & LOGIN_SCREEN_RENDER_PROP) != 0;
 	}
 
-	private static AnimationChoice walkChoice(NpcDefinition3D definition, ObjectAnimationProvider animationProvider)
+	private static AnimationChoice walkChoice(
+		NpcDefinition3D definition,
+		NpcSpawnIndex.NpcSpawn spawn,
+		ObjectAnimationProvider animationProvider
+	)
 	{
 		if (animationProvider == null)
 		{
@@ -223,7 +241,7 @@ final class NpcMeshBuilder
 		}
 
 		int walkSequenceId = definition.walkSequenceId();
-		if (canUseWalkSequence(definition))
+		if (canUseWalkSequence(definition, spawn))
 		{
 			SequenceDefinition sequence = animationProvider.loadSequence(walkSequenceId);
 			if (animationProvider.effectiveFrameCount(sequence) > 0)
@@ -254,10 +272,15 @@ final class NpcMeshBuilder
 		NpcSpawnIndex.NpcSpawn spawn,
 		Region region,
 		int plane,
-		NpcWanderCollisionMap collisionMap
+		NpcWanderCollisionMap collisionMap,
+		ObjectManager objectManager
 	)
 	{
-		if (!canUseWalkSequence(definition))
+		if (spawn.walkEnabled() == null && shouldHoldPosition(definition, spawn, region, objectManager))
+		{
+			return false;
+		}
+		if (!canUseWalkSequence(definition, spawn))
 		{
 			return false;
 		}
@@ -265,12 +288,20 @@ final class NpcMeshBuilder
 		return path.size() > 1;
 	}
 
-	private static boolean canUseWalkSequence(NpcDefinition3D definition)
+	private static boolean canUseWalkSequence(NpcDefinition3D definition, NpcSpawnIndex.NpcSpawn spawn)
 	{
+		if (Boolean.FALSE.equals(spawn.walkEnabled()))
+		{
+			return false;
+		}
 		int walkSequenceId = definition.walkSequenceId();
 		if (walkSequenceId < 0)
 		{
 			return false;
+		}
+		if (Boolean.TRUE.equals(spawn.walkEnabled()))
+		{
+			return true;
 		}
 		if (definition.loginScreenProps != 0)
 		{
@@ -441,6 +472,7 @@ final class NpcMeshBuilder
 		Region region,
 		TerrainHeightMap[] heightMaps,
 		NpcWanderCollisionMap collisionMap,
+		ObjectManager objectManager,
 		NpcDefinition3D definition,
 		NpcSpawnIndex.NpcSpawn spawn,
 		int plane,
@@ -450,18 +482,37 @@ final class NpcMeshBuilder
 	{
 		int hash = spawnHash(definition, spawn);
 		int phaseOffset = Math.floorMod(hash, Math.max(1, totalFrameLength));
-		float idleYaw = yawRadians(spawnRotation(definition.spawnDirection));
+		int idleRotation = walking
+			? spawnRotation(definition, spawn)
+			: stationaryIdleRotation(region, objectManager, definition, spawn);
+		float idleYaw = yawRadians(idleRotation);
 		if (!walking)
 		{
 			PathPoint point = pathPoint(region, heightMaps, plane, spawn.worldX(), spawn.worldY(), definition.size());
-			return NpcMesh.Instance.stationary(plane, phaseOffset, point.x(), point.y(), point.z(), idleYaw);
+			return NpcMesh.Instance.stationary(
+				plane,
+				phaseOffset,
+				point.x(),
+				point.y(),
+				point.z(),
+				idleYaw,
+				spawnMetadata(spawn)
+			);
 		}
 
 		List<TilePoint> tiles = wanderTilePath(definition, spawn, region, plane, collisionMap);
 		if (tiles.size() <= 1)
 		{
 			PathPoint point = pathPoint(region, heightMaps, plane, spawn.worldX(), spawn.worldY(), definition.size());
-			return NpcMesh.Instance.stationary(plane, phaseOffset, point.x(), point.y(), point.z(), idleYaw);
+			return NpcMesh.Instance.stationary(
+				plane,
+				phaseOffset,
+				point.x(),
+				point.y(),
+				point.z(),
+				idleYaw,
+				spawnMetadata(spawn)
+			);
 		}
 
 		List<Float> x = new ArrayList<>();
@@ -548,7 +599,8 @@ final class NpcMeshBuilder
 			toFloatArray(segmentStartYaw),
 			toFloatArray(segmentEndYaw),
 			toBooleanArray(segmentWalking),
-			toFloatArray(segmentSeconds)
+			toFloatArray(segmentSeconds),
+			spawnMetadata(spawn)
 		);
 	}
 
@@ -576,7 +628,7 @@ final class NpcMeshBuilder
 		path.add(new TilePoint(startX, startY));
 		int currentX = startX;
 		int currentY = startY;
-		int facingRotation = spawnRotation(definition.spawnDirection);
+		int facingRotation = spawnRotation(definition, spawn);
 		int hash = spawnHash(definition, spawn);
 		for (int step = 0; step < MAX_WANDER_STEPS; step++)
 		{
@@ -653,6 +705,309 @@ final class NpcMeshBuilder
 			}
 		}
 		return null;
+	}
+
+	private static int stationaryIdleRotation(
+		Region region,
+		ObjectManager objectManager,
+		NpcDefinition3D definition,
+		NpcSpawnIndex.NpcSpawn spawn
+	)
+	{
+		if (spawn.faceDirection() != null)
+		{
+			return spawnRotation(spawn.faceDirection());
+		}
+
+		int cacheRotation = spawnRotation(definition.spawnDirection);
+		if (definition.spawnDirection != NpcDefinition3D.DEFAULT_SPAWN_DIRECTION
+			|| !prefersCounterFacing(definition, spawn))
+		{
+			return cacheRotation;
+		}
+
+		int serviceRotation = serviceObjectFacingRotation(region, objectManager, definition, spawn);
+		return serviceRotation < 0 ? cacheRotation : serviceRotation;
+	}
+
+	private static NpcMesh.SpawnMetadata spawnMetadata(NpcSpawnIndex.NpcSpawn spawn)
+	{
+		return new NpcMesh.SpawnMetadata(
+			spawn.name(),
+			spawn.worldX(),
+			spawn.worldY(),
+			spawn.plane(),
+			spawn.faceDirection(),
+			spawn.walkEnabled(),
+			spawn.source()
+		);
+	}
+
+	private static boolean shouldHoldPosition(
+		NpcDefinition3D definition,
+		NpcSpawnIndex.NpcSpawn spawn,
+		Region region,
+		ObjectManager objectManager
+	)
+	{
+		return prefersCounterFacing(definition, spawn)
+			&& serviceObjectFacingRotation(region, objectManager, definition, spawn) >= 0;
+	}
+
+	private static boolean prefersCounterFacing(NpcDefinition3D definition, NpcSpawnIndex.NpcSpawn spawn)
+	{
+		return isCounterFacingNpc(normalizedName(definition.name)) || isCounterFacingNpc(normalizedName(spawn.name()));
+	}
+
+	private static boolean isCounterFacingNpc(String name)
+	{
+		return name.contains("banker")
+			|| name.contains("exchange clerk")
+			|| name.contains("shop keeper")
+			|| name.contains("shop assistant");
+	}
+
+	private static int serviceObjectFacingRotation(
+		Region region,
+		ObjectManager objectManager,
+		NpcDefinition3D definition,
+		NpcSpawnIndex.NpcSpawn spawn
+	)
+	{
+		if (region == null || objectManager == null)
+		{
+			return -1;
+		}
+
+		int size = definition.size();
+		int minX = region.getBaseX();
+		int minY = region.getBaseY();
+		int maxX = region.getBaseX() + Region.X - size;
+		int maxY = region.getBaseY() + Region.Y - size;
+		int spawnX = clamp(spawn.worldX(), minX, maxX);
+		int spawnY = clamp(spawn.worldY(), minY, maxY);
+		TileRect npcRect = new TileRect(spawnX, spawnY, spawnX + size - 1, spawnY + size - 1);
+
+		int bestScore = Integer.MAX_VALUE;
+		int bestRotation = -1;
+		for (Location location : region.getLocations())
+		{
+			Position position = location.getPosition();
+			if (position.getZ() != spawn.plane())
+			{
+				continue;
+			}
+
+			int localX = position.getX() - region.getBaseX();
+			int localY = position.getY() - region.getBaseY();
+			if (localX < 0 || localY < 0 || localX >= Region.X || localY >= Region.Y)
+			{
+				continue;
+			}
+
+			ObjectDefinition object = completionStateDefinition(objectManager, objectManager.getObject(location.getId()));
+			int objectPriority = serviceObjectPriority(object);
+			if (objectPriority < 0)
+			{
+				continue;
+			}
+
+			TileRect objectRect = objectRect(position, object, location.getType(), location.getOrientation());
+			int distance = rectDistance(npcRect, objectRect);
+			if (distance > SERVICE_OBJECT_SEARCH_RADIUS_TILES)
+			{
+				continue;
+			}
+
+			int rotation = rotationTowards(npcRect, objectRect);
+			if (rotation < 0)
+			{
+				continue;
+			}
+
+			int score = objectPriority * 100 + distance * 10 + alignmentPenalty(npcRect, objectRect);
+			if (score < bestScore)
+			{
+				bestScore = score;
+				bestRotation = rotation;
+			}
+		}
+		return bestRotation;
+	}
+
+	private static ObjectDefinition completionStateDefinition(ObjectManager objectManager, ObjectDefinition definition)
+	{
+		return completionStateDefinition(objectManager, definition, new HashSet<>(), 0);
+	}
+
+	private static ObjectDefinition completionStateDefinition(
+		ObjectManager objectManager,
+		ObjectDefinition definition,
+		Set<Integer> seen,
+		int depth
+	)
+	{
+		if (objectManager == null || definition == null || depth >= MAX_OBJECT_TRANSFORM_DEPTH)
+		{
+			return definition;
+		}
+		if (!seen.add(definition.getId()))
+		{
+			return definition;
+		}
+
+		int[] transforms = definition.getConfigChangeDest();
+		if (transforms == null || transforms.length == 0)
+		{
+			return definition;
+		}
+
+		ObjectDefinition fallback = null;
+		for (int i = transforms.length - 1; i >= 0; i--)
+		{
+			int objectId = transforms[i];
+			if (objectId < 0)
+			{
+				continue;
+			}
+			ObjectDefinition candidate = objectManager.getObject(objectId);
+			if (candidate == null)
+			{
+				continue;
+			}
+			if (fallback == null)
+			{
+				fallback = candidate;
+			}
+
+			ObjectDefinition resolved = completionStateDefinition(objectManager, candidate, seen, depth + 1);
+			if (resolved != null && resolved.getObjectModels() != null)
+			{
+				return resolved;
+			}
+		}
+		return fallback == null ? definition : fallback;
+	}
+
+	private static int serviceObjectPriority(ObjectDefinition object)
+	{
+		if (object == null)
+		{
+			return -1;
+		}
+
+		String name = normalizedName(object.getName());
+		if (name.contains("bank booth"))
+		{
+			return 0;
+		}
+		if (name.contains("bank counter"))
+		{
+			return 1;
+		}
+		if (name.contains("grand exchange booth"))
+		{
+			return 2;
+		}
+		if (name.contains("bank chest") || name.contains("deposit box"))
+		{
+			return 3;
+		}
+		if (name.contains("booth"))
+		{
+			return 4;
+		}
+		if (name.contains("counter"))
+		{
+			return 5;
+		}
+		return -1;
+	}
+
+	private static TileRect objectRect(Position position, ObjectDefinition object, int type, int orientation)
+	{
+		int width = 1;
+		int length = 1;
+		if (type == TYPE_GAME_OBJECT || type == TYPE_GAME_OBJECT_DIAGONAL)
+		{
+			width = Math.max(1, object.getSizeX());
+			length = Math.max(1, object.getSizeY());
+			if ((orientation & 1) == 1)
+			{
+				int tmp = width;
+				width = length;
+				length = tmp;
+			}
+		}
+		return new TileRect(
+			position.getX(),
+			position.getY(),
+			position.getX() + width - 1,
+			position.getY() + length - 1
+		);
+	}
+
+	private static int rectDistance(TileRect a, TileRect b)
+	{
+		return Math.max(
+			axisDistance(a.minX(), a.maxX(), b.minX(), b.maxX()),
+			axisDistance(a.minY(), a.maxY(), b.minY(), b.maxY())
+		);
+	}
+
+	private static int axisDistance(int aMin, int aMax, int bMin, int bMax)
+	{
+		if (aMax < bMin)
+		{
+			return bMin - aMax - 1;
+		}
+		if (bMax < aMin)
+		{
+			return aMin - bMax - 1;
+		}
+		return 0;
+	}
+
+	private static int alignmentPenalty(TileRect a, TileRect b)
+	{
+		return rangesOverlap(a.minX(), a.maxX(), b.minX(), b.maxX())
+			|| rangesOverlap(a.minY(), a.maxY(), b.minY(), b.maxY())
+			? 0
+			: 1;
+	}
+
+	private static boolean rangesOverlap(int aMin, int aMax, int bMin, int bMax)
+	{
+		return aMin <= bMax && bMin <= aMax;
+	}
+
+	private static int rotationTowards(TileRect source, TileRect target)
+	{
+		int dx = axisDirection(source.minX(), source.maxX(), target.minX(), target.maxX());
+		int dy = axisDirection(source.minY(), source.maxY(), target.minY(), target.maxY());
+		if (dx == 0 && dy == 0)
+		{
+			return -1;
+		}
+		return rotationForDirection(dx, dy);
+	}
+
+	private static int axisDirection(int sourceMin, int sourceMax, int targetMin, int targetMax)
+	{
+		if (sourceMax < targetMin)
+		{
+			return 1;
+		}
+		if (targetMax < sourceMin)
+		{
+			return -1;
+		}
+		return 0;
+	}
+
+	private static String normalizedName(String name)
+	{
+		return name == null ? "" : name.toLowerCase(Locale.ROOT);
 	}
 
 	private static boolean canStep(NpcWanderCollisionMap collisionMap, int x, int y, int plane, int size, int dx, int dy)
@@ -1331,6 +1686,11 @@ final class NpcMeshBuilder
 		return SPAWN_DIRECTION_ROTATIONS[Math.floorMod(spawnDirection, SPAWN_DIRECTION_ROTATIONS.length)];
 	}
 
+	private static int spawnRotation(NpcDefinition3D definition, NpcSpawnIndex.NpcSpawn spawn)
+	{
+		return spawnRotation(spawn.faceDirection() == null ? definition.spawnDirection : spawn.faceDirection());
+	}
+
 	private static int rotationForDirection(int dx, int dy)
 	{
 		if (dx < 0)
@@ -1630,6 +1990,10 @@ final class NpcMeshBuilder
 	}
 
 	private record StepChoice(TilePoint point, int rotation)
+	{
+	}
+
+	private record TileRect(int minX, int minY, int maxX, int maxY)
 	{
 	}
 

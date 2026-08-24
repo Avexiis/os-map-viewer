@@ -328,6 +328,7 @@ final class TerrainRenderer
 	private boolean npcsVisible = true;
 	private boolean npcOutlinesEnabled = true;
 	private boolean npcHoverTextEnabled = true;
+	private boolean npcPickingEnabled;
 	private float backgroundRed = 0.0f;
 	private float backgroundGreen = 0.0f;
 	private float backgroundBlue = 0.0f;
@@ -441,6 +442,12 @@ final class TerrainRenderer
 		return hoveredNpcInfo;
 	}
 
+	NpcHoverInfo pickHoveredNpcInfo()
+	{
+		updateHoveredNpc(animationTimeSeconds());
+		return hoveredNpcInfo;
+	}
+
 	List<NpcMapDot> npcMapDots()
 	{
 		return npcMapDots;
@@ -464,7 +471,16 @@ final class TerrainRenderer
 	void setNpcHoverTextEnabled(boolean npcHoverTextEnabled)
 	{
 		this.npcHoverTextEnabled = npcHoverTextEnabled;
-		if (!npcHoverTextEnabled)
+		if (!npcHoverTextEnabled && !npcPickingEnabled)
+		{
+			hoveredNpcInfo = null;
+		}
+	}
+
+	void setNpcPickingEnabled(boolean npcPickingEnabled)
+	{
+		this.npcPickingEnabled = npcPickingEnabled;
+		if (!npcPickingEnabled && !npcHoverTextEnabled)
 		{
 			hoveredNpcInfo = null;
 		}
@@ -778,7 +794,7 @@ final class TerrainRenderer
 	private void updateHoveredNpc(float timeSeconds)
 	{
 		HoverRay ray = hoverRay;
-		if (!npcsVisible || ray == null || (!npcOutlinesEnabled && !npcHoverTextEnabled))
+		if (!npcsVisible || ray == null || (!npcOutlinesEnabled && !npcHoverTextEnabled && !npcPickingEnabled))
 		{
 			hoveredNpcDraw = null;
 			hoveredNpcInfo = null;
@@ -821,9 +837,22 @@ final class TerrainRenderer
 			}
 		}
 		hoveredNpcDraw = best;
-		hoveredNpcInfo = best == null || !npcHoverTextEnabled
+		NpcMesh.SpawnMetadata spawn = best == null ? null : best.instance().spawn();
+		hoveredNpcInfo = best == null || (!npcHoverTextEnabled && !npcPickingEnabled)
 			? null
-			: new NpcHoverInfo(best.mesh().name(), best.mesh().combatLevel(), best.mesh().npcId());
+			: new NpcHoverInfo(
+				best.mesh().name(),
+				best.mesh().combatLevel(),
+				best.mesh().npcId(),
+				spawn.name(),
+				spawn.worldX(),
+				spawn.worldY(),
+				spawn.plane(),
+				spawn.faceDirection(),
+				spawn.walkEnabled(),
+				best.instance().moving(),
+				spawn.source()
+			);
 	}
 
 	private void updateNpcMapDots(float timeSeconds)
@@ -2534,7 +2563,8 @@ final class TerrainRenderer
 			activeUploadTask = null;
 		}
 		pendingUploadRegions.entrySet().removeIf(entry -> {
-			if (regionIds.contains(entry.getKey()))
+			TerrainMesh currentMesh = scene.mesh(entry.getKey());
+			if (currentMesh == entry.getValue())
 			{
 				return false;
 			}
@@ -2571,18 +2601,19 @@ final class TerrainRenderer
 				{
 					uploadedRegions.put(
 						mesh.regionId(),
-						UploadedRegion.empty(mesh.regionId(), scene.offsetX(mesh), scene.offsetZ(mesh))
+						UploadedRegion.empty(mesh, scene.offsetX(mesh), scene.offsetZ(mesh))
 					);
 				}
 				continue;
 			}
 
 			if (uploadedRegion == null
+				|| uploadedRegion.mesh() != mesh
 				|| uploadedRegion.vertexCount() == 0
 				&& uploadedRegion.animatedObjects().isEmpty()
 				&& uploadedRegion.npcMeshes().isEmpty())
 			{
-				pendingUploadRegions.putIfAbsent(mesh.regionId(), mesh);
+				pendingUploadRegions.put(mesh.regionId(), mesh);
 			}
 		}
 		currentScene = scene;
@@ -2717,26 +2748,27 @@ final class TerrainRenderer
 		}
 	}
 
-	private UploadedRegion uploadedRegion(
-		TerrainScene scene,
-		TerrainMesh mesh,
-		int vao,
-		int vbo,
+		private UploadedRegion uploadedRegion(
+			TerrainScene scene,
+			TerrainMesh mesh,
+			int vao,
+			int vbo,
 		List<UploadedAnimatedObject> animatedObjects,
 		List<UploadedNpcMesh> npcMeshes
 	)
-	{
-		float offsetX = scene.offsetX(mesh);
-		float offsetZ = scene.offsetZ(mesh);
-		float minX = offsetX - SceneScale.REGION_CENTER_TILES;
-		float maxX = offsetX + SceneScale.REGION_CENTER_TILES;
-		float minZ = offsetZ - SceneScale.REGION_CENTER_TILES;
-		float maxZ = offsetZ + SceneScale.REGION_CENTER_TILES;
-		return new UploadedRegion(
-			mesh.regionId(),
-			vao,
-			vbo,
-			mesh.vertexCount(),
+		{
+			float offsetX = scene.offsetX(mesh);
+			float offsetZ = scene.offsetZ(mesh);
+			float minX = offsetX - SceneScale.REGION_CENTER_TILES;
+			float maxX = offsetX + SceneScale.REGION_CENTER_TILES;
+			float minZ = offsetZ - SceneScale.REGION_CENTER_TILES;
+			float maxZ = offsetZ + SceneScale.REGION_CENTER_TILES;
+			return new UploadedRegion(
+				mesh,
+				mesh.regionId(),
+				vao,
+				vbo,
+				mesh.vertexCount(),
 			planeStartVertices(mesh),
 			planeVertexCounts(mesh),
 			offsetX,
@@ -3338,12 +3370,25 @@ final class TerrainRenderer
 	record NpcHoverInfo(
 		String name,
 		int combatLevel,
-		int npcId
+		int npcId,
+		String spawnName,
+		int spawnWorldX,
+		int spawnWorldY,
+		int spawnPlane,
+		Integer faceDirection,
+		Boolean walkEnabled,
+		boolean currentlyWalkingEnabled,
+		NpcSpawnIndex.SpawnSource source
 	)
 	{
 		boolean hasCombatLevel()
 		{
 			return combatLevel >= 0;
+		}
+
+		boolean customSource()
+		{
+			return source == NpcSpawnIndex.SpawnSource.TSV;
 		}
 	}
 
@@ -3479,6 +3524,7 @@ final class TerrainRenderer
 	}
 
 	private record UploadedRegion(
+		TerrainMesh mesh,
 		int regionId,
 		int vao,
 		int vbo,
@@ -3497,10 +3543,11 @@ final class TerrainRenderer
 		List<UploadedNpcMesh> npcMeshes
 	)
 	{
-		private static UploadedRegion empty(int regionId, float offsetX, float offsetZ)
+		private static UploadedRegion empty(TerrainMesh mesh, float offsetX, float offsetZ)
 		{
 			return new UploadedRegion(
-				regionId,
+				mesh,
+				mesh.regionId(),
 				0,
 				0,
 				0,

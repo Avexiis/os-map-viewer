@@ -71,10 +71,19 @@ record NpcMesh(
 		float[] segmentStartYawRadians,
 		float[] segmentEndYawRadians,
 		boolean[] segmentWalking,
-		float[] segmentSeconds
+		float[] segmentSeconds,
+		SpawnMetadata spawn
 	)
 	{
-		static Instance stationary(int plane, int phaseOffset, float x, float y, float z, float yawRadians)
+		static Instance stationary(
+			int plane,
+			int phaseOffset,
+			float x,
+			float y,
+			float z,
+			float yawRadians,
+			SpawnMetadata spawn
+		)
 		{
 			return new Instance(
 				plane,
@@ -87,7 +96,8 @@ record NpcMesh(
 				new float[0],
 				new float[0],
 				new boolean[0],
-				new float[0]
+				new float[0],
+				spawn
 			);
 		}
 
@@ -102,7 +112,8 @@ record NpcMesh(
 			float[] segmentStartYawRadians,
 			float[] segmentEndYawRadians,
 			boolean[] segmentWalking,
-			float[] segmentSeconds
+			float[] segmentSeconds,
+			SpawnMetadata spawn
 		)
 		{
 			return new Instance(
@@ -116,7 +127,8 @@ record NpcMesh(
 				segmentStartYawRadians,
 				segmentEndYawRadians,
 				segmentWalking,
-				segmentSeconds
+				segmentSeconds,
+				spawn
 			);
 		}
 
@@ -130,6 +142,7 @@ record NpcMesh(
 			segmentEndYawRadians = segmentEndYawRadians == null ? new float[0] : Arrays.copyOf(segmentEndYawRadians, segmentEndYawRadians.length);
 			segmentWalking = segmentWalking == null ? new boolean[0] : Arrays.copyOf(segmentWalking, segmentWalking.length);
 			segmentSeconds = segmentSeconds == null ? new float[0] : Arrays.copyOf(segmentSeconds, segmentSeconds.length);
+			spawn = spawn == null ? SpawnMetadata.empty() : spawn;
 		}
 
 		boolean moving()
@@ -219,6 +232,32 @@ record NpcMesh(
 		boolean walking
 	)
 	{
+	}
+
+	record SpawnMetadata(
+		String name,
+		int worldX,
+		int worldY,
+		int plane,
+		Integer faceDirection,
+		Boolean walkEnabled,
+		NpcSpawnIndex.SpawnSource source
+	)
+	{
+		static SpawnMetadata empty()
+		{
+			return new SpawnMetadata("", Integer.MIN_VALUE, Integer.MIN_VALUE, 0, null, null, NpcSpawnIndex.SpawnSource.JSON);
+		}
+
+		SpawnMetadata
+		{
+			name = name == null ? "" : name;
+			source = source == null ? NpcSpawnIndex.SpawnSource.JSON : source;
+			if (faceDirection != null && (faceDirection < 0 || faceDirection > 7))
+			{
+				faceDirection = null;
+			}
+		}
 	}
 
 	record Bounds(

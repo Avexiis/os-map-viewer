@@ -162,7 +162,7 @@ public final class TerrainRegionLoader
 		private final UnderlayManager underlays;
 		private final OverlayManager overlays;
 		private final ObjectManager objects;
-		private final NpcSpawnIndex npcSpawnIndex;
+		private volatile NpcSpawnIndex npcSpawnIndex;
 		private final NpcDefinitionProvider npcDefinitionProvider;
 		private final NpcWanderCollisionMap npcCollisionMap;
 		private final NpcMeshBuilder.FrameCache npcFrameCache = new NpcMeshBuilder.FrameCache();
@@ -258,6 +258,25 @@ public final class TerrainRegionLoader
 				modelProvider.clearCache();
 				animationProvider.clearCache();
 			}
+		}
+
+		void reloadNpcSpawnIndex()
+		{
+			npcSpawnIndex = NpcSpawnIndex.loadDefault();
+			npcFrameCache.clear();
+		}
+
+		String npcName(int npcId)
+		{
+			NpcDefinition3D definition = npcDefinitionProvider.definition(npcId);
+			if (definition == null
+				|| definition.name == null
+				|| definition.name.isBlank()
+				|| "null".equalsIgnoreCase(definition.name))
+			{
+				return "";
+			}
+			return definition.name;
 		}
 
 		private Region loadNeighborRegion(int regionId)
