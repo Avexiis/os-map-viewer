@@ -26,8 +26,10 @@
 package com.xeon.view3d;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -67,6 +69,36 @@ final class NpcDefinitionProvider
 	{
 		NpcDefinition3D definition = completionStateDefinition(load(npcId), new HashSet<>(), 0);
 		return isDisabledGameModeNpc(definition) ? null : definition;
+	}
+
+	List<NpcSummary> catalog()
+	{
+		try
+		{
+			ArchiveFiles files = npcFiles();
+			if (files == null)
+			{
+				return List.of();
+			}
+			List<NpcSummary> summaries = new ArrayList<>();
+			for (FSFile file : files.getFiles())
+			{
+				NpcDefinition3D definition = definition(file.getFileId());
+				if (definition == null || definition.name == null || definition.name.isBlank()
+					|| "null".equalsIgnoreCase(definition.name))
+				{
+					continue;
+				}
+				summaries.add(new NpcSummary(file.getFileId(), definition.name));
+			}
+			summaries.sort((a, b) -> Integer.compare(a.id(), b.id()));
+			return List.copyOf(summaries);
+		}
+		catch (IOException | RuntimeException ex)
+		{
+			System.err.println("Failed to load NPC definition catalog: " + ex.getMessage());
+			return List.of();
+		}
 	}
 
 	private NpcDefinition3D completionStateDefinition(NpcDefinition3D definition, Set<Integer> seen, int depth)
@@ -548,5 +580,13 @@ final class NpcDefinitionProvider
 	private static int normalizedUnsignedShort(int value)
 	{
 		return value == 0xFFFF ? -1 : value;
+	}
+
+	record NpcSummary(int id, String name)
+	{
+		NpcSummary
+		{
+			name = name == null ? "" : name;
+		}
 	}
 }

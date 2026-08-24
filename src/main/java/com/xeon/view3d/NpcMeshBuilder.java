@@ -223,6 +223,56 @@ final class NpcMeshBuilder
 		return meshes;
 	}
 
+	static NpcPreviewModel previewModel(
+		int npcId,
+		NpcDefinitionProvider definitionProvider,
+		ObjectModelProvider modelProvider,
+		ObjectAnimationProvider animationProvider,
+		RSTextureProvider textureProvider,
+		SceneTextureSet textureSet
+	)
+	{
+		if (definitionProvider == null || modelProvider == null)
+		{
+			return null;
+		}
+		NpcDefinition3D definition = definitionProvider.definition(npcId);
+		if (definition == null || !definition.hasModels() || !shouldRender(definition))
+		{
+			return null;
+		}
+		ModelDefinition baseModel = baseModel(definition, modelProvider);
+		if (baseModel == null || baseModel.vertexCount == 0 || baseModel.faceCount == 0)
+		{
+			return null;
+		}
+
+		AnimationChoice idleChoice = idleChoice(definition, animationProvider);
+		FrameSet idleFrameSet = frameSet(
+			definition,
+			baseModel,
+			idleChoice.sequence(),
+			animationProvider,
+			textureProvider,
+			textureSet,
+			false
+		);
+		AnimationChoice walkChoice = walkChoice(definition, null, animationProvider);
+		FrameSet walkFrameSet = walkChoice.walking()
+			? frameSet(definition, baseModel, walkChoice.sequence(), animationProvider, textureProvider, textureSet, true)
+			: null;
+		return new NpcPreviewModel(
+			npcId,
+			definition.name,
+			definition.combatLevel,
+			idleFrameSet.frames(),
+			idleFrameSet.frameLengths(),
+			walkFrameSet == null ? null : walkFrameSet.frames(),
+			walkFrameSet == null ? null : walkFrameSet.frameLengths(),
+			idleFrameSet.bounds()
+		);
+	}
+
 	private static boolean shouldRender(NpcDefinition3D definition)
 	{
 		return definition.loginScreenProps == 0
@@ -290,7 +340,7 @@ final class NpcMeshBuilder
 
 	private static boolean canUseWalkSequence(NpcDefinition3D definition, NpcSpawnIndex.NpcSpawn spawn)
 	{
-		if (Boolean.FALSE.equals(spawn.walkEnabled()))
+		if (spawn != null && Boolean.FALSE.equals(spawn.walkEnabled()))
 		{
 			return false;
 		}
@@ -299,7 +349,7 @@ final class NpcMeshBuilder
 		{
 			return false;
 		}
-		if (Boolean.TRUE.equals(spawn.walkEnabled()))
+		if (spawn != null && Boolean.TRUE.equals(spawn.walkEnabled()))
 		{
 			return true;
 		}

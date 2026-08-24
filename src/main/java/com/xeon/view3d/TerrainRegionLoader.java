@@ -31,6 +31,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import net.runelite.cache.ObjectManager;
 import net.runelite.cache.OverlayManager;
@@ -203,7 +204,7 @@ public final class TerrainRegionLoader
 			this.textureSet = textureSet;
 		}
 
-		public TerrainMesh loadRegion(int regionId) throws IOException
+		public synchronized TerrainMesh loadRegion(int regionId) throws IOException
 		{
 			if (regionId < 0)
 			{
@@ -266,7 +267,32 @@ public final class TerrainRegionLoader
 			npcFrameCache.clear();
 		}
 
-		String npcName(int npcId)
+		synchronized List<NpcDefinitionProvider.NpcSummary> npcCatalog()
+		{
+			return npcDefinitionProvider.catalog();
+		}
+
+		synchronized NpcPreviewModel npcPreviewModel(int npcId)
+		{
+			try
+			{
+				return NpcMeshBuilder.previewModel(
+					npcId,
+					npcDefinitionProvider,
+					modelProvider,
+					animationProvider,
+					textureProvider,
+					textureSet
+				);
+			}
+			finally
+			{
+				modelProvider.clearCache();
+				animationProvider.clearCache();
+			}
+		}
+
+		synchronized String npcName(int npcId)
 		{
 			NpcDefinition3D definition = npcDefinitionProvider.definition(npcId);
 			if (definition == null

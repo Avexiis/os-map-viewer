@@ -124,6 +124,7 @@ public final class Map3DPanel extends JPanel
 	private static final int CONTROLS_ACTION_GRID_GAP = 24;
 	private static final int CONTROLS_ACTION_GRID_WIDTH = CONTROLS_ACTION_BUTTON_WIDTH * 2 + CONTROLS_ACTION_GRID_GAP;
 	private static final int CONTROLS_FULL_BUTTON_WIDTH = 252;
+	private static final int CONTROLS_BOTTOM_PADDING = 10;
 	private static final int PLANE_COUNT = 4;
 	private static final double SLOW_FRAME_MILLIS = 33.4;
 	private static final double SLOW_RENDER_MILLIS = 20.0;
@@ -184,6 +185,9 @@ public final class Map3DPanel extends JPanel
 	private final JCheckBox npcOutlinesCheckBox = new JCheckBox("Outlines", true);
 	private final JCheckBox npcHoverTextCheckBox = new JCheckBox("Hover Text", true);
 	private final JCheckBox npcWikiSyncCombatColorsCheckBox = new JCheckBox("WikiSync Level Colors", false);
+	private final JButton npcBrowserButton = new JButton("Browse NPCs");
+	private final Component npcBrowserSpacer = Box.createVerticalStrut(6);
+	private final Component controlsBottomSpacer = Box.createVerticalStrut(CONTROLS_BOTTOM_PADDING);
 	private final JButton npcOutlineColorButton = new JButton("Outline Color");
 	private final JButton tileHoverColorButton = new JButton("Hover Color");
 	private final JCheckBox[] planeVisibleCheckBoxes = new JCheckBox[]{
@@ -231,6 +235,8 @@ public final class Map3DPanel extends JPanel
 	);
 	private final JPanel controlsHeader = new JPanel(new BorderLayout(8, 0));
 	private final JPanel controlsPanel;
+	private JPanel controlsRows;
+	private JPanel npcBrowserButtonRow;
 	private final Timer renderTimer;
 	private final Runnable exitAction;
 	private final Consumer<String> failureAction;
@@ -433,6 +439,26 @@ public final class Map3DPanel extends JPanel
 	{
 		this.developerModeAvailable = developerModeAvailable;
 		renderer.setNpcPickingEnabled(developerModeAvailable);
+		npcBrowserButton.setVisible(developerModeAvailable);
+		npcBrowserButton.setEnabled(developerModeAvailable);
+		npcBrowserSpacer.setVisible(developerModeAvailable);
+		if (npcBrowserButtonRow != null)
+		{
+			npcBrowserButtonRow.setVisible(developerModeAvailable);
+		}
+		updateControlsRowsSize();
+		if (controlsPanel != null)
+		{
+			controlsPanel.revalidate();
+			controlsPanel.repaint();
+			Container parent = controlsPanel.getParent();
+			if (parent != null)
+			{
+				parent.revalidate();
+				parent.doLayout();
+				parent.repaint();
+			}
+		}
 	}
 
 	public void focusTile(Tile tile)
@@ -557,6 +583,9 @@ public final class Map3DPanel extends JPanel
 		overlayPriorityButton.addActionListener(e -> applyOverlayPrioritySelection());
 		styleColorButton(npcOutlineColorButton, npcOutlineColor);
 		npcOutlineColorButton.addActionListener(e -> chooseNpcOutlineColor());
+		styleToolbarButton(npcBrowserButton);
+		npcBrowserButton.setVisible(developerModeAvailable);
+		npcBrowserButton.addActionListener(e -> openNpcBrowser());
 		styleColorButton(tileHoverColorButton, tileHoverSelectorColor);
 		tileHoverColorButton.addActionListener(e -> chooseTileHoverSelectorColor());
 		configureJumpControls();
@@ -652,9 +681,14 @@ public final class Map3DPanel extends JPanel
 			controlContentWidth(npcVisibleCheckBox, npcOutlinesCheckBox, npcHoverTextCheckBox)));
 		rows.add(Box.createVerticalStrut(6));
 		rows.add(centeredControlRowFixedWidth(npcWikiSyncCombatColorsCheckBox, CONTROLS_FULL_BUTTON_WIDTH));
-		Dimension rowSize = new Dimension(CONTROLS_INNER_WIDTH, rows.getPreferredSize().height);
-		rows.setMinimumSize(rowSize);
-		rows.setPreferredSize(rowSize);
+		npcBrowserButtonRow = centeredButtonRow(npcBrowserButton);
+		npcBrowserSpacer.setVisible(developerModeAvailable);
+		npcBrowserButtonRow.setVisible(developerModeAvailable);
+		rows.add(npcBrowserSpacer);
+		rows.add(npcBrowserButtonRow);
+		rows.add(controlsBottomSpacer);
+		controlsRows = rows;
+		updateControlsRowsSize();
 		rows.setMaximumSize(new Dimension(CONTROLS_INNER_WIDTH, Integer.MAX_VALUE));
 		JPanel rowHost = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
 		rowHost.setOpaque(false);
@@ -662,6 +696,27 @@ public final class Map3DPanel extends JPanel
 		controlsBody.add(rowHost, BorderLayout.CENTER);
 		panel.add(controlsBody, BorderLayout.CENTER);
 		return panel;
+	}
+
+	private void updateControlsRowsSize()
+	{
+		if (controlsRows == null)
+		{
+			return;
+		}
+		int height = 0;
+		for (Component component : controlsRows.getComponents())
+		{
+			if (component.isVisible())
+			{
+				height += component.getPreferredSize().height;
+			}
+		}
+		Dimension rowSize = new Dimension(CONTROLS_INNER_WIDTH, height);
+		controlsRows.setMinimumSize(rowSize);
+		controlsRows.setPreferredSize(rowSize);
+		controlsRows.setMaximumSize(new Dimension(CONTROLS_INNER_WIDTH, Integer.MAX_VALUE));
+		controlsRows.revalidate();
 	}
 
 	private JLabel controlSectionTitle(String text)
@@ -2024,6 +2079,10 @@ public final class Map3DPanel extends JPanel
 		delete.addActionListener(e -> deleteNpcSpawn(npc));
 		popup.add(delete);
 
+		JMenuItem swap = new JMenuItem("Swap NPC...");
+		swap.addActionListener(e -> swapNpcSpawn(npc));
+		popup.add(swap);
+
 		JMenu faceDirection = new JMenu("Change Face Direction");
 		for (NpcFaceDirection direction : NpcFaceDirection.values())
 		{
@@ -2155,6 +2214,33 @@ public final class Map3DPanel extends JPanel
 		);
 	}
 
+	private void swapNpcSpawn(TerrainRenderer.NpcHoverInfo npc)
+	{
+		NpcSpawnEditor.Entry original = entryFor(npc);
+		NpcBrowserDialog.Selection selection = chooseNpc(this, original.id());
+		if (selection == null || selection.id() == original.id())
+		{
+			return;
+		}
+		NpcSpawnEditor.Entry next = new NpcSpawnEditor.Entry(
+			selection.id(),
+			selection.name(),
+			original.worldX(),
+			original.worldY(),
+			original.plane(),
+			original.faceDirection(),
+			original.walkEnabled(),
+			NpcSpawnIndex.SpawnSource.TSV
+		);
+		Set<Integer> regions = Set.of(regionIdForWorldTile(original.worldX(), original.worldY()));
+		performNpcSpawnEdit(
+			NpcSpawnEditor.filesForOverride(original),
+			regions,
+			"Swapped NPC " + original.id() + " to " + selection.id(),
+			() -> NpcSpawnEditor.saveOverride(original, next)
+		);
+	}
+
 	private void changeNpcSpawnTile(TerrainRenderer.NpcHoverInfo npc, Tile clickedTile)
 	{
 		NpcSpawnEditor.Entry original = entryFor(npc);
@@ -2233,11 +2319,26 @@ public final class Map3DPanel extends JPanel
 	private NpcSpawnEditor.Entry promptNpcSpawn(Tile tile)
 	{
 		NumberField id = new NumberField(8);
+		JLabel selectedName = new JLabel(" ");
+		JButton searchNpc = new JButton("Search...");
+		searchNpc.addActionListener(e -> {
+			NpcBrowserDialog.Selection selection = chooseNpc(searchNpc, id.getInt(null));
+			if (selection != null)
+			{
+				id.setInt(selection.id());
+				selectedName.setText(selection.name());
+			}
+		});
+		JPanel idRow = new JPanel(new BorderLayout(6, 0));
+		idRow.add(id, BorderLayout.CENTER);
+		idRow.add(searchNpc, BorderLayout.EAST);
 		JComboBox<NpcFaceDirection> face = new JComboBox<>(NpcFaceDirection.values());
 		JComboBox<NpcWalkOverride> walk = new JComboBox<>(NpcWalkOverride.values());
 		JPanel panel = new JPanel(new GridLayout(0, 2, 8, 6));
 		panel.add(new JLabel("NPC ID"));
-		panel.add(id);
+		panel.add(idRow);
+		panel.add(new JLabel("Name"));
+		panel.add(selectedName);
 		panel.add(new JLabel("Tile"));
 		panel.add(new JLabel(tile.x + "," + tile.y + "," + tile.z));
 		panel.add(new JLabel("Face Direction"));
@@ -2289,6 +2390,31 @@ public final class Map3DPanel extends JPanel
 			selectedWalk == null ? null : selectedWalk.walkEnabled(),
 			NpcSpawnIndex.SpawnSource.TSV
 		);
+	}
+
+	private void openNpcBrowser()
+	{
+		try
+		{
+			NpcBrowserDialog.browse(this, loaderSession());
+		}
+		catch (IOException | RuntimeException ex)
+		{
+			JOptionPane.showMessageDialog(this, "Failed to open NPC browser: " + rootMessage(ex), "NPC Browser", JOptionPane.ERROR_MESSAGE);
+		}
+	}
+
+	private NpcBrowserDialog.Selection chooseNpc(Component owner, Integer initialNpcId)
+	{
+		try
+		{
+			return NpcBrowserDialog.chooseNpc(owner, loaderSession(), initialNpcId);
+		}
+		catch (IOException | RuntimeException ex)
+		{
+			JOptionPane.showMessageDialog(this, "Failed to open NPC browser: " + rootMessage(ex), "NPC Browser", JOptionPane.ERROR_MESSAGE);
+			return null;
+		}
 	}
 
 	private String npcName(int npcId) throws IOException
