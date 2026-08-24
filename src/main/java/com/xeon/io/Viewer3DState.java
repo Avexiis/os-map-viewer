@@ -49,7 +49,7 @@ public record Viewer3DState(
 	public static final int MIN_VIEW_DISTANCE_REGIONS = 2;
 	public static final int MAX_VIEW_DISTANCE_REGIONS = 5;
 	public static final int DEFAULT_NPC_OUTLINE_COLOR_ARGB = 0xFAFFEB3B;
-	public static final int DEFAULT_TILE_HOVER_COLOR_ARGB = 0xF2FFEB3B;
+	public static final int DEFAULT_TILE_HOVER_COLOR_ARGB = 0xF291E9FF;
 
 	public Viewer3DState
 	{
