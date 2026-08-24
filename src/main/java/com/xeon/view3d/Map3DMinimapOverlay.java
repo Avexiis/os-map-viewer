@@ -35,6 +35,7 @@ import java.awt.Dimension;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Insets;
+import java.awt.Polygon;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.awt.Shape;
@@ -86,7 +87,11 @@ final class Map3DMinimapOverlay extends JPanel
 				openWorldMap.run();
 			}
 		});
-		add(open, BorderLayout.SOUTH);
+		JPanel actionRow = new JPanel(new BorderLayout(6, 0));
+		actionRow.setOpaque(false);
+		actionRow.add(new CompassCanvas(), BorderLayout.WEST);
+		actionRow.add(open, BorderLayout.CENTER);
+		add(actionRow, BorderLayout.SOUTH);
 	}
 
 	void dispose()
@@ -246,6 +251,60 @@ final class Map3DMinimapOverlay extends JPanel
 				g.fillOval(px - 3, py - 3, 6, 6);
 				g.setColor(new Color(255, 242, 80));
 				g.fillOval(px - 2, py - 2, 4, 4);
+			}
+		}
+	}
+
+	private final class CompassCanvas extends JComponent
+	{
+		private static final int SIZE = 30;
+
+		CompassCanvas()
+		{
+			setOpaque(false);
+			setFocusable(false);
+			Dimension size = new Dimension(SIZE, SIZE);
+			setMinimumSize(size);
+			setPreferredSize(size);
+			setMaximumSize(size);
+		}
+
+		@Override
+		protected void paintComponent(Graphics g0)
+		{
+			Graphics2D g = (Graphics2D) g0.create();
+			try
+			{
+				g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+				int width = getWidth();
+				int height = getHeight();
+				g.setColor(new Color(18, 20, 22, 218));
+				g.fillRoundRect(0, 0, width, height, 6, 6);
+				g.setColor(new Color(255, 255, 255, 72));
+				g.drawRoundRect(0, 0, width - 1, height - 1, 6, 6);
+
+				double heading = headingRadiansSupplier.getAsDouble();
+				int cx = width / 2;
+				int cy = height / 2;
+				g.translate(cx, cy);
+				g.rotate(heading);
+				Polygon arrow = new Polygon(
+					new int[]{0, 7, 0, -7},
+					new int[]{-10, 8, 4, 8},
+					4
+				);
+				g.setColor(new Color(0, 0, 0, 190));
+				g.translate(1, 1);
+				g.fillPolygon(arrow);
+				g.translate(-1, -1);
+				g.setColor(new Color(255, 242, 80));
+				g.fillPolygon(arrow);
+				g.setColor(new Color(255, 255, 255, 180));
+				g.drawPolygon(arrow);
+			}
+			finally
+			{
+				g.dispose();
 			}
 		}
 	}

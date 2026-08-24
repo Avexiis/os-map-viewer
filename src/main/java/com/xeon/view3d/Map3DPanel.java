@@ -138,6 +138,7 @@ public final class Map3DPanel extends JPanel
 	private static final long MINIMAP_CACHE_BUDGET_BYTES = 128L * 1024L * 1024L;
 	private static final float WARP_CAMERA_HEIGHT_TILES = 22.0f;
 	private static final long STATE_SAVE_INTERVAL_NANOS = 1_500_000_000L;
+	private static final long WIKISYNC_COMBAT_REFRESH_NANOS = 2_000_000_000L;
 	private static final float STREAM_PRIORITY_MOVEMENT_EPSILON = 0.05f;
 	private static final double STREAM_PRIORITY_DIRECT_DOT = 0.60;
 	private static final double STREAM_PRIORITY_FORWARD_DOT = 0.10;
@@ -182,6 +183,7 @@ public final class Map3DPanel extends JPanel
 	private final JCheckBox npcVisibleCheckBox = new JCheckBox("NPCs", true);
 	private final JCheckBox npcOutlinesCheckBox = new JCheckBox("Outlines", true);
 	private final JCheckBox npcHoverTextCheckBox = new JCheckBox("Hover Text", true);
+	private final JCheckBox npcWikiSyncCombatColorsCheckBox = new JCheckBox("WikiSync Level Colors", false);
 	private final JButton npcOutlineColorButton = new JButton("Outline Color");
 	private final JButton tileHoverColorButton = new JButton("Hover Color");
 	private final JCheckBox[] planeVisibleCheckBoxes = new JCheckBox[]{
@@ -249,8 +251,10 @@ public final class Map3DPanel extends JPanel
 	private boolean npcsVisible = true;
 	private boolean npcOutlinesVisible = true;
 	private boolean npcHoverTextVisible = true;
+	private boolean npcWikiSyncCombatColors;
 	private boolean minimapVisible = true;
 	private boolean developerModeAvailable;
+	private Integer wikiSyncCombatLevel;
 	private Color npcOutlineColor = new Color(Viewer3DState.DEFAULT_NPC_OUTLINE_COLOR_ARGB, true);
 	private Color tileHoverSelectorColor = new Color(Viewer3DState.DEFAULT_TILE_HOVER_COLOR_ARGB, true);
 	private boolean cameraInitialized;
@@ -267,6 +271,7 @@ public final class Map3DPanel extends JPanel
 	private int antialiasingSamples = DEFAULT_ANTIALIASING_SAMPLES;
 	private boolean stateSavePending;
 	private long lastStateSaveNanos;
+	private long lastWikiSyncCombatRefreshNanos;
 	private Viewer3DState lastSavedState;
 	private Map3DWorldMapDock worldMapDock;
 	private boolean pluginPopupHandledDuringPressRelease;
@@ -591,12 +596,16 @@ public final class Map3DPanel extends JPanel
 		styleCheckBox(npcVisibleCheckBox);
 		styleCheckBox(npcOutlinesCheckBox);
 		styleCheckBox(npcHoverTextCheckBox);
+		styleCheckBox(npcWikiSyncCombatColorsCheckBox);
+		npcWikiSyncCombatColorsCheckBox.setToolTipText("Show combat levels based on the stored WikiSync profile.");
 		npcVisibleCheckBox.setSelected(npcsVisible);
 		npcOutlinesCheckBox.setSelected(npcOutlinesVisible);
 		npcHoverTextCheckBox.setSelected(npcHoverTextVisible);
+		npcWikiSyncCombatColorsCheckBox.setSelected(npcWikiSyncCombatColors);
 		npcVisibleCheckBox.addActionListener(e -> applyNpcVisibilitySelection());
 		npcOutlinesCheckBox.addActionListener(e -> applyNpcOverlaySelection());
 		npcHoverTextCheckBox.addActionListener(e -> applyNpcOverlaySelection());
+		npcWikiSyncCombatColorsCheckBox.addActionListener(e -> applyNpcCombatColorSelection());
 		updateNpcControlState();
 
 		styleCollapseButton(collapseControlsButton, new Dimension(30, 28));
@@ -641,6 +650,8 @@ public final class Map3DPanel extends JPanel
 		rows.add(Box.createVerticalStrut(6));
 		rows.add(centeredControlRowFixedWidth(npcOutlineColorButton,
 			controlContentWidth(npcVisibleCheckBox, npcOutlinesCheckBox, npcHoverTextCheckBox)));
+		rows.add(Box.createVerticalStrut(6));
+		rows.add(centeredControlRowFixedWidth(npcWikiSyncCombatColorsCheckBox, CONTROLS_FULL_BUTTON_WIDTH));
 		Dimension rowSize = new Dimension(CONTROLS_INNER_WIDTH, rows.getPreferredSize().height);
 		rows.setMinimumSize(rowSize);
 		rows.setPreferredSize(rowSize);
@@ -1091,6 +1102,19 @@ public final class Map3DPanel extends JPanel
 		scheduleStateSave();
 	}
 
+	private void applyNpcCombatColorSelection()
+	{
+		refreshWikiSyncCombatLevel();
+		npcWikiSyncCombatColors = npcWikiSyncCombatColorsCheckBox.isSelected();
+		npcHoverOverlay.setCombatColorProfile(npcWikiSyncCombatColors, wikiSyncCombatLevel);
+		updateNpcControlState();
+		if (npcWikiSyncCombatColors && wikiSyncCombatLevel == null)
+		{
+			detail.setText("No stored WikiSync combat level found");
+		}
+		scheduleStateSave();
+	}
+
 	private void chooseNpcOutlineColor()
 	{
 		Color picked = JColorChooser.showDialog(this, "NPC Outline Color", npcOutlineColor);
@@ -1146,6 +1170,7 @@ public final class Map3DPanel extends JPanel
 		npcOutlinesCheckBox.setEnabled(npcsVisible);
 		npcHoverTextCheckBox.setEnabled(npcsVisible);
 		npcOutlineColorButton.setEnabled(npcsVisible && npcOutlinesVisible);
+		npcWikiSyncCombatColorsCheckBox.setEnabled(npcsVisible && npcHoverTextVisible && wikiSyncCombatLevel != null);
 	}
 
 	private void applyNpcRendererSettings()
@@ -1161,6 +1186,28 @@ public final class Map3DPanel extends JPanel
 		if (!npcsVisible || !npcHoverTextVisible)
 		{
 			npcHoverOverlay.setInfo(null);
+		}
+	}
+
+	private void refreshWikiSyncCombatLevel()
+	{
+		wikiSyncCombatLevel = settings == null ? null : settings.wikiSyncCombatLevel();
+		npcHoverOverlay.setCombatColorProfile(npcWikiSyncCombatColors, wikiSyncCombatLevel);
+	}
+
+	private void maybeRefreshWikiSyncCombatLevel(long now)
+	{
+		if (settings == null || now - lastWikiSyncCombatRefreshNanos < WIKISYNC_COMBAT_REFRESH_NANOS)
+		{
+			return;
+		}
+		lastWikiSyncCombatRefreshNanos = now;
+		Integer previous = wikiSyncCombatLevel;
+		refreshWikiSyncCombatLevel();
+		if (previous == null && wikiSyncCombatLevel != null
+			|| previous != null && !previous.equals(wikiSyncCombatLevel))
+		{
+			updateNpcControlState();
 		}
 	}
 
@@ -1395,9 +1442,11 @@ public final class Map3DPanel extends JPanel
 			npcsVisible = state.npcsVisible();
 			npcOutlinesVisible = state.npcOutlinesVisible();
 			npcHoverTextVisible = state.npcHoverTextVisible();
+			npcWikiSyncCombatColors = state.npcWikiSyncCombatColors();
 			minimapVisible = state.minimapVisible();
 			npcOutlineColor = new Color(state.npcOutlineColorArgb(), true);
 			tileHoverSelectorColor = new Color(state.tileHoverColorArgb(), true);
+			refreshWikiSyncCombatLevel();
 			applyNpcRendererSettings();
 			applyOverlayColorSettings();
 			return;
@@ -1419,9 +1468,11 @@ public final class Map3DPanel extends JPanel
 		npcsVisible = true;
 		npcOutlinesVisible = true;
 		npcHoverTextVisible = true;
+		npcWikiSyncCombatColors = false;
 		minimapVisible = true;
 		npcOutlineColor = new Color(Viewer3DState.DEFAULT_NPC_OUTLINE_COLOR_ARGB, true);
 		tileHoverSelectorColor = new Color(Viewer3DState.DEFAULT_TILE_HOVER_COLOR_ARGB, true);
+		refreshWikiSyncCombatLevel();
 		applyNpcRendererSettings();
 		applyOverlayColorSettings();
 	}
@@ -1668,6 +1719,7 @@ public final class Map3DPanel extends JPanel
 			npcsVisible,
 			npcOutlinesVisible,
 			npcHoverTextVisible,
+			npcWikiSyncCombatColors,
 			minimapVisible,
 			argb(npcOutlineColor),
 			argb(tileHoverSelectorColor)
@@ -3129,6 +3181,7 @@ public final class Map3DPanel extends JPanel
 		}
 		updatePluginOverlayContext();
 		updateCompassHud();
+		maybeRefreshWikiSyncCombatLevel(now);
 		maybeSaveViewerState(now);
 		if (minimapOverlay != null)
 		{
@@ -3548,7 +3601,17 @@ public final class Map3DPanel extends JPanel
 		private static final Color GREEN = new Color(86, 232, 96);
 		private static final Color WHITE = new Color(245, 245, 245);
 		private static final Color OUTLINE = new Color(0, 0, 0, 230);
+		private static final Color COMBAT_GREEN_10 = new Color(0x00FF00);
+		private static final Color COMBAT_GREEN_7 = new Color(0x40FF00);
+		private static final Color COMBAT_GREEN_4 = new Color(0x80FF00);
+		private static final Color COMBAT_GREEN_1 = new Color(0xC0FF00);
+		private static final Color COMBAT_RED_1 = new Color(0xFFB000);
+		private static final Color COMBAT_RED_4 = new Color(0xFF7000);
+		private static final Color COMBAT_RED_7 = new Color(0xFF3000);
+		private static final Color COMBAT_RED_10 = new Color(0xFF0000);
 		private TerrainRenderer.NpcHoverInfo info;
+		private boolean useWikiSyncCombatColors;
+		private Integer playerCombatLevel;
 
 		private NpcHoverTextOverlay()
 		{
@@ -3566,6 +3629,20 @@ public final class Map3DPanel extends JPanel
 			if (changed)
 			{
 				revalidate();
+				repaint();
+			}
+		}
+
+		private void setCombatColorProfile(boolean enabled, Integer combatLevel)
+		{
+			Integer nextCombatLevel = combatLevel == null || combatLevel <= 0 ? null : combatLevel;
+			boolean changed = useWikiSyncCombatColors != enabled
+				|| playerCombatLevel == null && nextCombatLevel != null
+				|| playerCombatLevel != null && !playerCombatLevel.equals(nextCombatLevel);
+			useWikiSyncCombatColors = enabled;
+			playerCombatLevel = nextCombatLevel;
+			if (changed)
+			{
 				repaint();
 			}
 		}
@@ -3602,7 +3679,7 @@ public final class Map3DPanel extends JPanel
 				if (info.hasCombatLevel())
 				{
 					x = drawSegment(g, " - Level: ", WHITE, x, baseline);
-					x = drawSegment(g, Integer.toString(info.combatLevel()), GREEN, x, baseline);
+					x = drawSegment(g, Integer.toString(info.combatLevel()), combatLevelColor(), x, baseline);
 				}
 				x = drawSegment(g, " | ID: ", WHITE, x, baseline);
 				drawSegment(g, Integer.toString(info.npcId()), YELLOW, x, baseline);
@@ -3629,6 +3706,48 @@ public final class Map3DPanel extends JPanel
 		private String displayName()
 		{
 			return info.name() == null || info.name().isBlank() ? "NPC" : info.name();
+		}
+
+		private Color combatLevelColor()
+		{
+			if (!useWikiSyncCombatColors || playerCombatLevel == null || info == null || !info.hasCombatLevel())
+			{
+				return GREEN;
+			}
+			int delta = info.combatLevel() - playerCombatLevel;
+			if (delta < -9)
+			{
+				return COMBAT_GREEN_10;
+			}
+			if (delta < -6)
+			{
+				return COMBAT_GREEN_7;
+			}
+			if (delta < -3)
+			{
+				return COMBAT_GREEN_4;
+			}
+			if (delta < 0)
+			{
+				return COMBAT_GREEN_1;
+			}
+			if (delta > 9)
+			{
+				return COMBAT_RED_10;
+			}
+			if (delta > 6)
+			{
+				return COMBAT_RED_7;
+			}
+			if (delta > 3)
+			{
+				return COMBAT_RED_4;
+			}
+			if (delta > 0)
+			{
+				return COMBAT_RED_1;
+			}
+			return YELLOW;
 		}
 
 		private int drawSegment(Graphics2D g, String text, Color color, int x, int baseline)

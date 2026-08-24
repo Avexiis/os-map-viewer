@@ -148,13 +148,23 @@ record AnimatedObjectMesh(
 		private static final Frame EMPTY = new Frame(new float[0], 0);
 
 		private float[] vertexData;
+		private float[] transparentVertexData;
 		private byte[] compressedVertexData;
+		private byte[] compressedTransparentVertexData;
 		private final int vertexCount;
+		private final int transparentVertexCount;
 
 		Frame(float[] vertexData, int vertexCount)
 		{
+			this(vertexData, vertexCount, new float[0], 0);
+		}
+
+		Frame(float[] vertexData, int vertexCount, float[] transparentVertexData, int transparentVertexCount)
+		{
 			this.vertexData = vertexData == null ? new float[0] : vertexData;
+			this.transparentVertexData = transparentVertexData == null ? new float[0] : transparentVertexData;
 			this.vertexCount = vertexCount;
+			this.transparentVertexCount = transparentVertexCount;
 		}
 
 		synchronized float[] rawVertexData()
@@ -169,18 +179,49 @@ record AnimatedObjectMesh(
 			return vertexData;
 		}
 
+		synchronized float[] rawTransparentVertexData()
+		{
+			if ((transparentVertexData == null || transparentVertexData.length == 0)
+				&& compressedTransparentVertexData != null && compressedTransparentVertexData.length > 0)
+			{
+				transparentVertexData = FloatDataCodec.inflate(
+					compressedTransparentVertexData,
+					Math.multiplyExact(transparentVertexCount, TerrainMesh.FLOATS_PER_VERTEX)
+				);
+			}
+			return transparentVertexData;
+		}
+
 		int vertexCount()
 		{
 			return vertexCount;
 		}
 
+		int transparentVertexCount()
+		{
+			return transparentVertexCount;
+		}
+
 		synchronized long retainedVertexBytes()
 		{
+			long bytes = 0L;
 			if (vertexData != null && vertexData.length > 0)
 			{
-				return (long) vertexData.length * Float.BYTES;
+				bytes += (long) vertexData.length * Float.BYTES;
 			}
-			return compressedVertexData == null ? 0L : compressedVertexData.length;
+			else if (compressedVertexData != null)
+			{
+				bytes += compressedVertexData.length;
+			}
+			if (transparentVertexData != null && transparentVertexData.length > 0)
+			{
+				bytes += (long) transparentVertexData.length * Float.BYTES;
+			}
+			else if (compressedTransparentVertexData != null)
+			{
+				bytes += compressedTransparentVertexData.length;
+			}
+			return bytes;
 		}
 
 		void compactVertexData()
@@ -191,27 +232,44 @@ record AnimatedObjectMesh(
 		void compactVertexData(Runnable pause)
 		{
 			float[] source;
+			float[] transparentSource;
 			synchronized (this)
 			{
-				if (vertexData == null || vertexData.length == 0)
+				boolean hasVertexData = vertexData != null && vertexData.length > 0;
+				boolean hasTransparentVertexData = transparentVertexData != null && transparentVertexData.length > 0;
+				if (!hasVertexData && !hasTransparentVertexData)
 				{
 					return;
 				}
-				if (compressedVertexData != null)
+				if (compressedVertexData != null && hasVertexData)
 				{
 					vertexData = new float[0];
-					return;
 				}
-				source = vertexData;
+				if (compressedTransparentVertexData != null && hasTransparentVertexData)
+				{
+					transparentVertexData = new float[0];
+				}
+				source = compressedVertexData == null ? vertexData : null;
+				transparentSource = compressedTransparentVertexData == null ? transparentVertexData : null;
 			}
 
-			byte[] compressed = FloatDataCodec.deflate(source, pause);
+			byte[] compressed = source == null || source.length == 0 ? null : FloatDataCodec.deflate(source, pause);
+			byte[] compressedTransparent = transparentSource == null || transparentSource.length == 0
+				? null
+				: FloatDataCodec.deflate(transparentSource, pause);
 			synchronized (this)
 			{
-				if (vertexData == source && compressedVertexData == null)
+				if (compressed != null && vertexData == source && compressedVertexData == null)
 				{
 					compressedVertexData = compressed;
 					vertexData = new float[0];
+				}
+				if (compressedTransparent != null
+					&& transparentVertexData == transparentSource
+					&& compressedTransparentVertexData == null)
+				{
+					compressedTransparentVertexData = compressedTransparent;
+					transparentVertexData = new float[0];
 				}
 			}
 		}
@@ -219,7 +277,9 @@ record AnimatedObjectMesh(
 		synchronized void releaseVertexData()
 		{
 			vertexData = new float[0];
+			transparentVertexData = new float[0];
 			compressedVertexData = null;
+			compressedTransparentVertexData = null;
 		}
 	}
 }

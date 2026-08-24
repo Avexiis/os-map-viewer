@@ -61,6 +61,7 @@ public final class ViewerSettings
 	private static final String KEY_3D_NPCS_VISIBLE = "viewer3d.state.npcsVisible";
 	private static final String KEY_3D_NPC_OUTLINES_VISIBLE = "viewer3d.state.npcOutlinesVisible";
 	private static final String KEY_3D_NPC_HOVER_TEXT_VISIBLE = "viewer3d.state.npcHoverTextVisible";
+	private static final String KEY_3D_NPC_WIKISYNC_COMBAT_COLORS = "viewer3d.state.npcWikiSyncCombatColors";
 	private static final String KEY_3D_MINIMAP_VISIBLE = "viewer3d.state.minimapVisible";
 	private static final String KEY_3D_NPC_OUTLINE_COLOR = "viewer3d.state.npcOutlineColor";
 	private static final String KEY_3D_TILE_HOVER_COLOR = "viewer3d.state.tileHoverColor";
@@ -83,9 +84,15 @@ public final class ViewerSettings
 	private static final String FIELD_NPCS_VISIBLE = "npcsVisible";
 	private static final String FIELD_NPC_OUTLINES_VISIBLE = "npcOutlinesVisible";
 	private static final String FIELD_NPC_HOVER_TEXT_VISIBLE = "npcHoverTextVisible";
+	private static final String FIELD_NPC_WIKISYNC_COMBAT_COLORS = "npcWikiSyncCombatColors";
 	private static final String FIELD_MINIMAP_VISIBLE = "minimapVisible";
 	private static final String FIELD_NPC_OUTLINE_COLOR = "npcOutlineColor";
 	private static final String FIELD_TILE_HOVER_COLOR = "tileHoverColor";
+	private static final String SHORTEST_PATH_NAMESPACE = "shortest-path";
+	private static final String KEY_WIKISYNC_PROFILE = "wikiSync.profile";
+	private static final String FIELD_WIKISYNC_LEVELS = "levels";
+	private static final String WIKISYNC_COMBAT_LEVEL = "combat";
+	private static final String WIKISYNC_COMBAT_LEVEL_LEGACY = "Combat";
 	private static final String DEFAULT_BACKGROUND = "#000000";
 	private static final int DEFAULT_MEMORY_BUDGET_MB = 512;
 
@@ -235,6 +242,7 @@ public final class ViewerSettings
 			configManager.getBoolean(CORE, KEY_3D_NPCS_VISIBLE, true),
 			configManager.getBoolean(CORE, KEY_3D_NPC_OUTLINES_VISIBLE, true),
 			configManager.getBoolean(CORE, KEY_3D_NPC_HOVER_TEXT_VISIBLE, true),
+			configManager.getBoolean(CORE, KEY_3D_NPC_WIKISYNC_COMBAT_COLORS, false),
 			configManager.getBoolean(CORE, KEY_3D_MINIMAP_VISIBLE, true),
 			parseArgb(configManager.getString(CORE, KEY_3D_NPC_OUTLINE_COLOR, null),
 				Viewer3DState.DEFAULT_NPC_OUTLINE_COLOR_ARGB),
@@ -273,10 +281,32 @@ public final class ViewerSettings
 		object.addProperty(FIELD_NPCS_VISIBLE, state.npcsVisible());
 		object.addProperty(FIELD_NPC_OUTLINES_VISIBLE, state.npcOutlinesVisible());
 		object.addProperty(FIELD_NPC_HOVER_TEXT_VISIBLE, state.npcHoverTextVisible());
+		object.addProperty(FIELD_NPC_WIKISYNC_COMBAT_COLORS, state.npcWikiSyncCombatColors());
 		object.addProperty(FIELD_MINIMAP_VISIBLE, state.minimapVisible());
 		object.addProperty(FIELD_NPC_OUTLINE_COLOR, colorToArgbHex(state.npcOutlineColorArgb()));
 		object.addProperty(FIELD_TILE_HOVER_COLOR, colorToArgbHex(state.tileHoverColorArgb()));
 		configManager.setElement(CORE, KEY_3D_STATE, object);
+	}
+
+	public Integer wikiSyncCombatLevel()
+	{
+		JsonElement profile = configManager.getElement(SHORTEST_PATH_NAMESPACE, KEY_WIKISYNC_PROFILE);
+		if (profile == null || !profile.isJsonObject())
+		{
+			return null;
+		}
+		JsonElement levels = profile.getAsJsonObject().get(FIELD_WIKISYNC_LEVELS);
+		if (levels == null || !levels.isJsonObject())
+		{
+			return null;
+		}
+		JsonObject levelObject = levels.getAsJsonObject();
+		Integer combat = jsonPositiveInt(levelObject, WIKISYNC_COMBAT_LEVEL);
+		if (combat != null)
+		{
+			return combat;
+		}
+		return jsonPositiveInt(levelObject, WIKISYNC_COMBAT_LEVEL_LEGACY);
 	}
 
 	public boolean viewer3DCacheAskOnOpen()
@@ -339,6 +369,7 @@ public final class ViewerSettings
 			jsonBoolean(object, FIELD_NPCS_VISIBLE, true),
 			jsonBoolean(object, FIELD_NPC_OUTLINES_VISIBLE, true),
 			jsonBoolean(object, FIELD_NPC_HOVER_TEXT_VISIBLE, true),
+			jsonBoolean(object, FIELD_NPC_WIKISYNC_COMBAT_COLORS, false),
 			jsonBoolean(object, FIELD_MINIMAP_VISIBLE, true),
 			jsonArgb(object, FIELD_NPC_OUTLINE_COLOR, Viewer3DState.DEFAULT_NPC_OUTLINE_COLOR_ARGB),
 			jsonArgb(object, FIELD_TILE_HOVER_COLOR, Viewer3DState.DEFAULT_TILE_HOVER_COLOR_ARGB)
@@ -378,6 +409,12 @@ public final class ViewerSettings
 		{
 			return defaultValue;
 		}
+	}
+
+	private static Integer jsonPositiveInt(JsonObject object, String key)
+	{
+		int value = jsonInt(object, key, -1);
+		return value > 0 ? value : null;
 	}
 
 	private static boolean jsonBoolean(JsonObject object, String key, boolean defaultValue)

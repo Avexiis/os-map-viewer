@@ -22,7 +22,7 @@ The viewer resumes your last 3D camera position. If no saved 3D state exists, it
 - Plugin sidebars stay available when the active plugin supports 3D.
 - Nearby regions stream in as you move.
 - NPCs appear at known OSRS spawn locations. They use idle animations when available, and NPCs with walk animations can wander near their spawn tile.
-- The minimap stays near the top-right corner and can be hidden.
+- The minimap stays near the top-right corner and can be hidden. A small compass below it points in the camera direction.
 - `Open World Map` opens a movable floating world map.
 - The area search box stays below the 3D viewer.
 - Click `Switch to 2D Map` or press `Esc` to leave 3D mode.
@@ -81,6 +81,7 @@ NPC controls:
 - `Outlines`: shows or hides NPC outlines.
 - `Hover Text`: shows or hides NPC hover text.
 - `Outline Color`: changes the NPC outline color.
+- `WikiSync Level Colors`: colors NPC combat levels from green to red based on the stored WikiSync combat level, when one is available.
 
 ## Plugins In 3D
 

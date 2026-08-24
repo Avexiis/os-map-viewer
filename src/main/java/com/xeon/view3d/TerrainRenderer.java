@@ -708,6 +708,7 @@ final class TerrainRenderer
 		int visibleRegions = 0;
 		int culledRegions = 0;
 		int verticesDrawn = 0;
+		List<UploadedRegion> visibleRegionList = new ArrayList<>();
 		for (UploadedRegion region : uploadedRegions.values())
 		{
 			if (region.vertexCount() <= 0 && region.animatedObjects().isEmpty() && region.npcMeshes().isEmpty())
@@ -719,6 +720,12 @@ final class TerrainRenderer
 				culledRegions++;
 				continue;
 			}
+			visibleRegionList.add(region);
+		}
+		visibleRegions = visibleRegionList.size();
+
+		for (UploadedRegion region : visibleRegionList)
+		{
 			GL33C.glUniform3f(terrainRegionOffsetLocation, region.offsetX(), 0.0f, region.offsetZ());
 			setTerrainIdentityModelMatrix();
 			if (region.vertexCount() > 0)
@@ -752,37 +759,85 @@ final class TerrainRenderer
 				drawCalls++;
 				verticesDrawn += frame.vertexCount();
 			}
-			if (!npcsVisible)
+		}
+
+		if (npcsVisible)
+		{
+			for (UploadedRegion region : visibleRegionList)
 			{
-				visibleRegions++;
-				continue;
-			}
-			for (UploadedNpcMesh npcMesh : region.npcMeshes())
-			{
-				for (NpcMesh.Instance instance : npcMesh.instances())
+				GL33C.glUniform3f(terrainRegionOffsetLocation, region.offsetX(), 0.0f, region.offsetZ());
+				for (UploadedNpcMesh npcMesh : region.npcMeshes())
 				{
-					if (!isPlaneVisible(instance.plane()))
+					for (NpcMesh.Instance instance : npcMesh.instances())
 					{
-						continue;
+						if (!isPlaneVisible(instance.plane()))
+						{
+							continue;
+						}
+						NpcMesh.Transform transform = instance.transformAt(timeSeconds);
+						if (npcMesh.walkingAnimation() != transform.walking())
+						{
+							continue;
+						}
+						UploadedAnimationFrame frame = npcMesh.frameAt(timeSeconds, instance.phaseOffset());
+						if (frame.vertexCount() <= 0)
+						{
+							continue;
+						}
+						setTerrainModelMatrix(transform);
+						GL33C.glBindVertexArray(frame.vao());
+						GL33C.glDrawArrays(GL33C.GL_TRIANGLES, 0, frame.vertexCount());
+						drawCalls++;
+						verticesDrawn += frame.vertexCount();
 					}
-					NpcMesh.Transform transform = instance.transformAt(timeSeconds);
-					if (npcMesh.walkingAnimation() != transform.walking())
-					{
-						continue;
-					}
-					UploadedAnimationFrame frame = npcMesh.frameAt(timeSeconds, instance.phaseOffset());
-					if (frame.vertexCount() <= 0)
-					{
-						continue;
-					}
-					setTerrainModelMatrix(transform);
-					GL33C.glBindVertexArray(frame.vao());
-					GL33C.glDrawArrays(GL33C.GL_TRIANGLES, 0, frame.vertexCount());
-					drawCalls++;
-					verticesDrawn += frame.vertexCount();
 				}
 			}
-			visibleRegions++;
+		}
+
+		boolean depthMask = GL33C.glGetBoolean(GL33C.GL_DEPTH_WRITEMASK);
+		GL33C.glDepthMask(false);
+		try
+		{
+			for (UploadedRegion region : visibleRegionList)
+			{
+				GL33C.glUniform3f(terrainRegionOffsetLocation, region.offsetX(), 0.0f, region.offsetZ());
+				setTerrainIdentityModelMatrix();
+				if (region.vertexCount() > 0)
+				{
+					GL33C.glBindVertexArray(region.vao());
+					for (int plane = 0; plane <= maxVisiblePlane; plane++)
+					{
+						int vertexCount = region.planeTransparentVertexCount(plane);
+						if (vertexCount <= 0)
+						{
+							continue;
+						}
+						GL33C.glDrawArrays(GL33C.GL_TRIANGLES, region.planeTransparentStartVertex(plane), vertexCount);
+						drawCalls++;
+						verticesDrawn += vertexCount;
+					}
+				}
+				for (UploadedAnimatedObject animatedObject : region.animatedObjects())
+				{
+					if (!isPlaneVisible(animatedObject.plane()))
+					{
+						continue;
+					}
+					UploadedAnimationFrame frame = animatedObject.frameAt(timeSeconds);
+					if (frame.transparentVertexCount() <= 0)
+					{
+						continue;
+					}
+					GL33C.glBindVertexArray(frame.vao());
+					GL33C.glDrawArrays(GL33C.GL_TRIANGLES, frame.transparentStartVertex(), frame.transparentVertexCount());
+					drawCalls++;
+					verticesDrawn += frame.transparentVertexCount();
+				}
+			}
+		}
+		finally
+		{
+			GL33C.glDepthMask(depthMask);
 		}
 		setTerrainIdentityModelMatrix();
 		GL33C.glBindVertexArray(0);
@@ -2748,29 +2803,31 @@ final class TerrainRenderer
 		}
 	}
 
-		private UploadedRegion uploadedRegion(
-			TerrainScene scene,
-			TerrainMesh mesh,
-			int vao,
-			int vbo,
+	private UploadedRegion uploadedRegion(
+		TerrainScene scene,
+		TerrainMesh mesh,
+		int vao,
+		int vbo,
 		List<UploadedAnimatedObject> animatedObjects,
 		List<UploadedNpcMesh> npcMeshes
 	)
-		{
-			float offsetX = scene.offsetX(mesh);
-			float offsetZ = scene.offsetZ(mesh);
-			float minX = offsetX - SceneScale.REGION_CENTER_TILES;
-			float maxX = offsetX + SceneScale.REGION_CENTER_TILES;
-			float minZ = offsetZ - SceneScale.REGION_CENTER_TILES;
-			float maxZ = offsetZ + SceneScale.REGION_CENTER_TILES;
-			return new UploadedRegion(
-				mesh,
-				mesh.regionId(),
-				vao,
-				vbo,
-				mesh.vertexCount(),
+	{
+		float offsetX = scene.offsetX(mesh);
+		float offsetZ = scene.offsetZ(mesh);
+		float minX = offsetX - SceneScale.REGION_CENTER_TILES;
+		float maxX = offsetX + SceneScale.REGION_CENTER_TILES;
+		float minZ = offsetZ - SceneScale.REGION_CENTER_TILES;
+		float maxZ = offsetZ + SceneScale.REGION_CENTER_TILES;
+		return new UploadedRegion(
+			mesh,
+			mesh.regionId(),
+			vao,
+			vbo,
+			mesh.vertexCount(),
 			planeStartVertices(mesh),
 			planeVertexCounts(mesh),
+			planeTransparentStartVertices(mesh),
+			planeTransparentVertexCounts(mesh),
 			offsetX,
 			offsetZ,
 			minX,
@@ -2800,6 +2857,26 @@ final class TerrainRenderer
 		for (int plane = 0; plane < counts.length; plane++)
 		{
 			counts[plane] = mesh.planeVertexCount(plane);
+		}
+		return counts;
+	}
+
+	private static int[] planeTransparentStartVertices(TerrainMesh mesh)
+	{
+		int[] starts = new int[MAX_VISIBLE_PLANE + 1];
+		for (int plane = 0; plane < starts.length; plane++)
+		{
+			starts[plane] = mesh.planeTransparentStartVertex(plane);
+		}
+		return starts;
+	}
+
+	private static int[] planeTransparentVertexCounts(TerrainMesh mesh)
+	{
+		int[] counts = new int[MAX_VISIBLE_PLANE + 1];
+		for (int plane = 0; plane < counts.length; plane++)
+		{
+			counts[plane] = mesh.planeTransparentVertexCount(plane);
 		}
 		return counts;
 	}
@@ -3383,7 +3460,7 @@ final class TerrainRenderer
 	{
 		boolean hasCombatLevel()
 		{
-			return combatLevel >= 0;
+			return combatLevel > 0;
 		}
 
 		boolean customSource()
@@ -3531,6 +3608,8 @@ final class TerrainRenderer
 		int vertexCount,
 		int[] planeStartVertices,
 		int[] planeVertexCounts,
+		int[] planeTransparentStartVertices,
+		int[] planeTransparentVertexCounts,
 		float offsetX,
 		float offsetZ,
 		float minX,
@@ -3553,6 +3632,8 @@ final class TerrainRenderer
 				0,
 				new int[MAX_VISIBLE_PLANE + 1],
 				new int[MAX_VISIBLE_PLANE + 1],
+				new int[MAX_VISIBLE_PLANE + 1],
+				new int[MAX_VISIBLE_PLANE + 1],
 				offsetX,
 				offsetZ,
 				0.0f,
@@ -3570,6 +3651,8 @@ final class TerrainRenderer
 		{
 			planeStartVertices = normalizedPlaneArray(planeStartVertices);
 			planeVertexCounts = normalizedPlaneArray(planeVertexCounts);
+			planeTransparentStartVertices = normalizedPlaneArray(planeTransparentStartVertices);
+			planeTransparentVertexCounts = normalizedPlaneArray(planeTransparentVertexCounts);
 			animatedObjects = animatedObjects == null ? List.of() : List.copyOf(animatedObjects);
 			npcMeshes = npcMeshes == null ? List.of() : List.copyOf(npcMeshes);
 		}
@@ -3582,6 +3665,16 @@ final class TerrainRenderer
 		private int planeVertexCount(int plane)
 		{
 			return planeVertexCounts[clamp(plane, 0, MAX_VISIBLE_PLANE)];
+		}
+
+		private int planeTransparentStartVertex(int plane)
+		{
+			return planeTransparentStartVertices[clamp(plane, 0, MAX_VISIBLE_PLANE)];
+		}
+
+		private int planeTransparentVertexCount(int plane)
+		{
+			return planeTransparentVertexCounts[clamp(plane, 0, MAX_VISIBLE_PLANE)];
 		}
 
 		private void delete()
@@ -3812,7 +3905,7 @@ final class TerrainRenderer
 						frameIndex++;
 						continue;
 					}
-					if (frame.vertexCount() > 0 && !budget.hasRemaining())
+					if ((frame.vertexCount() > 0 || frame.transparentVertexCount() > 0) && !budget.hasRemaining())
 					{
 						return false;
 					}
@@ -3885,7 +3978,7 @@ final class TerrainRenderer
 						frameIndex++;
 						continue;
 					}
-					if (frame.vertexCount() > 0 && !budget.hasRemaining())
+					if ((frame.vertexCount() > 0 || frame.transparentVertexCount() > 0) && !budget.hasRemaining())
 					{
 						return false;
 					}
@@ -3942,6 +4035,8 @@ final class TerrainRenderer
 		private final float[] vertexData;
 		private final NpcOutlineGeometry outlineGeometry;
 		private final boolean compactAfterUpload;
+		private final int opaqueVertexCount;
+		private final int transparentVertexCount;
 		private int vao;
 		private int vbo;
 		private int uploadedFloats;
@@ -3949,8 +4044,14 @@ final class TerrainRenderer
 		private AnimationFrameUploadTask(AnimatedObjectMesh.Frame frame, boolean buildOutlineEdges, boolean compactAfterUpload)
 		{
 			this.frame = frame;
-			this.vertexData = frame.rawVertexData();
-			this.outlineGeometry = buildOutlineEdges ? buildNpcOutlineGeometry(vertexData, frame.vertexCount()) : NpcOutlineGeometry.EMPTY;
+			this.opaqueVertexCount = frame.vertexCount();
+			this.transparentVertexCount = frame.transparentVertexCount();
+			float[] opaqueVertexData = frame.rawVertexData();
+			this.vertexData = combinedFrameVertexData(opaqueVertexData, opaqueVertexCount,
+				frame.rawTransparentVertexData(), transparentVertexCount);
+			this.outlineGeometry = buildOutlineEdges
+				? buildNpcOutlineGeometry(opaqueVertexData, opaqueVertexCount)
+				: NpcOutlineGeometry.EMPTY;
 			this.compactAfterUpload = compactAfterUpload;
 		}
 
@@ -3986,7 +4087,7 @@ final class TerrainRenderer
 
 		private boolean ensureBuffer(UploadBudget budget)
 		{
-			if (frame.vertexCount() <= 0 || vertexData.length == 0 || vbo != 0)
+			if (opaqueVertexCount + transparentVertexCount <= 0 || vertexData.length == 0 || vbo != 0)
 			{
 				return true;
 			}
@@ -4007,12 +4108,46 @@ final class TerrainRenderer
 
 		private UploadedAnimationFrame finish()
 		{
-			UploadedAnimationFrame uploadedFrame = new UploadedAnimationFrame(vao, vbo, frame.vertexCount(), outlineGeometry);
+			UploadedAnimationFrame uploadedFrame = new UploadedAnimationFrame(
+				vao,
+				vbo,
+				opaqueVertexCount,
+				opaqueVertexCount,
+				transparentVertexCount,
+				outlineGeometry
+			);
 			if (compactAfterUpload)
 			{
 				scheduleFrameCompaction(frame);
 			}
 			return uploadedFrame;
+		}
+
+		private float[] combinedFrameVertexData(
+			float[] opaqueVertexData,
+			int opaqueVertexCount,
+			float[] transparentVertexData,
+			int transparentVertexCount
+		)
+		{
+			int opaqueFloats = Math.max(0, opaqueVertexCount) * TerrainMesh.FLOATS_PER_VERTEX;
+			int transparentFloats = Math.max(0, transparentVertexCount) * TerrainMesh.FLOATS_PER_VERTEX;
+			float[] combined = new float[opaqueFloats + transparentFloats];
+			if (opaqueVertexData != null)
+			{
+				System.arraycopy(opaqueVertexData, 0, combined, 0, Math.min(opaqueVertexData.length, opaqueFloats));
+			}
+			if (transparentVertexData != null)
+			{
+				System.arraycopy(
+					transparentVertexData,
+					0,
+					combined,
+					opaqueFloats,
+					Math.min(transparentVertexData.length, transparentFloats)
+				);
+			}
+			return combined;
 		}
 
 		private void cancel(boolean releaseVertexData)
@@ -4098,14 +4233,14 @@ final class TerrainRenderer
 		private UploadedAnimationFrame frame(int frame)
 		{
 			UploadedAnimationFrame selected = frames[frame];
-			if (selected != null && selected.vertexCount() > 0)
+			if (selected != null && selected.hasGeometry())
 			{
 				return selected;
 			}
 			for (int i = frame - 1; i >= 0; i--)
 			{
 				UploadedAnimationFrame fallback = frames[i];
-				if (fallback != null && fallback.vertexCount() > 0)
+				if (fallback != null && fallback.hasGeometry())
 				{
 					return fallback;
 				}
@@ -4113,7 +4248,7 @@ final class TerrainRenderer
 			for (int i = frame + 1; i < frames.length; i++)
 			{
 				UploadedAnimationFrame fallback = frames[i];
-				if (fallback != null && fallback.vertexCount() > 0)
+				if (fallback != null && fallback.hasGeometry())
 				{
 					return fallback;
 				}
@@ -4171,14 +4306,14 @@ final class TerrainRenderer
 		private UploadedAnimationFrame frame(int frame)
 		{
 			UploadedAnimationFrame selected = frames[frame];
-			if (selected != null && selected.vertexCount() > 0)
+			if (selected != null && selected.hasGeometry())
 			{
 				return selected;
 			}
 			for (int i = frame - 1; i >= 0; i--)
 			{
 				UploadedAnimationFrame fallback = frames[i];
-				if (fallback != null && fallback.vertexCount() > 0)
+				if (fallback != null && fallback.hasGeometry())
 				{
 					return fallback;
 				}
@@ -4186,7 +4321,7 @@ final class TerrainRenderer
 			for (int i = frame + 1; i < frames.length; i++)
 			{
 				UploadedAnimationFrame fallback = frames[i];
-				if (fallback != null && fallback.vertexCount() > 0)
+				if (fallback != null && fallback.hasGeometry())
 				{
 					return fallback;
 				}
@@ -4210,14 +4345,21 @@ final class TerrainRenderer
 		int vao,
 		int vbo,
 		int vertexCount,
+		int transparentStartVertex,
+		int transparentVertexCount,
 		NpcOutlineGeometry outlineGeometry
 	)
 	{
-		private static final UploadedAnimationFrame EMPTY = new UploadedAnimationFrame(0, 0, 0, NpcOutlineGeometry.EMPTY);
+		private static final UploadedAnimationFrame EMPTY = new UploadedAnimationFrame(0, 0, 0, 0, 0, NpcOutlineGeometry.EMPTY);
 
 		private UploadedAnimationFrame
 		{
 			outlineGeometry = outlineGeometry == null ? NpcOutlineGeometry.EMPTY : outlineGeometry;
+		}
+
+		private boolean hasGeometry()
+		{
+			return vertexCount > 0 || transparentVertexCount > 0;
 		}
 
 		private void delete()

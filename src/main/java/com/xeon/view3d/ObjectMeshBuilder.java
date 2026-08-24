@@ -28,7 +28,9 @@ package com.xeon.view3d;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
+import net.runelite.cache.EntityOpsDefinition;
 import net.runelite.cache.ObjectManager;
 import net.runelite.cache.definitions.ModelDefinition;
 import net.runelite.cache.definitions.ObjectDefinition;
@@ -69,6 +71,7 @@ final class ObjectMeshBuilder
 
 	static List<AnimatedObjectMesh> append(
 		SceneMeshBuffer[] planeData,
+		SceneMeshBuffer[] transparentPlaneData,
 		Region region,
 		TerrainHeightMap[] heightMaps,
 		ObjectManager objectManager,
@@ -106,6 +109,7 @@ final class ObjectMeshBuilder
 			}
 
 			SceneMeshBuffer data = planeData[displayPlane];
+			SceneMeshBuffer transparentData = transparentPlaneData == null ? null : transparentPlaneData[displayPlane];
 			ObjectDefinition definition = completionStateDefinition(objectManager, objectManager.getObject(location.getId()));
 			if (definition == null || definition.getObjectModels() == null)
 			{
@@ -132,6 +136,7 @@ final class ObjectMeshBuilder
 
 			appendLocation(
 				data,
+				transparentData,
 				heightMaps[sourcePlane],
 				modelProvider,
 				textureProvider,
@@ -172,6 +177,12 @@ final class ObjectMeshBuilder
 			return definition;
 		}
 
+		ObjectDefinition openDefault = defaultOpenDefinition(objectManager, definition, transforms, seen, depth);
+		if (openDefault != null)
+		{
+			return openDefault;
+		}
+
 		ObjectDefinition fallback = null;
 		for (int i = transforms.length - 1; i >= 0; i--)
 		{
@@ -199,6 +210,76 @@ final class ObjectMeshBuilder
 		return fallback == null ? definition : fallback;
 	}
 
+	private static ObjectDefinition defaultOpenDefinition(
+		ObjectManager objectManager,
+		ObjectDefinition definition,
+		int[] transforms,
+		Set<Integer> seen,
+		int depth
+	)
+	{
+		if (!shouldDefaultOpen(definition))
+		{
+			return null;
+		}
+		for (int objectId : transforms)
+		{
+			if (objectId < 0)
+			{
+				continue;
+			}
+			ObjectDefinition candidate = objectManager.getObject(objectId);
+			if (candidate == null)
+			{
+				continue;
+			}
+			ObjectDefinition resolved = completionStateDefinition(objectManager, candidate, new HashSet<>(seen), depth + 1);
+			if (hasObjectModels(resolved) && hasOperation(resolved, "close"))
+			{
+				return resolved;
+			}
+		}
+		return null;
+	}
+
+	private static boolean shouldDefaultOpen(ObjectDefinition definition)
+	{
+		String name = normalizedName(definition == null ? null : definition.getName());
+		if (name.contains("trapdoor"))
+		{
+			return false;
+		}
+		return (name.contains("door") || name.contains("gate")) && hasOperation(definition, "open");
+	}
+
+	private static boolean hasOperation(ObjectDefinition definition, String operation)
+	{
+		if (definition == null || operation == null)
+		{
+			return false;
+		}
+		EntityOpsDefinition ops = definition.getOps();
+		if (ops == null || ops.ops == null)
+		{
+			return false;
+		}
+		String needle = operation.toLowerCase(Locale.ROOT);
+		for (EntityOpsDefinition.Op op : ops.ops)
+		{
+			String text = op == null ? null : op.text;
+			if (text != null && text.toLowerCase(Locale.ROOT).contains(needle))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static String normalizedName(String name)
+	{
+		return name == null ? "" : name.toLowerCase(Locale.ROOT);
+	}
+
 	private static boolean hasObjectModels(ObjectDefinition definition)
 	{
 		return definition != null
@@ -208,6 +289,7 @@ final class ObjectMeshBuilder
 
 	private static void appendLocation(
 		SceneMeshBuffer data,
+		SceneMeshBuffer transparentData,
 		TerrainHeightMap heightMap,
 		ObjectModelProvider modelProvider,
 		RSTextureProvider textureProvider,
@@ -223,8 +305,8 @@ final class ObjectMeshBuilder
 		if (type == TYPE_WALL_CORNER)
 		{
 			Placement placement = singleTilePlacement(heightMap, localX, localY, 0, 0, 0);
-			appendModel(data, modelProvider, textureProvider, textureSet, definition, type, orientation + 4, placement);
-			appendModel(data, modelProvider, textureProvider, textureSet, definition, type, orientation + 1 & 3, placement);
+			appendModel(data, transparentData, modelProvider, textureProvider, textureSet, definition, type, orientation + 4, placement);
+			appendModel(data, transparentData, modelProvider, textureProvider, textureSet, definition, type, orientation + 1 & 3, placement);
 			return;
 		}
 
@@ -232,6 +314,7 @@ final class ObjectMeshBuilder
 		ModelUse modelUse = modelUseFor(type, orientation);
 		appendModel(
 			data,
+			transparentData,
 			modelProvider,
 			textureProvider,
 			textureSet,
@@ -272,8 +355,10 @@ final class ObjectMeshBuilder
 		for (int frame = 0; frame < frameCount; frame++)
 		{
 			SceneMeshBuffer frameData = new SceneMeshBuffer(256 * TerrainMesh.FLOATS_PER_VERTEX);
+			SceneMeshBuffer transparentFrameData = new SceneMeshBuffer(64 * TerrainMesh.FLOATS_PER_VERTEX);
 			appendAnimatedLocation(
 				frameData,
+				transparentFrameData,
 				heightMap,
 				modelProvider,
 				animationProvider,
@@ -288,9 +373,11 @@ final class ObjectMeshBuilder
 			);
 			frames[frame] = new AnimatedObjectMesh.Frame(
 				frameData.toArray(),
-				frameData.size() / TerrainMesh.FLOATS_PER_VERTEX
+				frameData.size() / TerrainMesh.FLOATS_PER_VERTEX,
+				transparentFrameData.toArray(),
+				transparentFrameData.size() / TerrainMesh.FLOATS_PER_VERTEX
 			);
-			hasGeometry |= frames[frame].vertexCount() > 0;
+			hasGeometry |= frames[frame].vertexCount() > 0 || frames[frame].transparentVertexCount() > 0;
 		}
 		if (!hasGeometry)
 		{
@@ -309,6 +396,7 @@ final class ObjectMeshBuilder
 
 	private static void appendAnimatedLocation(
 		SceneMeshBuffer data,
+		SceneMeshBuffer transparentData,
 		TerrainHeightMap heightMap,
 		ObjectModelProvider modelProvider,
 		ObjectAnimationProvider animationProvider,
@@ -329,6 +417,7 @@ final class ObjectMeshBuilder
 			Placement placement = singleTilePlacement(heightMap, localX, localY, 0, 0, 0);
 			appendAnimatedModel(
 				data,
+				transparentData,
 				modelProvider,
 				animationProvider,
 				textureProvider,
@@ -342,6 +431,7 @@ final class ObjectMeshBuilder
 			);
 			appendAnimatedModel(
 				data,
+				transparentData,
 				modelProvider,
 				animationProvider,
 				textureProvider,
@@ -360,6 +450,7 @@ final class ObjectMeshBuilder
 		ModelUse modelUse = modelUseFor(type, orientation);
 		appendAnimatedModel(
 			data,
+			transparentData,
 			modelProvider,
 			animationProvider,
 			textureProvider,
@@ -375,6 +466,7 @@ final class ObjectMeshBuilder
 
 	private static void appendAnimatedModel(
 		SceneMeshBuffer data,
+		SceneMeshBuffer transparentData,
 		ObjectModelProvider modelProvider,
 		ObjectAnimationProvider animationProvider,
 		RSTextureProvider textureProvider,
@@ -405,7 +497,7 @@ final class ObjectMeshBuilder
 			{
 				continue;
 			}
-			appendModel(data, textureProvider, textureSet, definition, model, modelType, orientation, placement);
+			appendModel(data, transparentData, textureProvider, textureSet, definition, model, modelType, orientation, placement);
 		}
 	}
 
@@ -497,6 +589,7 @@ final class ObjectMeshBuilder
 
 	private static void appendModel(
 		SceneMeshBuffer data,
+		SceneMeshBuffer transparentData,
 		ObjectModelProvider modelProvider,
 		RSTextureProvider textureProvider,
 		SceneTextureSet textureSet,
@@ -519,7 +612,7 @@ final class ObjectMeshBuilder
 			{
 				continue;
 			}
-			appendModel(data, textureProvider, textureSet, definition, model, modelType, orientation, placement);
+			appendModel(data, transparentData, textureProvider, textureSet, definition, model, modelType, orientation, placement);
 		}
 	}
 
@@ -549,6 +642,7 @@ final class ObjectMeshBuilder
 
 	private static void appendModel(
 		SceneMeshBuffer data,
+		SceneMeshBuffer transparentData,
 		RSTextureProvider textureProvider,
 		SceneTextureSet textureSet,
 		ObjectDefinition definition,
@@ -599,9 +693,10 @@ final class ObjectMeshBuilder
 				? texturedFaceTint(definition, normal)
 				: faceRgb(model, definition, textureProvider, face, normal);
 			float depthBias = faceDepthBias(model, face);
-			putVertex(data, va, normal, rgb, alpha, depthBias, textureFace, uva);
-			putVertex(data, vb, normal, rgb, alpha, depthBias, textureFace, uvb);
-			putVertex(data, vc, normal, rgb, alpha, depthBias, textureFace, uvc);
+			SceneMeshBuffer targetData = alpha < 0.999f && transparentData != null ? transparentData : data;
+			putVertex(targetData, va, normal, rgb, alpha, depthBias, textureFace, uva);
+			putVertex(targetData, vb, normal, rgb, alpha, depthBias, textureFace, uvb);
+			putVertex(targetData, vc, normal, rgb, alpha, depthBias, textureFace, uvc);
 		}
 	}
 

@@ -39,6 +39,7 @@ public record Viewer3DState(
 	boolean npcsVisible,
 	boolean npcOutlinesVisible,
 	boolean npcHoverTextVisible,
+	boolean npcWikiSyncCombatColors,
 	boolean minimapVisible,
 	int npcOutlineColorArgb,
 	int tileHoverColorArgb
@@ -115,6 +116,7 @@ public record Viewer3DState(
 			true,
 			true,
 			true,
+			false,
 			true,
 			DEFAULT_NPC_OUTLINE_COLOR_ARGB,
 			DEFAULT_TILE_HOVER_COLOR_ARGB
@@ -153,6 +155,7 @@ public record Viewer3DState(
 			npcsVisible,
 			npcOutlinesVisible,
 			npcHoverTextVisible,
+			false,
 			true,
 			DEFAULT_NPC_OUTLINE_COLOR_ARGB,
 			DEFAULT_TILE_HOVER_COLOR_ARGB

@@ -28,6 +28,7 @@ package com.xeon.view3d;
 import java.io.IOException;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import net.runelite.cache.ConfigType;
@@ -64,7 +65,8 @@ final class NpcDefinitionProvider
 
 	NpcDefinition3D definition(int npcId)
 	{
-		return completionStateDefinition(load(npcId), new HashSet<>(), 0);
+		NpcDefinition3D definition = completionStateDefinition(load(npcId), new HashSet<>(), 0);
+		return isDisabledGameModeNpc(definition) ? null : definition;
 	}
 
 	private NpcDefinition3D completionStateDefinition(NpcDefinition3D definition, Set<Integer> seen, int depth)
@@ -89,7 +91,7 @@ final class NpcDefinitionProvider
 				continue;
 			}
 			NpcDefinition3D candidate = load(npcId);
-			if (candidate == null)
+			if (candidate == null || isDisabledGameModeNpc(candidate))
 			{
 				continue;
 			}
@@ -99,12 +101,22 @@ final class NpcDefinitionProvider
 			}
 
 			NpcDefinition3D resolved = completionStateDefinition(candidate, seen, depth + 1);
-			if (resolved != null && resolved.hasModels())
+			if (resolved != null && resolved.hasModels() && !isDisabledGameModeNpc(resolved))
 			{
 				return resolved;
 			}
 		}
-		return fallback == null ? definition : fallback;
+		return fallback == null || isDisabledGameModeNpc(fallback) ? definition : fallback;
+	}
+
+	private static boolean isDisabledGameModeNpc(NpcDefinition3D definition)
+	{
+		if (definition == null)
+		{
+			return false;
+		}
+		String name = definition.name == null ? "" : definition.name.toLowerCase(Locale.ROOT);
+		return name.equals("financial wizard"); //DMM banker replacement
 	}
 
 	private NpcDefinition3D load(int npcId)

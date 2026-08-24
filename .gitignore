@@ -41,3 +41,4 @@ bin/
 ### Mac OS ###
 .DS_Store
 /docs/map-area-labels/
+/docs/NPC_DEFINITION_OPCODES.md

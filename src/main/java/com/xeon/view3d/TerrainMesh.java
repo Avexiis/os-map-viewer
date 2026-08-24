@@ -49,6 +49,8 @@ public final class TerrainMesh
 	private final int vertexCount;
 	private final int[] planeStartVertices;
 	private final int[] planeVertexCounts;
+	private final int[] planeTransparentStartVertices;
+	private final int[] planeTransparentVertexCounts;
 	private final float minY;
 	private final float maxY;
 	private final List<AnimatedObjectMesh> animatedObjects;
@@ -72,6 +74,8 @@ public final class TerrainMesh
 			0,
 			new int[Region.Z],
 			new int[Region.Z],
+			new int[Region.Z],
+			new int[Region.Z],
 			List.of(),
 			List.of(),
 			SceneTextureSet.empty(),
@@ -93,6 +97,8 @@ public final class TerrainMesh
 		int vertexCount,
 		int[] planeStartVertices,
 		int[] planeVertexCounts,
+		int[] planeTransparentStartVertices,
+		int[] planeTransparentVertexCounts,
 		List<AnimatedObjectMesh> animatedObjects,
 		List<NpcMesh> npcMeshes,
 		SceneTextureSet textureSet,
@@ -112,6 +118,8 @@ public final class TerrainMesh
 		this.vertexCount = vertexCount;
 		this.planeStartVertices = normalizedPlaneArray(planeStartVertices);
 		this.planeVertexCounts = normalizedPlaneArray(planeVertexCounts);
+		this.planeTransparentStartVertices = normalizedPlaneArray(planeTransparentStartVertices);
+		this.planeTransparentVertexCounts = normalizedPlaneArray(planeTransparentVertexCounts);
 		this.animatedObjects = animatedObjects == null ? List.of() : List.copyOf(animatedObjects);
 		this.npcMeshes = npcMeshes == null ? List.of() : List.copyOf(npcMeshes);
 		float[] bounds = heightBounds(this.vertexData, this.animatedObjects, this.npcMeshes);
@@ -240,6 +248,16 @@ public final class TerrainMesh
 	int planeVertexCount(int samplePlane)
 	{
 		return planeVertexCounts[clamp(samplePlane, 0, Region.Z - 1)];
+	}
+
+	int planeTransparentStartVertex(int samplePlane)
+	{
+		return planeTransparentStartVertices[clamp(samplePlane, 0, Region.Z - 1)];
+	}
+
+	int planeTransparentVertexCount(int samplePlane)
+	{
+		return planeTransparentVertexCounts[clamp(samplePlane, 0, Region.Z - 1)];
 	}
 
 	float minY()
