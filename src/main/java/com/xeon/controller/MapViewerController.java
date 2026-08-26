@@ -85,9 +85,7 @@ public class MapViewerController
 			+ "installed to your PC for the purpose of printing a new map. Use this feature if Jagex "
 			+ "updates the game and adds new map areas, so OS Map Viewer shows the latest content.";
 	private static final String MAP_PRINT_NOTICE =
-		"NOTICE: This application makes NO attempt to modify the game's data. It runs NO risk of game "
-			+ "corruption or terms-of-service violations, however it should be used at your own risk. "
-			+ "The map printing process can be quite resource intensive and should only be attempted "
+			"The map printing process can be quite resource intensive and should only be attempted "
 			+ "on devices with at least 10GB of RAM not in use. If your PC cannot handle this, or if "
 			+ "the operation fails, please check the GitHub for the latest release version of OS Map Viewer.";
 	private static final String DEVELOPER_MODE_DESCRIPTION =

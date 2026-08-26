@@ -3,9 +3,9 @@ plugins {
     id("com.github.johnrengelman.shadow") version "8.1.1"
 }
 
-version = "1.1.0"
+version = "1.2.0"
 // Update this when replacing lib/runelite-cache/cache-<version>-SNAPSHOT-shaded.jar.
-val runeliteCacheVersion = "1.12.37"
+val runeliteCacheVersion = "1.12.38"
 val runeliteCacheShadedJar = layout.projectDirectory
     .file("lib/runelite-cache/cache-$runeliteCacheVersion-SNAPSHOT-shaded.jar")
     .asFile
