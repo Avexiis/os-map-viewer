@@ -20,7 +20,7 @@ The Options menu includes a map printer that uses the RuneLite cache library to 
 ## Requirements
 
 - Java 17 or newer
-- Gradle, or the included `gradlew` script
+- Gradle, or the included `gradlew` script (if building from source)
 
 ## Main Features
 
