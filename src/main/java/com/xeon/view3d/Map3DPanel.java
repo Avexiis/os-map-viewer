@@ -219,6 +219,8 @@ public final class Map3DPanel extends JPanel
 	private final JLabel viewDistanceHud = new JLabel("View Distance --");
 	private final JLabel debugOverlay = new JLabel();
 	private final JPanel loadingOverlay;
+	private final JLabel loadingStatus = new JLabel("Opening 3D renderer...");
+	private final JProgressBar loadingProgress = new JProgressBar(0, 100);
 	private final Map3DMinimapOverlay minimapOverlay;
 	private final MapPanel areaSearchMapPanel;
 	private final MapAreaSearchPanel areaSearchPanel;
@@ -264,6 +266,7 @@ public final class Map3DPanel extends JPanel
 	private Color npcOutlineColor = new Color(Viewer3DState.DEFAULT_NPC_OUTLINE_COLOR_ARGB, true);
 	private Color tileHoverSelectorColor = new Color(Viewer3DState.DEFAULT_TILE_HOVER_COLOR_ARGB, true);
 	private boolean cameraInitialized;
+	private boolean firstVisibleRegionRendered;
 	private boolean hoverPickErrorLogged;
 	private int streamCenterRegionId;
 	private int streamGridSize = Viewer3DState.DEFAULT_VIEW_DISTANCE_REGIONS;
@@ -1407,17 +1410,16 @@ public final class Map3DPanel extends JPanel
 			BorderFactory.createLineBorder(new Color(105, 108, 116)),
 			BorderFactory.createEmptyBorder(12, 14, 12, 14)
 		));
-		panel.setPreferredSize(new Dimension(280, 82));
+		panel.setPreferredSize(new Dimension(360, 86));
 		panel.setFocusable(false);
 
-		JLabel label = new JLabel("Loading 3D scene...");
-		label.setForeground(new Color(235, 235, 235));
-		label.setFont(label.getFont().deriveFont(Font.BOLD, 13f));
-		JProgressBar progress = new JProgressBar();
-		progress.setIndeterminate(true);
-		progress.setFocusable(false);
-		panel.add(label, BorderLayout.NORTH);
-		panel.add(progress, BorderLayout.CENTER);
+		loadingStatus.setForeground(new Color(235, 235, 235));
+		loadingStatus.setFont(loadingStatus.getFont().deriveFont(Font.BOLD, 13f));
+		loadingProgress.setIndeterminate(true);
+		loadingProgress.setStringPainted(false);
+		loadingProgress.setFocusable(false);
+		panel.add(loadingStatus, BorderLayout.NORTH);
+		panel.add(loadingProgress, BorderLayout.CENTER);
 		return panel;
 	}
 
@@ -1625,7 +1627,7 @@ public final class Map3DPanel extends JPanel
 		if (!cameraInitialized)
 		{
 			cameraInitialized = true;
-			hideLoadingOverlay();
+			updateLoadingOverlay();
 		}
 		streamCenterRegionId = targetRegionId;
 		updateStreamedRegions();
@@ -1681,7 +1683,7 @@ public final class Map3DPanel extends JPanel
 		}
 
 		cameraInitialized = true;
-		hideLoadingOverlay();
+		updateLoadingOverlay();
 		saveViewerStateNow();
 		canvas.requestFocusInWindow();
 	}
@@ -1717,6 +1719,81 @@ public final class Map3DPanel extends JPanel
 		loadingOverlay.setVisible(false);
 		sceneLayer.revalidate();
 		sceneLayer.repaint();
+	}
+
+	private void updateLoadingOverlay()
+	{
+		if (disposed || firstVisibleRegionRendered)
+		{
+			return;
+		}
+
+		TerrainRenderStats stats = renderer.renderStats();
+		if (stats.visibleRegions() > 0 && stats.verticesDrawn() > 0)
+		{
+			firstVisibleRegionRendered = true;
+			hideLoadingOverlay();
+			return;
+		}
+
+		LoadingOverlayStatus status = loadingOverlayStatus(stats);
+		loadingStatus.setText(status.label());
+		if (loadingProgress.isIndeterminate() != status.indeterminate())
+		{
+			loadingProgress.setIndeterminate(status.indeterminate());
+		}
+		loadingProgress.setStringPainted(!status.indeterminate());
+		if (!status.indeterminate())
+		{
+			loadingProgress.setValue(status.percent());
+			loadingProgress.setString(status.percent() + "%");
+		}
+
+		if (!loadingOverlay.isVisible())
+		{
+			loadingOverlay.setVisible(true);
+		}
+		sceneLayer.revalidate();
+		sceneLayer.doLayout();
+		sceneLayer.repaint(loadingOverlay.getBounds());
+	}
+
+	private LoadingOverlayStatus loadingOverlayStatus(TerrainRenderStats stats)
+	{
+		TerrainRenderer.RegionUploadProgress upload = renderer.regionUploadProgress();
+		if (glContextFailed)
+		{
+			return LoadingOverlayStatus.determinate("OpenGL renderer failed", 100);
+		}
+		if (!glContextReady)
+		{
+			return LoadingOverlayStatus.indeterminate("Opening OpenGL renderer");
+		}
+		if (loadingRegionIds.contains(initialLoadRegionId))
+		{
+			return LoadingOverlayStatus.indeterminate("Decoding terrain region " + initialLoadRegionId);
+		}
+		if (!loadedRegionIds.contains(initialLoadRegionId))
+		{
+			return LoadingOverlayStatus.indeterminate("Queueing terrain region " + initialLoadRegionId);
+		}
+		if (upload.active())
+		{
+			int percent = 35 + upload.percent() * 55 / 100;
+			return LoadingOverlayStatus.determinate(
+				upload.stage() + " for region " + upload.regionId(),
+				Math.max(35, Math.min(90, percent))
+			);
+		}
+		if (upload.queuedRegionCount() > 0 || stats.pendingUploads() > 0)
+		{
+			return LoadingOverlayStatus.determinate("Queueing region geometry for GPU upload", 35);
+		}
+		if (!renderer.hasUploadedDrawableRegion(initialLoadRegionId))
+		{
+			return LoadingOverlayStatus.determinate("Queueing region geometry for GPU upload", 35);
+		}
+		return LoadingOverlayStatus.determinate("Rendering first visible region", 95);
 	}
 
 	private Vector3f applyMovementConstraints(Vector3fc previous, Vector3fc attempted)
@@ -3144,10 +3221,12 @@ public final class Map3DPanel extends JPanel
 		if (!cameraInitialized)
 		{
 			detail.setText("Loading center region " + initialLoadRegionId + "...");
+			updateLoadingOverlay();
 			return;
 		}
 
 		detail.setText("3D view distance " + streamGridSize + "x" + streamGridSize);
+		updateLoadingOverlay();
 	}
 
 	private void closeLoaderSession()
@@ -3319,6 +3398,7 @@ public final class Map3DPanel extends JPanel
 		}
 		if (!ensureContext())
 		{
+			updateLoadingOverlay();
 			updateDebugOverlay();
 			return;
 		}
@@ -3360,6 +3440,7 @@ public final class Map3DPanel extends JPanel
 		{
 			lastRenderMillis = (System.nanoTime() - renderStartNanos) / 1_000_000.0;
 			updateNpcHoverOverlay(npcHoverInfo);
+			updateLoadingOverlay();
 			updateDebugOverlay();
 		}
 	}
@@ -3894,6 +3975,29 @@ public final class Map3DPanel extends JPanel
 		MapAreaSearchPanel searchPanel
 	)
 	{
+	}
+
+	private record LoadingOverlayStatus(
+		String label,
+		int percent,
+		boolean indeterminate
+	)
+	{
+		private LoadingOverlayStatus
+		{
+			label = label == null || label.isBlank() ? "Loading 3D scene" : label;
+			percent = Math.max(0, Math.min(100, percent));
+		}
+
+		private static LoadingOverlayStatus indeterminate(String label)
+		{
+			return new LoadingOverlayStatus(label, 0, true);
+		}
+
+		private static LoadingOverlayStatus determinate(String label, int percent)
+		{
+			return new LoadingOverlayStatus(label, percent, false);
+		}
 	}
 
 	@FunctionalInterface

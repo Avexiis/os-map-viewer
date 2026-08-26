@@ -386,6 +386,28 @@ final class TerrainRenderer
 		return renderStats;
 	}
 
+	RegionUploadProgress regionUploadProgress()
+	{
+		RegionUploadTask task = activeUploadTask;
+		if (task == null)
+		{
+			return RegionUploadProgress.none(pendingUploadRegions.size());
+		}
+		return new RegionUploadProgress(
+			task.regionId(),
+			task.stage(),
+			task.uploadedFloats(),
+			task.totalFloats(),
+			pendingUploadRegions.size()
+		);
+	}
+
+	boolean hasUploadedDrawableRegion(int regionId)
+	{
+		UploadedRegion region = uploadedRegions.get(regionId);
+		return region != null && region.hasDrawableGeometry();
+	}
+
 	void setMesh(TerrainMesh mesh)
 	{
 		setScene(TerrainScene.single(mesh));
@@ -3600,6 +3622,42 @@ final class TerrainRenderer
 		}
 	}
 
+	record RegionUploadProgress(
+		int regionId,
+		String stage,
+		int uploadedFloats,
+		int totalFloats,
+		int queuedRegionCount
+	)
+	{
+		RegionUploadProgress
+		{
+			stage = stage == null || stage.isBlank() ? "Uploading region geometry" : stage;
+			uploadedFloats = Math.max(0, uploadedFloats);
+			totalFloats = Math.max(0, totalFloats);
+			queuedRegionCount = Math.max(0, queuedRegionCount);
+		}
+
+		private static RegionUploadProgress none(int queuedRegionCount)
+		{
+			return new RegionUploadProgress(-1, "", 0, 0, queuedRegionCount);
+		}
+
+		boolean active()
+		{
+			return regionId >= 0;
+		}
+
+		int percent()
+		{
+			if (totalFloats <= 0)
+			{
+				return active() ? 100 : 0;
+			}
+			return Math.max(0, Math.min(100, (int) Math.round(uploadedFloats * 100.0 / totalFloats)));
+		}
+	}
+
 	private record UploadedRegion(
 		TerrainMesh mesh,
 		int regionId,
@@ -3672,13 +3730,18 @@ final class TerrainRenderer
 			return planeTransparentStartVertices[clamp(plane, 0, MAX_VISIBLE_PLANE)];
 		}
 
-		private int planeTransparentVertexCount(int plane)
-		{
-			return planeTransparentVertexCounts[clamp(plane, 0, MAX_VISIBLE_PLANE)];
-		}
+			private int planeTransparentVertexCount(int plane)
+			{
+				return planeTransparentVertexCounts[clamp(plane, 0, MAX_VISIBLE_PLANE)];
+			}
 
-		private void delete()
-		{
+			private boolean hasDrawableGeometry()
+			{
+				return vertexCount > 0 || !animatedObjects.isEmpty() || !npcMeshes.isEmpty();
+			}
+
+			private void delete()
+			{
 			if (vbo != 0)
 			{
 				GL33C.glDeleteBuffers(vbo);
@@ -3705,6 +3768,7 @@ final class TerrainRenderer
 		private final float[] vertexData;
 		private final List<AnimatedObjectUploadTask> animatedTasks = new ArrayList<>();
 		private final List<NpcMeshUploadTask> npcTasks = new ArrayList<>();
+		private final int totalFloats;
 		private int vao;
 		private int vbo;
 		private int uploadedFloats;
@@ -3731,6 +3795,16 @@ final class TerrainRenderer
 					npcTasks.add(new NpcMeshUploadTask(npcMesh));
 				}
 			}
+			int total = vertexData.length;
+			for (AnimatedObjectUploadTask task : animatedTasks)
+			{
+				total += task.totalFloats();
+			}
+			for (NpcMeshUploadTask task : npcTasks)
+			{
+				total += task.totalFloats();
+			}
+			totalFloats = total;
 		}
 
 		private int regionId()
@@ -3741,6 +3815,42 @@ final class TerrainRenderer
 		private TerrainMesh mesh()
 		{
 			return mesh;
+		}
+
+		private int totalFloats()
+		{
+			return totalFloats;
+		}
+
+		private int uploadedFloats()
+		{
+			int total = Math.min(uploadedFloats, vertexData.length);
+			for (AnimatedObjectUploadTask task : animatedTasks)
+			{
+				total += task.uploadedFloats();
+			}
+			for (NpcMeshUploadTask task : npcTasks)
+			{
+				total += task.uploadedFloats();
+			}
+			return Math.min(total, totalFloats);
+		}
+
+		private String stage()
+		{
+			if (vertexData.length > 0 && uploadedFloats < vertexData.length)
+			{
+				return "Uploading terrain geometry";
+			}
+			if (animatedTaskIndex < animatedTasks.size())
+			{
+				return "Uploading object animations";
+			}
+			if (npcTaskIndex < npcTasks.size())
+			{
+				return "Uploading NPC models";
+			}
+			return "Finalizing GPU upload";
 		}
 
 		private boolean uploadChunk(UploadBudget budget)
@@ -3883,13 +3993,27 @@ final class TerrainRenderer
 	{
 		private final AnimatedObjectMesh mesh;
 		private final UploadedAnimationFrame[] uploadedFrames;
+		private final int totalFloats;
 		private AnimationFrameUploadTask activeFrameTask;
+		private int completedFrameFloats;
 		private int frameIndex;
 
 		private AnimatedObjectUploadTask(AnimatedObjectMesh mesh)
 		{
 			this.mesh = mesh;
 			this.uploadedFrames = new UploadedAnimationFrame[mesh.frameCount()];
+			this.totalFloats = frameUploadFloats(mesh.frames());
+		}
+
+		private int totalFloats()
+		{
+			return totalFloats;
+		}
+
+		private int uploadedFloats()
+		{
+			int activeFloats = activeFrameTask == null ? 0 : activeFrameTask.uploadedFloats();
+			return Math.min(totalFloats, completedFrameFloats + activeFloats);
 		}
 
 		private boolean uploadChunk(UploadBudget budget)
@@ -3914,6 +4038,7 @@ final class TerrainRenderer
 				if (activeFrameTask.uploadChunk(budget))
 				{
 					uploadedFrames[frameIndex] = activeFrameTask.finish();
+					completedFrameFloats += activeFrameTask.totalFloats();
 					activeFrameTask = null;
 					frameIndex++;
 					continue;
@@ -3956,13 +4081,27 @@ final class TerrainRenderer
 	{
 		private final NpcMesh mesh;
 		private final UploadedAnimationFrame[] uploadedFrames;
+		private final int totalFloats;
 		private AnimationFrameUploadTask activeFrameTask;
+		private int completedFrameFloats;
 		private int frameIndex;
 
 		private NpcMeshUploadTask(NpcMesh mesh)
 		{
 			this.mesh = mesh;
 			this.uploadedFrames = new UploadedAnimationFrame[mesh.frameCount()];
+			this.totalFloats = frameUploadFloats(mesh.frames());
+		}
+
+		private int totalFloats()
+		{
+			return totalFloats;
+		}
+
+		private int uploadedFloats()
+		{
+			int activeFloats = activeFrameTask == null ? 0 : activeFrameTask.uploadedFloats();
+			return Math.min(totalFloats, completedFrameFloats + activeFloats);
 		}
 
 		private boolean uploadChunk(UploadBudget budget)
@@ -3987,6 +4126,7 @@ final class TerrainRenderer
 				if (activeFrameTask.uploadChunk(budget))
 				{
 					uploadedFrames[frameIndex] = activeFrameTask.finish();
+					completedFrameFloats += activeFrameTask.totalFloats();
 					activeFrameTask = null;
 					frameIndex++;
 					continue;
@@ -4053,6 +4193,16 @@ final class TerrainRenderer
 				? buildNpcOutlineGeometry(opaqueVertexData, opaqueVertexCount)
 				: NpcOutlineGeometry.EMPTY;
 			this.compactAfterUpload = compactAfterUpload;
+		}
+
+		private int totalFloats()
+		{
+			return vertexData.length;
+		}
+
+		private int uploadedFloats()
+		{
+			return Math.min(uploadedFloats, vertexData.length);
 		}
 
 		private boolean uploadChunk(UploadBudget budget)
@@ -4161,6 +4311,30 @@ final class TerrainRenderer
 				GL33C.glDeleteVertexArrays(vao);
 			}
 		}
+	}
+
+	private static int frameUploadFloats(AnimatedObjectMesh.Frame[] frames)
+	{
+		if (frames == null || frames.length == 0)
+		{
+			return 0;
+		}
+		int total = 0;
+		for (AnimatedObjectMesh.Frame frame : frames)
+		{
+			total += frameUploadFloats(frame);
+		}
+		return total;
+	}
+
+	private static int frameUploadFloats(AnimatedObjectMesh.Frame frame)
+	{
+		if (frame == null)
+		{
+			return 0;
+		}
+		int vertices = Math.max(0, frame.vertexCount()) + Math.max(0, frame.transparentVertexCount());
+		return vertices * TerrainMesh.FLOATS_PER_VERTEX;
 	}
 
 	private static final class UploadBudget
