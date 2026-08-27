@@ -33,6 +33,8 @@ import com.xeon.model.MapArea;
 import com.xeon.model.Tile;
 import com.xeon.plugin.MapViewerPlugin;
 import com.xeon.util.NumberField;
+import com.xeon.util.wikisync.WikiSyncManager;
+import com.xeon.util.wikisync.WikiSyncProfileControls;
 import com.xeon.view.MapAreaSearchPanel;
 import com.xeon.view.MapPanel;
 
@@ -155,7 +157,7 @@ public final class Map3DPanel extends JPanel
 	private static final long MINIMAP_CACHE_BUDGET_BYTES = 128L * 1024L * 1024L;
 	private static final float WARP_CAMERA_HEIGHT_TILES = 22.0f;
 	private static final long STATE_SAVE_INTERVAL_NANOS = 1_500_000_000L;
-	private static final long WIKISYNC_COMBAT_REFRESH_NANOS = 2_000_000_000L;
+	private static final long WIKISYNC_LEVEL_REFRESH_NANOS = 2_000_000_000L;
 	private static final float STREAM_PRIORITY_MOVEMENT_EPSILON = 0.05f;
 	private static final double STREAM_PRIORITY_DIRECT_DOT = 0.60;
 	private static final double STREAM_PRIORITY_FORWARD_DOT = 0.10;
@@ -170,6 +172,7 @@ public final class Map3DPanel extends JPanel
 	private final Path atlasPath;
 	private final long mapCacheBudgetBytes;
 	private final ViewerSettings settings;
+	private final WikiSyncManager wikiSyncManager;
 	private final Viewer3DState initialState;
 	private final Tile initialFocusTile;
 	private MapViewerPlugin activePlugin;
@@ -204,6 +207,7 @@ public final class Map3DPanel extends JPanel
 	private final JCheckBox agilityObstaclesCheckBox = new JCheckBox("Obstacles", false);
 	private final JCheckBox agilityLevelLabelsCheckBox = new JCheckBox("Levels", false);
 	private final JCheckBox agilityWikiSyncLevelColorsCheckBox = new JCheckBox("WikiSync", false);
+	private final WikiSyncProfileControls wikiSyncProfileControls = new WikiSyncProfileControls(false);
 	private final JButton npcBrowserButton = new JButton("Browse NPCs");
 	private final Component npcBrowserSpacer = Box.createVerticalStrut(6);
 	private final Component controlsBottomSpacer = Box.createVerticalStrut(CONTROLS_BOTTOM_PADDING);
@@ -262,6 +266,7 @@ public final class Map3DPanel extends JPanel
 	private final Timer renderTimer;
 	private final Runnable exitAction;
 	private final Consumer<String> failureAction;
+	private final List<ControlCategory> controlCategories = new ArrayList<>();
 	private volatile TerrainRegionLoader.Session loaderSession;
 	private volatile Set<Integer> desiredRegionIds = Set.of();
 	private TerrainScene currentScene;
@@ -305,7 +310,7 @@ public final class Map3DPanel extends JPanel
 	private int antialiasingSamples = DEFAULT_ANTIALIASING_SAMPLES;
 	private boolean stateSavePending;
 	private long lastStateSaveNanos;
-	private long lastWikiSyncCombatRefreshNanos;
+	private long lastWikiSyncLevelRefreshNanos;
 	private Viewer3DState lastSavedState;
 	private Map3DWorldMapDock worldMapDock;
 	private boolean pluginPopupHandledDuringPressRelease;
@@ -314,6 +319,7 @@ public final class Map3DPanel extends JPanel
 	private volatile boolean pluginOverlayDirty = true;
 	private final Vector3f lastStreamPriorityCameraPosition = new Vector3f();
 	private boolean lastStreamPriorityCameraPositionValid;
+	private final WikiSyncManager.Listener wikiSyncListener = ignored -> handleWikiSyncChanged();
 
 	public Map3DPanel(Path cacheDirectory, int regionId, Runnable exitAction)
 	{
@@ -345,11 +351,21 @@ public final class Map3DPanel extends JPanel
 	                  ViewerSettings settings, MapViewerPlugin activePlugin, Runnable exitAction,
 	                  Consumer<String> failureAction, Tile initialFocusTile, boolean developerModeAvailable)
 	{
+		this(cacheDirectory, regionId, atlasPath, mapCacheBudgetBytes, settings, activePlugin, exitAction,
+			failureAction, initialFocusTile, developerModeAvailable, null);
+	}
+
+	public Map3DPanel(Path cacheDirectory, int regionId, Path atlasPath, long mapCacheBudgetBytes,
+	                  ViewerSettings settings, MapViewerPlugin activePlugin, Runnable exitAction,
+	                  Consumer<String> failureAction, Tile initialFocusTile, boolean developerModeAvailable,
+	                  WikiSyncManager wikiSyncManager)
+	{
 		super(new BorderLayout());
 		this.cacheDirectory = cacheDirectory;
 		this.atlasPath = atlasPath;
 		this.mapCacheBudgetBytes = mapCacheBudgetBytes <= 0L ? DEFAULT_MAP_CACHE_BUDGET_BYTES : mapCacheBudgetBytes;
 		this.settings = settings;
+		this.wikiSyncManager = wikiSyncManager;
 		this.initialFocusTile = initialFocusTile == null ? null : new Tile(initialFocusTile.x, initialFocusTile.y, initialFocusTile.z);
 		this.initialState = this.initialFocusTile == null && settings != null ? settings.viewer3DState() : null;
 		this.lastSavedState = initialState;
@@ -364,6 +380,10 @@ public final class Map3DPanel extends JPanel
 		setOpaque(true);
 		setBackground(Color.BLACK);
 		applyInitialPreferences();
+		if (this.wikiSyncManager != null)
+		{
+			this.wikiSyncManager.addListener(wikiSyncListener);
+		}
 
 		canvas = new Canvas();
 		canvas.setBackground(Color.BLACK);
@@ -400,6 +420,11 @@ public final class Map3DPanel extends JPanel
 	public void dispose()
 	{
 		disposed = true;
+		if (wikiSyncManager != null)
+		{
+			wikiSyncManager.removeListener(wikiSyncListener);
+		}
+		wikiSyncProfileControls.unbind();
 		saveViewerStateNow();
 		renderTimer.stop();
 		regionLoaderExecutor.shutdownNow();
@@ -627,6 +652,8 @@ public final class Map3DPanel extends JPanel
 				exitAction.run();
 			}
 		});
+		wikiSyncProfileControls.setContentWidth(CONTROLS_FULL_BUTTON_WIDTH);
+		wikiSyncProfileControls.bind(wikiSyncManager, this::showWikiSyncStatus);
 
 		antialiasingScale.setFocusable(false);
 		antialiasingScale.addActionListener(e -> applyAntialiasingSelection());
@@ -688,55 +715,60 @@ public final class Map3DPanel extends JPanel
 		panel.add(controlsHeader, BorderLayout.NORTH);
 
 		controlsBody.setOpaque(false);
-		controlsBody.setBorder(BorderFactory.createEmptyBorder(8, 0, 0, 0));
+		controlsBody.setBorder(BorderFactory.createEmptyBorder(4, 0, 0, 0));
 		JPanel rows = new JPanel();
 		rows.setOpaque(false);
 		rows.setLayout(new BoxLayout(rows, BoxLayout.Y_AXIS));
 		rows.setAlignmentX(Component.LEFT_ALIGNMENT);
-		rows.add(Box.createVerticalStrut(22));
+		controlCategories.clear();
+		rows.add(Box.createVerticalStrut(10));
 		rows.add(centeredRow(actionButtonGrid()));
-		rows.add(Box.createVerticalStrut(8));
+		rows.add(Box.createVerticalStrut(6));
 		rows.add(centeredButtonRow(exit));
-		rows.add(sectionSeparator());
-		rows.add(renderingStatusRow());
-		rows.add(Box.createVerticalStrut(8));
-		rows.add(fovRow());
-		rows.add(sectionSeparator());
-		rows.add(sectionTitleRow("Overlays"));
-		rows.add(centeredButtonRow(tileHoverColorButton));
 		rows.add(Box.createVerticalStrut(6));
-		rows.add(centeredButtonRow(overlayPriorityButton));
-		rows.add(sectionSeparator());
-		rows.add(sectionTitleRow("Agility"));
-		rows.add(centeredControlRow(agilityObstaclesCheckBox, agilityLevelLabelsCheckBox,
-			agilityWikiSyncLevelColorsCheckBox));
-		rows.add(Box.createVerticalStrut(6));
-		rows.add(centeredControlRowFixedWidth(agilityOverlayColorButton,
-			controlContentWidth(agilityObstaclesCheckBox, agilityLevelLabelsCheckBox,
-				agilityWikiSyncLevelColorsCheckBox)));
-		rows.add(sectionSeparator());
-		rows.add(sectionTitleRow("Jump"));
-		rows.add(jumpRegionIdRow());
-		rows.add(Box.createVerticalStrut(6));
-		rows.add(jumpRegionRow());
-		rows.add(Box.createVerticalStrut(6));
-		rows.add(jumpTileRow());
-		rows.add(sectionSeparator());
-		rows.add(sectionTitleRow("Planes"));
-		rows.add(controlRow(planeVisibleCheckBoxes));
-		rows.add(sectionSeparator());
-		rows.add(sectionTitleRow("NPCs"));
-		rows.add(centeredControlRow(npcVisibleCheckBox, npcOutlinesCheckBox, npcHoverTextCheckBox));
-		rows.add(Box.createVerticalStrut(6));
-		rows.add(centeredControlRowFixedWidth(npcOutlineColorButton,
-			controlContentWidth(npcVisibleCheckBox, npcOutlinesCheckBox, npcHoverTextCheckBox)));
-		rows.add(Box.createVerticalStrut(6));
-		rows.add(centeredControlRowFixedWidth(npcWikiSyncCombatColorsCheckBox, CONTROLS_FULL_BUTTON_WIDTH));
+		rows.add(controlCategory("WikiSync Profile",
+			centeredGridRow(wikiSyncProfileControls, CONTROLS_FULL_BUTTON_WIDTH)));
+		rows.add(Box.createVerticalStrut(4));
+		rows.add(controlCategory("Rendering",
+			renderingStatusRow(),
+			Box.createVerticalStrut(8),
+			fovRow()));
+		rows.add(Box.createVerticalStrut(4));
+		rows.add(controlCategory("Overlays",
+			centeredButtonRow(tileHoverColorButton),
+			Box.createVerticalStrut(6),
+			centeredButtonRow(overlayPriorityButton)));
+		rows.add(Box.createVerticalStrut(4));
+		rows.add(controlCategory("Agility",
+			centeredControlRow(agilityObstaclesCheckBox, agilityLevelLabelsCheckBox,
+				agilityWikiSyncLevelColorsCheckBox),
+			Box.createVerticalStrut(6),
+			centeredControlRowFixedWidth(agilityOverlayColorButton,
+				controlContentWidth(agilityObstaclesCheckBox, agilityLevelLabelsCheckBox,
+					agilityWikiSyncLevelColorsCheckBox))));
+		rows.add(Box.createVerticalStrut(4));
+		rows.add(controlCategory("Jump",
+			jumpRegionIdRow(),
+			Box.createVerticalStrut(6),
+			jumpRegionRow(),
+			Box.createVerticalStrut(6),
+			jumpTileRow()));
+		rows.add(Box.createVerticalStrut(4));
+		rows.add(controlCategory("Planes", controlRow(planeVisibleCheckBoxes)));
+		rows.add(Box.createVerticalStrut(4));
+		ControlCategory npcCategory = controlCategory("NPCs",
+			centeredControlRow(npcVisibleCheckBox, npcOutlinesCheckBox, npcHoverTextCheckBox),
+			Box.createVerticalStrut(6),
+			centeredControlRowFixedWidth(npcOutlineColorButton,
+				controlContentWidth(npcVisibleCheckBox, npcOutlinesCheckBox, npcHoverTextCheckBox)),
+			Box.createVerticalStrut(6),
+			centeredControlRowFixedWidth(npcWikiSyncCombatColorsCheckBox, CONTROLS_FULL_BUTTON_WIDTH));
 		npcBrowserButtonRow = centeredButtonRow(npcBrowserButton);
 		npcBrowserSpacer.setVisible(developerModeAvailable);
 		npcBrowserButtonRow.setVisible(developerModeAvailable);
-		rows.add(npcBrowserSpacer);
-		rows.add(npcBrowserButtonRow);
+		npcCategory.addContent(npcBrowserSpacer);
+		npcCategory.addContent(npcBrowserButtonRow);
+		rows.add(npcCategory);
 		rows.add(controlsBottomSpacer);
 		controlsRows = rows;
 		updateControlsRowsSize();
@@ -755,6 +787,10 @@ public final class Map3DPanel extends JPanel
 		{
 			return;
 		}
+		for (ControlCategory category : controlCategories)
+		{
+			category.syncPreferredSize();
+		}
 		int height = 0;
 		for (Component component : controlsRows.getComponents())
 		{
@@ -768,6 +804,20 @@ public final class Map3DPanel extends JPanel
 		controlsRows.setPreferredSize(rowSize);
 		controlsRows.setMaximumSize(new Dimension(CONTROLS_INNER_WIDTH, Integer.MAX_VALUE));
 		controlsRows.revalidate();
+	}
+
+	private ControlCategory controlCategory(String text, Component... components)
+	{
+		ControlCategory category = new ControlCategory(text);
+		if (components != null)
+		{
+			for (Component component : components)
+			{
+				category.addContent(component);
+			}
+		}
+		controlCategories.add(category);
+		return category;
 	}
 
 	private JLabel controlSectionTitle(String text)
@@ -841,16 +891,13 @@ public final class Map3DPanel extends JPanel
 		return width;
 	}
 
-	private JPanel sectionTitleRow(String text)
+	private void showWikiSyncStatus(String message)
 	{
-		JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-		row.setOpaque(false);
-		row.setAlignmentX(Component.LEFT_ALIGNMENT);
-		row.setMinimumSize(new Dimension(CONTROLS_INNER_WIDTH, 18));
-		row.setPreferredSize(new Dimension(CONTROLS_INNER_WIDTH, 18));
-		row.setMaximumSize(new Dimension(CONTROLS_INNER_WIDTH, 18));
-		row.add(controlSectionTitle(text));
-		return row;
+		if (message == null || message.isBlank() || "WikiSync profile not configured".equals(message))
+		{
+			return;
+		}
+		detail.setText(message);
 	}
 
 	private JPanel actionButtonGrid()
@@ -872,6 +919,27 @@ public final class Map3DPanel extends JPanel
 		grid.add(viewControlsButton);
 		grid.add(minimapButton);
 		return grid;
+	}
+
+	private JPanel centeredGridRow(Component component, int width)
+	{
+		JPanel row = new JPanel(new GridBagLayout());
+		row.setOpaque(false);
+		row.setAlignmentX(Component.LEFT_ALIGNMENT);
+		Dimension componentSize = new Dimension(width, component.getPreferredSize().height);
+		Dimension rowSize = new Dimension(CONTROLS_INNER_WIDTH, componentSize.height);
+		row.setMinimumSize(rowSize);
+		row.setPreferredSize(rowSize);
+		row.setMaximumSize(rowSize);
+		setFixedControlSize(component, componentSize);
+
+		GridBagConstraints constraints = new GridBagConstraints();
+		constraints.gridx = 0;
+		constraints.gridy = 0;
+		constraints.anchor = GridBagConstraints.CENTER;
+		constraints.fill = GridBagConstraints.NONE;
+		row.add(component, constraints);
+		return row;
 	}
 
 	private JPanel centeredRow(Component component)
@@ -901,19 +969,6 @@ public final class Map3DPanel extends JPanel
 			setFixedControlSize(button, size);
 		}
 		row.add(component);
-		return row;
-	}
-
-	private Component sectionSeparator()
-	{
-		JPanel row = new JPanel(new BorderLayout());
-		row.setOpaque(false);
-		row.setBorder(BorderFactory.createEmptyBorder(8, 0, 8, 0));
-		row.add(new JSeparator(), BorderLayout.CENTER);
-		row.setAlignmentX(Component.LEFT_ALIGNMENT);
-		row.setMinimumSize(new Dimension(CONTROLS_INNER_WIDTH, 17));
-		row.setPreferredSize(new Dimension(CONTROLS_INNER_WIDTH, 17));
-		row.setMaximumSize(new Dimension(CONTROLS_INNER_WIDTH, 17));
 		return row;
 	}
 
@@ -1376,21 +1431,34 @@ public final class Map3DPanel extends JPanel
 
 	private void refreshWikiSyncLevels()
 	{
-		wikiSyncCombatLevel = settings == null ? null : settings.wikiSyncCombatLevel();
-		wikiSyncAgilityLevel = settings == null ? null : settings.wikiSyncAgilityLevel();
+		wikiSyncCombatLevel = wikiSyncManager == null ? null : wikiSyncManager.level("combat");
+		wikiSyncAgilityLevel = wikiSyncManager == null ? null : wikiSyncManager.level("agility");
 		npcHoverOverlay.setCombatColorProfile(npcWikiSyncCombatColors, wikiSyncCombatLevel);
+	}
+
+	private void handleWikiSyncChanged()
+	{
+		Integer previousCombat = wikiSyncCombatLevel;
+		Integer previousAgility = wikiSyncAgilityLevel;
+		refreshWikiSyncLevels();
+		applyWikiSyncLevelChanges(previousCombat, previousAgility);
 	}
 
 	private void maybeRefreshWikiSyncLevels(long now)
 	{
-		if (settings == null || now - lastWikiSyncCombatRefreshNanos < WIKISYNC_COMBAT_REFRESH_NANOS)
+		if (wikiSyncManager == null || now - lastWikiSyncLevelRefreshNanos < WIKISYNC_LEVEL_REFRESH_NANOS)
 		{
 			return;
 		}
-		lastWikiSyncCombatRefreshNanos = now;
+		lastWikiSyncLevelRefreshNanos = now;
 		Integer previousCombat = wikiSyncCombatLevel;
 		Integer previousAgility = wikiSyncAgilityLevel;
 		refreshWikiSyncLevels();
+		applyWikiSyncLevelChanges(previousCombat, previousAgility);
+	}
+
+	private void applyWikiSyncLevelChanges(Integer previousCombat, Integer previousAgility)
+	{
 		if (previousCombat == null && wikiSyncCombatLevel != null
 			|| previousCombat != null && !previousCombat.equals(wikiSyncCombatLevel))
 		{
@@ -1485,8 +1553,8 @@ public final class Map3DPanel extends JPanel
 				Dimension size = getSize();
 				canvas.setBounds(0, 0, size.width, size.height);
 				Dimension controlSize = controlsPanel.getPreferredSize();
-				int controlsX = Math.max(8, size.width - controlSize.width - 12);
-				controlsPanel.setBounds(controlsX, 12, controlSize.width, controlSize.height);
+				int controlsX = Math.max(0, size.width - controlSize.width);
+				controlsPanel.setBounds(controlsX, 0, controlSize.width, controlSize.height);
 				int overlayRightAnchor = Math.max(8, controlsX - CONTROLS_MINIMAP_GAP);
 				int debugTop = 12;
 				int overlayColumnRight = overlayRightAnchor;
@@ -4058,6 +4126,96 @@ public final class Map3DPanel extends JPanel
 		checkBox.setOpaque(false);
 		checkBox.setFocusable(false);
 		checkBox.setForeground(new Color(220, 220, 220));
+	}
+
+	private final class ControlCategory extends JPanel
+	{
+		private static final int HEADER_HEIGHT = 26;
+
+		private final String label;
+		private final JButton headerButton = new JButton();
+		private final JPanel content = new JPanel();
+		private boolean expanded;
+
+		private ControlCategory(String label)
+		{
+			this.label = label == null || label.isBlank() ? "Options" : label;
+			setOpaque(false);
+			setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
+			setAlignmentX(Component.LEFT_ALIGNMENT);
+
+			styleToolbarButton(headerButton);
+			headerButton.setHorizontalAlignment(SwingConstants.LEFT);
+			headerButton.addActionListener(e -> setExpanded(!expanded));
+			setFixedControlSize(headerButton, new Dimension(CONTROLS_INNER_WIDTH, HEADER_HEIGHT));
+			add(headerButton);
+
+			content.setOpaque(false);
+			content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+			content.setAlignmentX(Component.LEFT_ALIGNMENT);
+			content.add(Box.createVerticalStrut(6));
+			content.setVisible(false);
+			add(content);
+			updateHeaderText();
+			syncPreferredSize();
+		}
+
+		private void addContent(Component component)
+		{
+			if (component == null)
+			{
+				return;
+			}
+			if (component instanceof JComponent jComponent)
+			{
+				jComponent.setAlignmentX(Component.LEFT_ALIGNMENT);
+			}
+			content.add(component);
+			syncPreferredSize();
+		}
+
+		private void setExpanded(boolean expanded)
+		{
+			if (this.expanded == expanded)
+			{
+				return;
+			}
+			this.expanded = expanded;
+			content.setVisible(expanded);
+			updateHeaderText();
+			syncPreferredSize();
+			updateControlsRowsSize();
+			if (controlsPanel != null)
+			{
+				controlsPanel.revalidate();
+				controlsPanel.repaint();
+				Container parent = controlsPanel.getParent();
+				if (parent != null)
+				{
+					parent.revalidate();
+					parent.doLayout();
+					parent.repaint();
+				}
+			}
+		}
+
+		private void updateHeaderText()
+		{
+			headerButton.setText(label + "  " + (expanded ? "v" : ">"));
+		}
+
+		private void syncPreferredSize()
+		{
+			int height = HEADER_HEIGHT;
+			if (expanded)
+			{
+				height += content.getPreferredSize().height;
+			}
+			Dimension size = new Dimension(CONTROLS_INNER_WIDTH, height);
+			setMinimumSize(size);
+			setPreferredSize(size);
+			setMaximumSize(size);
+		}
 	}
 
 	private static JLabel toolbarLabel(String text)

@@ -44,9 +44,9 @@ import com.xeon.plugins.shortestpath.core.PathfinderResult;
 import com.xeon.plugins.shortestpath.core.TeleportItem;
 import com.xeon.plugins.shortestpath.core.Transport;
 import com.xeon.plugins.shortestpath.core.TransportType;
-import com.xeon.plugins.shortestpath.core.WikiSyncClient;
-import com.xeon.plugins.shortestpath.core.WikiSyncProfile;
 import com.xeon.plugins.shortestpath.core.WorldPointUtil;
+import com.xeon.util.wikisync.WikiSyncManager;
+import com.xeon.util.wikisync.WikiSyncProfile;
 import com.xeon.view.MapLayer;
 import com.xeon.view.MapMouseEvent;
 import com.xeon.view.MapRenderContext;
@@ -105,8 +105,6 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 	private static final String KEY_STEP_MARKER_COLOR = "color.stepMarker";
 	private static final String KEY_TARGET_MARKER_COLOR = "color.targetMarker";
 	private static final String KEY_COLLISION_COLOR = "color.collision";
-	private static final String KEY_WIKISYNC_USERNAME = "wikiSync.username";
-	private static final String KEY_WIKISYNC_PROFILE = "wikiSync.profile";
 	private static final Color DEFAULT_WALK_LINE_COLOR = new Color(0xFF27D6C4, true);
 	private static final Color DEFAULT_TRANSPORT_LINE_COLOR = new Color(0xFFFF5C7A, true);
 	private static final Color DEFAULT_START_MARKER_COLOR = new Color(0xFF35D07F, true);
@@ -126,13 +124,14 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 		thread.setDaemon(true);
 		return thread;
 	});
-	private final WikiSyncClient wikiSyncClient = new WikiSyncClient();
 
 	private PluginContext context;
 	private ShortestPathPanel panel;
 	private ShortestPathRoutePanel routePanel;
 	private ShortestPathMenu menu;
+	private WikiSyncManager wikiSyncManager;
 	private PathfinderConfig pathfinderConfig;
+	private WikiSyncProfile activeWikiSyncProfile;
 	private PathOptions options = PathOptions.defaults();
 	private Set<TeleportItem> enabledTeleportItems = EnumSet.allOf(TeleportItem.class);
 	private final LinkedHashSet<Integer> selectedCollisionRegionIds = new LinkedHashSet<>();
@@ -153,11 +152,10 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 	private volatile RouteFailure routeFailure;
 	private volatile List<ShortestPathRoutePanel.Entry> routePointEntries = List.of();
 	private Future<?> currentJob;
-	private Future<?> profileJob;
-	private long profileLookupSerial;
 	private long calculationSerial;
 	private String lastWarningSignature = "";
 	private final RegionChangeListener hoveredRegionListener = this::handleHoveredRegionChanged;
+	private final WikiSyncManager.Listener wikiSyncListener = ignored -> handleWikiSyncProfileChanged();
 
 	@Override
 	public String id()
@@ -203,7 +201,6 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 		panel.setOnImportRoute(this::importRoute);
 		panel.setOnExportRoute(this::exportRoute);
 		panel.setOnClear(this::clearPath);
-		panel.setOnProfileLookup(this::lookUpProfile);
 		routePanel.setOnFocusTile(tile -> {
 			if (tile != null && this.context != null)
 			{
@@ -221,7 +218,9 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 		pathfinderConfig = new PathfinderConfig(options);
 		pathfinderConfig.setEnabledTeleportItems(enabledTeleportItems);
 		panel.setStatus("idle");
-		loadStoredProfile(context.config());
+		wikiSyncManager = WikiSyncManager.shared(context.configManager());
+		wikiSyncManager.addListener(wikiSyncListener);
+		applyWikiSyncProfile(wikiSyncManager.profile(), false);
 		refreshPanel();
 
 		context.mapPanel().addLayer(this);
@@ -233,7 +232,11 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 	public void uninstall()
 	{
 		cancelCurrentJob();
-		cancelProfileJob();
+		if (wikiSyncManager != null)
+		{
+			wikiSyncManager.removeListener(wikiSyncListener);
+			wikiSyncManager = null;
+		}
 		if (context != null)
 		{
 			context.mapPanel().removeHoveredRegionChangeListener(hoveredRegionListener);
@@ -998,133 +1001,25 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 		repaint();
 	}
 
-	private void loadStoredProfile(PluginConfig config)
+	private void handleWikiSyncProfileChanged()
 	{
-		String storedUsername = cleanUsername(config.getString(KEY_WIKISYNC_USERNAME, ""));
-		WikiSyncProfile storedProfile = config.getObject(KEY_WIKISYNC_PROFILE, WikiSyncProfile.class, null);
-		if (storedUsername.isBlank())
-		{
-			panel.setProfileLoaded(false);
-			return;
-		}
-
-		panel.setProfileName(storedUsername);
-		if (storedProfile != null && storedProfile.hasData())
-		{
-			pathfinderConfig.setProfile(storedProfile);
-			panel.setProfileLoaded(true);
-		}
-		else
-		{
-			panel.setProfileLoaded(false);
-		}
-		refreshProfile(storedUsername);
+		WikiSyncManager manager = wikiSyncManager;
+		applyWikiSyncProfile(manager == null ? null : manager.profile(), true);
 	}
 
-	private void lookUpProfile(String username)
+	private void applyWikiSyncProfile(WikiSyncProfile profile, boolean recalculateRoute)
 	{
-		String cleanUsername = cleanUsername(username);
-		if (cleanUsername.isBlank())
-		{
-			panel.setProfileLoaded(hasProfile());
-			context.setStatus("Enter a RuneScape username.");
-			return;
-		}
-		submitProfileLookup(cleanUsername, true, false);
-	}
-
-	private void refreshProfile(String username)
-	{
-		String cleanUsername = cleanUsername(username);
-		if (!cleanUsername.isBlank())
-		{
-			submitProfileLookup(cleanUsername, false, true);
-		}
-	}
-
-	private void submitProfileLookup(String username, boolean askToStore, boolean saveOnSuccess)
-	{
-		if (pathfinderConfig == null)
+		if (pathfinderConfig == null || activeWikiSyncProfile == profile)
 		{
 			return;
 		}
-		cancelProfileJob();
-		long lookupId = ++profileLookupSerial;
-		panel.setProfileLookupRunning(true);
-		panel.setProfileLoaded(hasProfile());
-		context.setStatus("Looking up WikiSync profile");
-		profileJob = executor.submit(() -> {
-			try
-			{
-				WikiSyncProfile profile = wikiSyncClient.lookup(username, pathfinderConfig.profileRequirements());
-				SwingUtilities.invokeLater(() -> finishProfileLookup(lookupId, profile, askToStore, saveOnSuccess));
-			}
-			catch (InterruptedException ex)
-			{
-				Thread.currentThread().interrupt();
-			}
-			catch (Exception ex)
-			{
-				SwingUtilities.invokeLater(() -> failProfileLookup(lookupId, ex, askToStore, saveOnSuccess));
-			}
-		});
-	}
-
-	private void finishProfileLookup(long lookupId, WikiSyncProfile profile, boolean askToStore, boolean saveOnSuccess)
-	{
-		if (lookupId != profileLookupSerial)
-		{
-			return;
-		}
-		panel.setProfileLookupRunning(false);
+		activeWikiSyncProfile = profile;
 		pathfinderConfig.setProfile(profile);
-		panel.setProfileLoaded(profile != null && profile.hasData());
-		recalculate();
-
-		boolean store = saveOnSuccess;
-		if (askToStore)
+		if (recalculateRoute)
 		{
-			int answer = JOptionPane.showConfirmDialog(
-				context.owner(),
-				"Store this WikiSync profile and refresh it whenever the Shortest Path plugin loads?",
-				"Store WikiSync Profile",
-				JOptionPane.YES_NO_OPTION,
-				JOptionPane.QUESTION_MESSAGE
-			);
-			store = answer == JOptionPane.YES_OPTION;
+			recalculate();
+			repaint();
 		}
-		if (store)
-		{
-			saveProfile(context.config(), profile);
-		}
-
-		context.setStatus("WikiSync profile loaded");
-		repaint();
-	}
-
-	private void failProfileLookup(long lookupId, Exception ex, boolean showDialog, boolean automaticRefresh)
-	{
-		if (lookupId != profileLookupSerial)
-		{
-			return;
-		}
-		panel.setProfileLookupRunning(false);
-		String message = ex.getMessage() == null || ex.getMessage().isBlank()
-			? "WikiSync lookup failed."
-			: ex.getMessage();
-		WikiSyncProfile currentProfile = pathfinderConfig.getProfile();
-		panel.setProfileLoaded(currentProfile != null && currentProfile.hasData());
-		context.setStatus(message);
-		if (showDialog)
-		{
-			JOptionPane.showMessageDialog(context.owner(), message, "WikiSync Lookup Failed", JOptionPane.WARNING_MESSAGE);
-		}
-	}
-
-	private boolean hasProfile()
-	{
-		WikiSyncProfile profile = pathfinderConfig == null ? null : pathfinderConfig.getProfile();
-		return profile != null && profile.hasData();
 	}
 
 	private void setStart(Tile tile)
@@ -1445,19 +1340,6 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 		if (currentJob != null && !currentJob.isDone())
 		{
 			currentJob.cancel(false);
-		}
-	}
-
-	private void cancelProfileJob()
-	{
-		profileLookupSerial++;
-		if (profileJob != null && !profileJob.isDone())
-		{
-			profileJob.cancel(true);
-		}
-		if (panel != null)
-		{
-			panel.setProfileLookupRunning(false);
 		}
 	}
 
@@ -1904,12 +1786,6 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 		config.setBoolean(KEY_SHOW_COLLISION_MAP, value != ShortestPathPanel.CollisionMapMode.OFF);
 	}
 
-	private static void saveProfile(PluginConfig config, WikiSyncProfile profile)
-	{
-		config.setString(KEY_WIKISYNC_USERNAME, profile.username());
-		config.setObject(KEY_WIKISYNC_PROFILE, profile);
-	}
-
 	private static Set<TeleportItem> loadEnabledTeleportItems(PluginConfig config)
 	{
 		EnumSet<TeleportItem> enabled = EnumSet.allOf(TeleportItem.class);
@@ -2097,11 +1973,6 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 		object.addProperty("y", tile.y);
 		object.addProperty("z", tile.z);
 		return object;
-	}
-
-	private static String cleanUsername(String username)
-	{
-		return username == null ? "" : username.trim();
 	}
 
 	private static boolean isAdjacent(int source, int destination)

@@ -35,9 +35,9 @@ import com.xeon.plugins.shortestpath.core.SplitFlagMap;
 import com.xeon.plugins.shortestpath.core.TeleportItem;
 import com.xeon.plugins.shortestpath.core.Transport;
 import com.xeon.plugins.shortestpath.core.TransportType;
-import com.xeon.plugins.shortestpath.core.WikiSyncClient;
-import com.xeon.plugins.shortestpath.core.WikiSyncProfile;
 import com.xeon.plugins.shortestpath.core.WorldPointUtil;
+import com.xeon.util.wikisync.WikiSyncClient;
+import com.xeon.util.wikisync.WikiSyncProfile;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -83,13 +83,22 @@ public final class ShortestPathDataCheck
 		WikiSyncProfile blockedProfile = new WikiSyncProfile("tester", "STANDARD", Instant.EPOCH,
 			Map.of("agility", 99, "strength", 99, "ranged", 99),
 			Set.of());
-		require(!blockedProfile.canUse(observatoryShortcut), "profile quest filtering");
+		config.setProfile(blockedProfile);
+		require(findTransport(config,
+			WorldPointUtil.packWorldPoint(2449, 3155, 0),
+			WorldPointUtil.packWorldPoint(2444, 3165, 0),
+			"observatoryquest") == null, "profile quest filtering");
 		WikiSyncProfile allowedProfile = new WikiSyncProfile("tester", "STANDARD", Instant.EPOCH,
 			Map.of("agility", 99, "strength", 99, "ranged", 99),
 			Set.of("observatoryquest"));
-		require(allowedProfile.canUse(observatoryShortcut), "profile allows satisfied requirements");
+		config.setProfile(allowedProfile);
+		require(findTransport(config,
+			WorldPointUtil.packWorldPoint(2449, 3155, 0),
+			WorldPointUtil.packWorldPoint(2444, 3165, 0),
+			"observatoryquest") != null, "profile allows satisfied requirements");
+		config.setProfile(null);
 
-		WikiSyncProfile parsedProfile = parseSampleProfile(config);
+		WikiSyncProfile parsedProfile = parseSampleProfile();
 		require(parsedProfile.hasLevel("Agility", 77), "WikiSync level parsing");
 		require(parsedProfile.hasLevel("Sailing", 87), "WikiSync sailing level parsing");
 		require(parsedProfile.hasLevel("Total", 1989), "WikiSync total level parsing");
@@ -186,7 +195,7 @@ public final class ShortestPathDataCheck
 		return true;
 	}
 
-	private static WikiSyncProfile parseSampleProfile(PathfinderConfig config)
+	private static WikiSyncProfile parseSampleProfile()
 	{
 		String json = """
 			{
@@ -227,7 +236,7 @@ public final class ShortestPathDataCheck
 			""";
 		try
 		{
-			return WikiSyncClient.parseProfile(json, config.profileRequirements(), "Tester");
+			return WikiSyncClient.parseProfile(json, "Tester");
 		}
 		catch (IOException ex)
 		{

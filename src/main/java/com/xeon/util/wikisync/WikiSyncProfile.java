@@ -23,7 +23,7 @@
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-package com.xeon.plugins.shortestpath.core;
+package com.xeon.util.wikisync;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -86,33 +86,15 @@ public final class WikiSyncProfile
 		return Set.copyOf(completedQuests == null ? Set.of() : completedQuests);
 	}
 
-	public boolean canUse(Transport transport)
-	{
-		if (transport == null)
-		{
-			return true;
-		}
-		for (Map.Entry<String, Integer> requirement : transport.getSkillRequirements().entrySet())
-		{
-			if (!hasLevel(requirement.getKey(), requirement.getValue()))
-			{
-				return false;
-			}
-		}
-		for (String quest : transport.getQuestRequirements())
-		{
-			if (!hasCompletedQuest(quest))
-			{
-				return false;
-			}
-		}
-		return true;
-	}
-
 	public boolean hasLevel(String skill, int requiredLevel)
 	{
-		Integer level = levels == null ? null : levels.get(ProfileNames.canonicalSkill(skill));
+		Integer level = level(skill);
 		return level != null && level >= requiredLevel;
+	}
+
+	public Integer level(String skill)
+	{
+		return levels == null ? null : levels.get(ProfileNames.canonicalSkill(skill));
 	}
 
 	public boolean hasCompletedQuest(String quest)

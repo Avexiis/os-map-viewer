@@ -16,7 +16,6 @@ It can also use public OSRS WikiSync profile data for account-aware skill and qu
 When enabled, the plugin adds:
 
 - A shortest-path panel on the right.
-- A WikiSync username field and `Look up` button.
 - A searchable teleport item list for enabling or disabling item teleports.
 - Route import/export, color, collision-map, and transport-type controls.
 - A Shortest Path button in the left rail.
@@ -66,12 +65,12 @@ With Shortest Path enabled in 3D mode:
 
 ## WikiSync Profile Lookup
 
-To apply account-specific data, type a RuneScape username in the Shortest Path panel and click `Look up`, which is labeled with the RuneLite icon.
+To apply account-specific data, type a RuneScape username in the `WikiSync Profile` section of the 2D or 3D map controls and click `Look up`, which is labeled with the RuneLite icon.
 
-After a successful lookup, the app asks if you want to store the profile. If you choose to store it, OS Map Viewer saves the username plus the subset of WikiSync data used by the shortest-path viewer: fetched timestamp, profile type, skill levels, and completed quest names. It does not store unrelated public sections such as diaries, music, combat achievements, or collection log data. The next time the Shortest Path plugin loads, it refreshes that username from WikiSync and replaces the stored profile.
+After a successful lookup, OS Map Viewer stores the username plus the subset of WikiSync data used by the viewer: fetched timestamp, profile type, skill levels, and completed quest names. It does not store unrelated public sections such as diaries, music, combat achievements, or collection log data. On startup, OS Map Viewer refreshes that username from WikiSync before you choose 2D or 3D mode.
 
 ## Routing Limits
 
 OS Map Viewer is not connected to the RuneLite client, so it cannot know live account state such as inventory, equipment, bank contents, planted spirit trees, spellbook, or current cooldowns.
 
-With a WikiSync profile loaded, the route filters transports by satisfied skill and quest requirements. Without a WikiSync profile, the plugin uses broad offline toggles for transports, teleports, wilderness avoidance, and POH links.
+With the global WikiSync profile loaded, the route filters transports by satisfied skill and quest requirements. Without a WikiSync profile, the plugin uses broad offline toggles for transports, teleports, wilderness avoidance, and POH links.

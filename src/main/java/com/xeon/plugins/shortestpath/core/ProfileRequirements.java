@@ -25,6 +25,8 @@
  */
 package com.xeon.plugins.shortestpath.core;
 
+import com.xeon.util.wikisync.ProfileNames;
+
 import java.util.LinkedHashSet;
 import java.util.Set;
 

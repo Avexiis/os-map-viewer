@@ -22,6 +22,8 @@
  */
 package com.xeon.plugins.shortestpath.core;
 
+import com.xeon.util.wikisync.WikiSyncProfile;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
@@ -219,9 +221,32 @@ public final class PathfinderConfig
 			}
 		}
 		WikiSyncProfile currentProfile = profile;
-		if (currentProfile != null && !currentProfile.canUse(transport))
+		if (currentProfile != null && !canUse(currentProfile, transport))
 		{
 			return false;
+		}
+		return true;
+	}
+
+	private static boolean canUse(WikiSyncProfile profile, Transport transport)
+	{
+		if (profile == null || transport == null)
+		{
+			return true;
+		}
+		for (Map.Entry<String, Integer> requirement : transport.getSkillRequirements().entrySet())
+		{
+			if (!profile.hasLevel(requirement.getKey(), requirement.getValue()))
+			{
+				return false;
+			}
+		}
+		for (String quest : transport.getQuestRequirements())
+		{
+			if (!profile.hasCompletedQuest(quest))
+			{
+				return false;
+			}
 		}
 		return true;
 	}

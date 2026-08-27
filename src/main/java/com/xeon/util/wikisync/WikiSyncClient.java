@@ -23,7 +23,7 @@
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-package com.xeon.plugins.shortestpath.core;
+package com.xeon.util.wikisync;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
@@ -64,7 +64,7 @@ public final class WikiSyncClient
 		this.httpClient = httpClient;
 	}
 
-	public WikiSyncProfile lookup(String username, ProfileRequirements requirements)
+	public WikiSyncProfile lookup(String username)
 		throws IOException, InterruptedException
 	{
 		String cleanUsername = cleanUsername(username);
@@ -85,10 +85,10 @@ public final class WikiSyncClient
 		{
 			throw new IOException(errorMessage(response.statusCode(), response.body()));
 		}
-		return parseProfile(response.body(), requirements, cleanUsername);
+		return parseProfile(response.body(), cleanUsername);
 	}
 
-	public static WikiSyncProfile parseProfile(String json, ProfileRequirements requirements, String requestedUsername)
+	public static WikiSyncProfile parseProfile(String json, String requestedUsername)
 		throws IOException
 	{
 		JsonElement parsed;

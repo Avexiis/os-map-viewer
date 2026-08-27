@@ -42,6 +42,7 @@ import com.xeon.plugins.groundmarkers.GroundMarkerPlugin;
 import com.xeon.plugins.shortestpath.ShortestPathPlugin;
 import com.xeon.util.Images;
 import com.xeon.util.Ui;
+import com.xeon.util.wikisync.WikiSyncManager;
 import com.xeon.view.MapAreaSearchPanel;
 import com.xeon.view.MapControlsPanel;
 import com.xeon.view.MapLegendDialog;
@@ -123,6 +124,7 @@ public class MapViewerController
 	private long optionsMenuHiddenAtMillis = 0L;
 	private final ConfigManager configManager = ConfigManager.loadDefault();
 	private final ViewerSettings settings = ViewerSettings.load(configManager);
+	private final WikiSyncManager wikiSyncManager = WikiSyncManager.shared(configManager);
 	private final List<PluginHandle> plugins = new ArrayList<>();
 	private boolean showGrid = false;
 	private boolean showRegionCoordinates = false;
@@ -139,6 +141,7 @@ public class MapViewerController
 
 	public MapViewerController()
 	{
+		wikiSyncManager.refreshStoredProfileAsync();
 		for (MapViewerPlugin plugin : PluginRegistry.load(new GroundMarkerPlugin(), new ShortestPathPlugin()))
 		{
 			plugins.add(new PluginHandle(plugin, false));
@@ -185,6 +188,7 @@ public class MapViewerController
 				{
 					map3DPanel.dispose();
 				}
+				wikiSyncManager.shutdown();
 			}
 		});
 
@@ -335,6 +339,7 @@ public class MapViewerController
 		mapControls.setSelectedPlane(mapPanel.getPlane());
 		mapControls.setMapFeatureTooltips(showMapFeatureTooltips);
 		mapControls.setNpcDotsVisible(showNpcDots);
+		mapControls.setWikiSyncManager(wikiSyncManager, this::setStatus);
 		areaSearchPanel = new MapAreaSearchPanel();
 		areaSearchPanel.setSearchProvider(mapPanel::searchMapAreas);
 		mapPanel.setMapBackgroundColor(settings.mapBackgroundColor());
@@ -1414,7 +1419,8 @@ public class MapViewerController
 				this::exit3DViewer,
 				this::handle3DViewerFailure,
 				startupTile,
-				developerModeCurrentlyAvailable());
+				developerModeCurrentlyAvailable(),
+				wikiSyncManager);
 		}
 		catch (RuntimeException ex)
 		{

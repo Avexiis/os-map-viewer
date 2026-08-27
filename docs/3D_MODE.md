@@ -52,6 +52,10 @@ Main buttons:
 - `Hide Minimap` / `Show Minimap`: hides or shows the minimap and world-map button.
 - `Switch to 2D Map`: closes the 3D viewer.
 
+WikiSync controls:
+
+- `WikiSync Profile`: imports the global WikiSync profile used by shortest-path routing, agility obstacle colors, and NPC level colors.
+
 Rendering and status controls:
 
 - `AA`: changes edge smoothing.

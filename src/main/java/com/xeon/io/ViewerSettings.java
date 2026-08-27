@@ -96,13 +96,6 @@ public final class ViewerSettings
 	private static final String FIELD_AGILITY_OVERLAY_COLOR = "agilityOverlayColor";
 	private static final String FIELD_NPC_OUTLINE_COLOR = "npcOutlineColor";
 	private static final String FIELD_TILE_HOVER_COLOR = "tileHoverColor";
-	private static final String SHORTEST_PATH_NAMESPACE = "shortest-path";
-	private static final String KEY_WIKISYNC_PROFILE = "wikiSync.profile";
-	private static final String FIELD_WIKISYNC_LEVELS = "levels";
-	private static final String WIKISYNC_COMBAT_LEVEL = "combat";
-	private static final String WIKISYNC_COMBAT_LEVEL_LEGACY = "Combat";
-	private static final String WIKISYNC_AGILITY_LEVEL = "agility";
-	private static final String WIKISYNC_AGILITY_LEVEL_LEGACY = "Agility";
 	private static final String DEFAULT_BACKGROUND = "#000000";
 	private static final int DEFAULT_MEMORY_BUDGET_MB = 512;
 
@@ -307,46 +300,6 @@ public final class ViewerSettings
 		configManager.setElement(CORE, KEY_3D_STATE, object);
 	}
 
-	public Integer wikiSyncCombatLevel()
-	{
-		return wikiSyncLevel(WIKISYNC_COMBAT_LEVEL, WIKISYNC_COMBAT_LEVEL_LEGACY);
-	}
-
-	public Integer wikiSyncAgilityLevel()
-	{
-		return wikiSyncLevel(WIKISYNC_AGILITY_LEVEL, WIKISYNC_AGILITY_LEVEL_LEGACY);
-	}
-
-	private Integer wikiSyncLevel(String key, String legacyKey)
-	{
-		JsonObject levelObject = wikiSyncLevelsObject();
-		if (levelObject == null)
-		{
-			return null;
-		}
-		Integer level = jsonPositiveInt(levelObject, key);
-		if (level != null)
-		{
-			return level;
-		}
-		return jsonPositiveInt(levelObject, legacyKey);
-	}
-
-	private JsonObject wikiSyncLevelsObject()
-	{
-		JsonElement profile = configManager.getElement(SHORTEST_PATH_NAMESPACE, KEY_WIKISYNC_PROFILE);
-		if (profile == null || !profile.isJsonObject())
-		{
-			return null;
-		}
-		JsonElement levels = profile.getAsJsonObject().get(FIELD_WIKISYNC_LEVELS);
-		if (levels == null || !levels.isJsonObject())
-		{
-			return null;
-		}
-		return levels.getAsJsonObject();
-	}
-
 	public boolean viewer3DCacheAskOnOpen()
 	{
 		return configManager.getBoolean(CORE, KEY_3D_CACHE_ASK_ON_OPEN, true);
@@ -451,12 +404,6 @@ public final class ViewerSettings
 		{
 			return defaultValue;
 		}
-	}
-
-	private static Integer jsonPositiveInt(JsonObject object, String key)
-	{
-		int value = jsonInt(object, key, -1);
-		return value > 0 ? value : null;
 	}
 
 	private static boolean jsonBoolean(JsonObject object, String key, boolean defaultValue)

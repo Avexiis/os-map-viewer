@@ -23,16 +23,16 @@
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-package com.xeon.plugins.shortestpath.core;
+package com.xeon.util.wikisync;
 
 import java.util.Locale;
 import java.util.Set;
 
-final class ProfileNames
+public final class ProfileNames
 {
-	static final String TOTAL_LEVEL = "total";
-	static final String COMBAT_LEVEL = "combat";
-	static final String QUEST_POINTS = "quest";
+	public static final String TOTAL_LEVEL = "total";
+	public static final String COMBAT_LEVEL = "combat";
+	public static final String QUEST_POINTS = "quest";
 
 	private static final Set<String> REGULAR_SKILLS = Set.of(
 		"attack",
@@ -65,7 +65,7 @@ final class ProfileNames
 	{
 	}
 
-	static String canonicalSkill(String name)
+	public static String canonicalSkill(String name)
 	{
 		String clean = canonical(name);
 		return switch (clean)
@@ -81,17 +81,17 @@ final class ProfileNames
 		};
 	}
 
-	static String canonicalQuest(String name)
+	public static String canonicalQuest(String name)
 	{
 		return canonical(name);
 	}
 
-	static boolean isRegularSkill(String skill)
+	public static boolean isRegularSkill(String skill)
 	{
 		return REGULAR_SKILLS.contains(skill);
 	}
 
-	static Set<String> regularSkills()
+	public static Set<String> regularSkills()
 	{
 		return REGULAR_SKILLS;
 	}

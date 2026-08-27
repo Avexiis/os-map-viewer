@@ -28,6 +28,8 @@ package com.xeon.view;
 import com.xeon.io.Paths;
 import com.xeon.model.Tile;
 import com.xeon.util.NumberField;
+import com.xeon.util.wikisync.WikiSyncManager;
+import com.xeon.util.wikisync.WikiSyncProfileControls;
 
 import javax.swing.*;
 import javax.swing.border.Border;
@@ -39,6 +41,7 @@ import java.util.function.Consumer;
 public final class MapControlsPanel extends JPanel
 {
 	private static final int EXPANDED_WIDTH = 330;
+	private static final int WIKISYNC_CONTROL_WIDTH = 252;
 	private static final int COLLAPSED_SIZE = 44;
 	private static final Dimension EXPANDED_COLLAPSE_BUTTON_SIZE = new Dimension(30, 28);
 	private static final Dimension COLLAPSED_BUTTON_SIZE = new Dimension(36, 36);
@@ -61,6 +64,7 @@ public final class MapControlsPanel extends JPanel
 	private final NumberField tfX = new NumberField(6);
 	private final NumberField tfY = new NumberField(6);
 	private final NumberField tfZ = new NumberField(2);
+	private final WikiSyncProfileControls wikiSyncProfileControls = new WikiSyncProfileControls(true);
 	private final JButton btnJumpRegionId = new JButton("Jump");
 	private final JButton btnJumpRegionCoords = new JButton("Jump");
 	private final JButton btnJump = new JButton("Jump");
@@ -153,13 +157,16 @@ public final class MapControlsPanel extends JPanel
 		modeRows.add(planeRow);
 		body.add(modeRows, BorderLayout.NORTH);
 
-		JPanel lower = new JPanel(new BorderLayout(0, 8));
-		lower.setOpaque(false);
-		lower.add(new JSeparator(), BorderLayout.NORTH);
-
 		JPanel jumpRows = new JPanel();
 		jumpRows.setOpaque(false);
 		jumpRows.setLayout(new BoxLayout(jumpRows, BoxLayout.Y_AXIS));
+		jumpRows.add(new JSeparator());
+		jumpRows.add(Box.createVerticalStrut(8));
+		wikiSyncProfileControls.setContentWidth(WIKISYNC_CONTROL_WIDTH);
+		jumpRows.add(leftAlignedRow(wikiSyncProfileControls));
+		jumpRows.add(Box.createVerticalStrut(8));
+		jumpRows.add(new JSeparator());
+		jumpRows.add(Box.createVerticalStrut(8));
 		jumpRows.add(regionIdRow());
 		jumpRows.add(Box.createVerticalStrut(6));
 		jumpRows.add(regionCoordinateRow());
@@ -178,8 +185,7 @@ public final class MapControlsPanel extends JPanel
 		switch3DRow.add(btnSwitch3D, BorderLayout.CENTER);
 		jumpRows.add(Box.createVerticalStrut(8));
 		jumpRows.add(switch3DRow);
-		lower.add(jumpRows, BorderLayout.CENTER);
-		body.add(lower, BorderLayout.CENTER);
+		body.add(jumpRows, BorderLayout.CENTER);
 
 		chkGrid.addActionListener(e -> onToggleGrid.emit(chkGrid.isSelected()));
 		chkRegionCoords.addActionListener(e -> {
@@ -327,6 +333,23 @@ public final class MapControlsPanel extends JPanel
 		return row;
 	}
 
+	private static JPanel leftAlignedRow(Component component)
+	{
+		JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+		row.setOpaque(false);
+		row.setAlignmentX(Component.LEFT_ALIGNMENT);
+		if (component instanceof JComponent jComponent)
+		{
+			jComponent.setAlignmentX(Component.LEFT_ALIGNMENT);
+		}
+		row.add(component);
+		Dimension size = component.getPreferredSize();
+		row.setMinimumSize(size);
+		row.setPreferredSize(size);
+		row.setMaximumSize(size);
+		return row;
+	}
+
 	private int normalizedPlane(Integer plane)
 	{
 		int max = Math.max(0, cbPlane.getItemCount() - 1);
@@ -414,6 +437,11 @@ public final class MapControlsPanel extends JPanel
 		{
 			chkNpcDots.setSelected(enabled);
 		}
+	}
+
+	public void setWikiSyncManager(WikiSyncManager manager, Consumer<String> statusSink)
+	{
+		wikiSyncProfileControls.bind(manager, statusSink);
 	}
 
 	private void setCollapsed(boolean value)

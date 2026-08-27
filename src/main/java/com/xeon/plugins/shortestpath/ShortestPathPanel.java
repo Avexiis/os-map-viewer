@@ -39,7 +39,6 @@ import javax.swing.table.DefaultTableCellRenderer;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
@@ -106,9 +105,6 @@ final class ShortestPathPanel extends JPanel
 	private final JCheckBox show3DRouteLabels = new JCheckBox("Show route transport labels", true);
 	private final JCheckBox show3DAllTransportLabels = new JCheckBox("Show all transport labels", false);
 	private final JPanel view3DOptions = new JPanel();
-	private final JTextField profileName = new JTextField(12);
-	private final JButton lookUpProfile = new JButton("Look up");
-	private final JLabel profileStatus = new JLabel("Profile: None");
 	private final JButton walkLineColorButton = new JButton("Walk line");
 	private final JButton transportLineColorButton = new JButton("Transport line");
 	private final JButton startMarkerColorButton = new JButton("Start marker");
@@ -133,8 +129,6 @@ final class ShortestPathPanel extends JPanel
 	private Color stepMarkerColor = new Color(0xFF65A8FF, true);
 	private Color targetMarkerColor = new Color(0xFFFFC857, true);
 	private Color collisionColor = new Color(0x99FFDD40, true);
-	private final Color profileStatusLoadedForeground = new Color(0x35D07F);
-	private final Color profileStatusMissingForeground = new Color(0xFF5C7A);
 
 	private Runnable onOptionsChanged;
 	private Runnable on3DOptionsChanged;
@@ -144,7 +138,6 @@ final class ShortestPathPanel extends JPanel
 	private Runnable onImportRoute;
 	private Runnable onExportRoute;
 	private Runnable onClear;
-	private Consumer<String> onProfileLookup;
 
 	ShortestPathPanel()
 	{
@@ -165,17 +158,6 @@ final class ShortestPathPanel extends JPanel
 		addFullRow(controls, c, stepsLabel);
 		addFullRow(controls, c, targetLabel);
 		addFullRow(controls, c, statusLabel);
-
-		addFullRow(controls, c, title("WikiSync Profile"));
-		JPanel profileRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
-		profileRow.setOpaque(false);
-		lookUpProfile.setIcon(loadRuneLiteIcon());
-		lookUpProfile.setHorizontalTextPosition(SwingConstants.RIGHT);
-		profileName.setMaximumSize(new Dimension(Integer.MAX_VALUE, profileName.getPreferredSize().height));
-		profileRow.add(profileName);
-		profileRow.add(lookUpProfile);
-		addFullRow(controls, c, profileRow);
-		addFullRow(controls, c, profileStatus);
 
 		addFullRow(controls, c, collisionMapViewRow());
 
@@ -285,8 +267,6 @@ final class ShortestPathPanel extends JPanel
 		stepMarkerColorButton.addActionListener(e -> chooseColor("Step Marker Color", stepMarkerColor, color -> stepMarkerColor = color));
 		targetMarkerColorButton.addActionListener(e -> chooseColor("End Marker Color", targetMarkerColor, color -> targetMarkerColor = color));
 		collisionColorButton.addActionListener(e -> chooseColor("Collision Map Color", collisionColor, color -> collisionColor = color));
-		profileName.addActionListener(e -> emitProfileLookup());
-		lookUpProfile.addActionListener(e -> emitProfileLookup());
 		centerStart.addActionListener(e -> {
 			if (onCenterStart != null)
 			{
@@ -324,7 +304,6 @@ final class ShortestPathPanel extends JPanel
 			}
 		});
 		refreshColorButtons();
-		setProfileLoaded(false);
 	}
 
 	boolean includeTransports()
@@ -489,28 +468,6 @@ final class ShortestPathPanel extends JPanel
 		statusLabel.setText("Status: " + (status == null || status.isBlank() ? "idle" : status));
 	}
 
-	String profileName()
-	{
-		return profileName.getText();
-	}
-
-	void setProfileName(String username)
-	{
-		profileName.setText(username == null ? "" : username);
-	}
-
-	void setProfileLoaded(boolean loaded)
-	{
-		profileStatus.setText(loaded ? "Profile Loaded" : "Profile: None");
-		profileStatus.setForeground(loaded ? profileStatusLoadedForeground : profileStatusMissingForeground);
-	}
-
-	void setProfileLookupRunning(boolean running)
-	{
-		profileName.setEnabled(!running);
-		lookUpProfile.setEnabled(!running);
-	}
-
 	void setOnOptionsChanged(Runnable onOptionsChanged)
 	{
 		this.onOptionsChanged = onOptionsChanged;
@@ -549,11 +506,6 @@ final class ShortestPathPanel extends JPanel
 	void setOnClear(Runnable onClear)
 	{
 		this.onClear = onClear;
-	}
-
-	void setOnProfileLookup(Consumer<String> onProfileLookup)
-	{
-		this.onProfileLookup = onProfileLookup;
 	}
 
 	private void emitOptionsChanged()
@@ -805,14 +757,6 @@ final class ShortestPathPanel extends JPanel
 		emitOptionsChanged();
 	}
 
-	private void emitProfileLookup()
-	{
-		if (onProfileLookup != null)
-		{
-			onProfileLookup.accept(profileName());
-		}
-	}
-
 	private static JLabel title(String text)
 	{
 		JLabel label = new JLabel(text);
@@ -827,18 +771,6 @@ final class ShortestPathPanel extends JPanel
 		panel.add(component, c);
 		c.gridwidth = 1;
 		c.gridy++;
-	}
-
-	private static Icon loadRuneLiteIcon()
-	{
-		URL resource = ShortestPathPanel.class.getResource("/com/xeon/application/data/runelite_icon.png");
-		if (resource == null)
-		{
-			return null;
-		}
-		ImageIcon icon = new ImageIcon(resource);
-		Image image = icon.getImage().getScaledInstance(16, 16, Image.SCALE_SMOOTH);
-		return new ImageIcon(image);
 	}
 
 	private static String tileText(Tile tile)
