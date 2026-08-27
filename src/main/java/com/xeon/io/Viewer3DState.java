@@ -44,6 +44,7 @@ public record Viewer3DState(
 	boolean agilityWikiSyncLevelColors,
 	boolean agilityLevelLabelsVisible,
 	boolean minimapVisible,
+	int agilityOverlayColorArgb,
 	int npcOutlineColorArgb,
 	int tileHoverColorArgb
 )
@@ -53,11 +54,13 @@ public record Viewer3DState(
 	public static final int MAX_VIEW_DISTANCE_REGIONS = 5;
 	public static final int DEFAULT_NPC_OUTLINE_COLOR_ARGB = 0xFAFFEB3B;
 	public static final int DEFAULT_TILE_HOVER_COLOR_ARGB = 0xF291E9FF;
+	public static final int DEFAULT_AGILITY_OVERLAY_COLOR_ARGB = 0xFF00FF00;
 
 	public Viewer3DState
 	{
 		viewDistanceRegions = clampViewDistanceRegions(viewDistanceRegions);
 		maxVisiblePlane = clampMaxVisiblePlane(maxVisiblePlane);
+		agilityOverlayColorArgb = normalizeArgb(agilityOverlayColorArgb, DEFAULT_AGILITY_OVERLAY_COLOR_ARGB);
 		npcOutlineColorArgb = normalizeArgb(npcOutlineColorArgb, DEFAULT_NPC_OUTLINE_COLOR_ARGB);
 		tileHoverColorArgb = normalizeArgb(tileHoverColorArgb, DEFAULT_TILE_HOVER_COLOR_ARGB);
 	}
@@ -124,6 +127,7 @@ public record Viewer3DState(
 			false,
 			false,
 			true,
+			DEFAULT_AGILITY_OVERLAY_COLOR_ARGB,
 			DEFAULT_NPC_OUTLINE_COLOR_ARGB,
 			DEFAULT_TILE_HOVER_COLOR_ARGB
 		);
@@ -166,6 +170,7 @@ public record Viewer3DState(
 			false,
 			false,
 			true,
+			DEFAULT_AGILITY_OVERLAY_COLOR_ARGB,
 			DEFAULT_NPC_OUTLINE_COLOR_ARGB,
 			DEFAULT_TILE_HOVER_COLOR_ARGB
 		);

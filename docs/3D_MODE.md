@@ -61,11 +61,15 @@ Rendering and status controls:
 
 Overlay controls:
 
-- `Obstacles`: highlights agility obstacles, shortcuts, traps, portals, and Sepulchre objects in loaded 3D regions.
-- `Levels`: shows Agility requirement labels over highlighted obstacles.
-- `WikiSync Colors`: colors agility obstacles above the stored WikiSync Agility level orange, when one is available.
 - `Hover Color`: changes the tile hover outline color.
 - `Overlays Front` / `Overlays Occluded`: controls whether 3D overlays draw through terrain and objects.
+
+Agility controls:
+
+- `Obstacles`: highlights agility obstacles, shortcuts, traps, portals, and Sepulchre objects in loaded 3D regions.
+- `Levels`: shows Agility requirement labels over highlighted obstacles.
+- `WikiSync`: colors agility obstacles above the stored WikiSync Agility level orange, when one is available.
+- `Overlay Color`: changes the default agility object fill and outline color.
 
 Jump controls:
 

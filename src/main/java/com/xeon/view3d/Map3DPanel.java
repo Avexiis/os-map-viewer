@@ -48,6 +48,8 @@ import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.GraphicsConfiguration;
 import java.awt.Graphics2D;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
 import java.awt.GridLayout;
 import java.awt.Insets;
 import java.awt.Point;
@@ -125,6 +127,17 @@ public final class Map3DPanel extends JPanel
 	private static final int CONTROLS_ACTION_GRID_WIDTH = CONTROLS_ACTION_BUTTON_WIDTH * 2 + CONTROLS_ACTION_GRID_GAP;
 	private static final int CONTROLS_FULL_BUTTON_WIDTH = 252;
 	private static final int CONTROLS_BOTTOM_PADDING = 10;
+	private static final int JUMP_ROW_HEIGHT = 28;
+	private static final int JUMP_LABEL_A_WIDTH = 48;
+	private static final int JUMP_LABEL_B_WIDTH = 22;
+	private static final int JUMP_LABEL_Z_WIDTH = 14;
+	private static final int JUMP_COORD_FIELD_WIDTH = 52;
+	private static final int JUMP_REGION_ID_FIELD_WIDTH = 134;
+	private static final int JUMP_PLANE_FIELD_WIDTH = 32;
+	private static final int JUMP_BUTTON_WIDTH = 54;
+	private static final int JUMP_FIELD_HEIGHT = 26;
+	private static final int JUMP_CELL_GAP = 4;
+	private static final int JUMP_BUTTON_GAP = 6;
 	private static final int PLANE_COUNT = 4;
 	private static final double SLOW_FRAME_MILLIS = 33.4;
 	private static final double SLOW_RENDER_MILLIS = 20.0;
@@ -132,7 +145,6 @@ public final class Map3DPanel extends JPanel
 	private static final int HIGH_VERTEX_COUNT = 1_500_000;
 	private static final String DEBUG_TEXT_COLOR = "#f2d84a";
 	private static final String DEBUG_WARNING_COLOR = "#ff5656";
-	private static final Color AGILITY_OVERLAY_COLOR = Color.GREEN;
 	private static final Color AGILITY_SHORTCUT_HIGH_LEVEL_COLOR = Color.ORANGE;
 	private static final Color AGILITY_TRAP_COLOR = Color.RED;
 	private static final Color AGILITY_PORTAL_COLOR = Color.MAGENTA;
@@ -191,12 +203,13 @@ public final class Map3DPanel extends JPanel
 	private final JCheckBox npcWikiSyncCombatColorsCheckBox = new JCheckBox("WikiSync Level Colors", false);
 	private final JCheckBox agilityObstaclesCheckBox = new JCheckBox("Obstacles", false);
 	private final JCheckBox agilityLevelLabelsCheckBox = new JCheckBox("Levels", false);
-	private final JCheckBox agilityWikiSyncLevelColorsCheckBox = new JCheckBox("WikiSync Colors", false);
+	private final JCheckBox agilityWikiSyncLevelColorsCheckBox = new JCheckBox("WikiSync", false);
 	private final JButton npcBrowserButton = new JButton("Browse NPCs");
 	private final Component npcBrowserSpacer = Box.createVerticalStrut(6);
 	private final Component controlsBottomSpacer = Box.createVerticalStrut(CONTROLS_BOTTOM_PADDING);
 	private final JButton npcOutlineColorButton = new JButton("Outline Color");
 	private final JButton tileHoverColorButton = new JButton("Hover Color");
+	private final JButton agilityOverlayColorButton = new JButton("Overlay Color");
 	private final JCheckBox[] planeVisibleCheckBoxes = new JCheckBox[]{
 		new JCheckBox("0", true),
 		new JCheckBox("1", false),
@@ -208,8 +221,8 @@ public final class Map3DPanel extends JPanel
 	private final NumberField jumpRegionX = new NumberField(4);
 	private final NumberField jumpRegionY = new NumberField(4);
 	private final NumberField jumpRegionPlane = new NumberField(2);
-	private final NumberField jumpTileX = new NumberField(6);
-	private final NumberField jumpTileY = new NumberField(6);
+	private final NumberField jumpTileX = new NumberField(4);
+	private final NumberField jumpTileY = new NumberField(4);
 	private final NumberField jumpTilePlane = new NumberField(2);
 	private final JButton jumpRegionIdButton = new JButton("Jump");
 	private final JButton jumpRegionButton = new JButton("Jump");
@@ -276,6 +289,7 @@ public final class Map3DPanel extends JPanel
 	private Integer wikiSyncAgilityLevel;
 	private Color npcOutlineColor = new Color(Viewer3DState.DEFAULT_NPC_OUTLINE_COLOR_ARGB, true);
 	private Color tileHoverSelectorColor = new Color(Viewer3DState.DEFAULT_TILE_HOVER_COLOR_ARGB, true);
+	private Color agilityOverlayColor = new Color(Viewer3DState.DEFAULT_AGILITY_OVERLAY_COLOR_ARGB, true);
 	private boolean cameraInitialized;
 	private boolean firstVisibleRegionRendered;
 	private boolean hoverPickErrorLogged;
@@ -602,6 +616,8 @@ public final class Map3DPanel extends JPanel
 		npcBrowserButton.addActionListener(e -> openNpcBrowser());
 		styleColorButton(tileHoverColorButton, tileHoverSelectorColor);
 		tileHoverColorButton.addActionListener(e -> chooseTileHoverSelectorColor());
+		styleColorButton(agilityOverlayColorButton, agilityOverlayColor);
+		agilityOverlayColorButton.addActionListener(e -> chooseAgilityOverlayColor());
 		configureJumpControls();
 		JButton exit = new JButton("Switch to 2D Map");
 		styleToolbarButton(exit);
@@ -687,12 +703,17 @@ public final class Map3DPanel extends JPanel
 		rows.add(fovRow());
 		rows.add(sectionSeparator());
 		rows.add(sectionTitleRow("Overlays"));
-		rows.add(centeredControlRow(agilityObstaclesCheckBox, agilityLevelLabelsCheckBox,
-			agilityWikiSyncLevelColorsCheckBox));
-		rows.add(Box.createVerticalStrut(6));
 		rows.add(centeredButtonRow(tileHoverColorButton));
 		rows.add(Box.createVerticalStrut(6));
 		rows.add(centeredButtonRow(overlayPriorityButton));
+		rows.add(sectionSeparator());
+		rows.add(sectionTitleRow("Agility"));
+		rows.add(centeredControlRow(agilityObstaclesCheckBox, agilityLevelLabelsCheckBox,
+			agilityWikiSyncLevelColorsCheckBox));
+		rows.add(Box.createVerticalStrut(6));
+		rows.add(centeredControlRowFixedWidth(agilityOverlayColorButton,
+			controlContentWidth(agilityObstaclesCheckBox, agilityLevelLabelsCheckBox,
+				agilityWikiSyncLevelColorsCheckBox)));
 		rows.add(sectionSeparator());
 		rows.add(sectionTitleRow("Jump"));
 		rows.add(jumpRegionIdRow());
@@ -979,16 +1000,17 @@ public final class Map3DPanel extends JPanel
 
 	private void configureJumpControls()
 	{
-		Dimension regionIdSize = new Dimension(74, 26);
-		Dimension coordSize = new Dimension(54, 26);
-		Dimension planeSize = new Dimension(38, 26);
+		Dimension regionIdSize = new Dimension(JUMP_REGION_ID_FIELD_WIDTH, JUMP_FIELD_HEIGHT);
+		Dimension coordSize = new Dimension(JUMP_COORD_FIELD_WIDTH, JUMP_FIELD_HEIGHT);
+		Dimension planeSize = new Dimension(JUMP_PLANE_FIELD_WIDTH, JUMP_FIELD_HEIGHT);
+		Dimension buttonSize = new Dimension(JUMP_BUTTON_WIDTH, JUMP_FIELD_HEIGHT);
 		setFixedControlSize(jumpRegionId, regionIdSize);
 		setFixedControlSize(jumpRegionIdPlane, planeSize);
 		setFixedControlSize(jumpRegionX, coordSize);
 		setFixedControlSize(jumpRegionY, coordSize);
 		setFixedControlSize(jumpRegionPlane, planeSize);
-		setFixedControlSize(jumpTileX, new Dimension(64, 26));
-		setFixedControlSize(jumpTileY, new Dimension(64, 26));
+		setFixedControlSize(jumpTileX, coordSize);
+		setFixedControlSize(jumpTileY, coordSize);
 		setFixedControlSize(jumpTilePlane, planeSize);
 		jumpRegionIdPlane.setInt(0);
 		jumpRegionPlane.setInt(0);
@@ -996,6 +1018,9 @@ public final class Map3DPanel extends JPanel
 		styleToolbarButton(jumpRegionIdButton);
 		styleToolbarButton(jumpRegionButton);
 		styleToolbarButton(jumpTileButton);
+		setFixedControlSize(jumpRegionIdButton, buttonSize);
+		setFixedControlSize(jumpRegionButton, buttonSize);
+		setFixedControlSize(jumpTileButton, buttonSize);
 		jumpRegionIdButton.addActionListener(e -> jumpToRegionIdInput());
 		jumpRegionButton.addActionListener(e -> jumpToRegionInput());
 		jumpTileButton.addActionListener(e -> jumpToTileInput());
@@ -1004,50 +1029,83 @@ public final class Map3DPanel extends JPanel
 	private JPanel jumpRegionIdRow()
 	{
 		JPanel row = compactInputRow();
-		row.add(toolbarLabel("Region"));
-		row.add(jumpRegionId);
-		row.add(toolbarLabel("Z"));
-		row.add(jumpRegionIdPlane);
-		row.add(jumpRegionIdButton);
+		addJumpCell(row, jumpLabel("Region", JUMP_LABEL_A_WIDTH), 0, 1, 0);
+		addJumpCell(row, jumpRegionId, 1, 3, JUMP_CELL_GAP);
+		addJumpCell(row, jumpLabel("Z", JUMP_LABEL_Z_WIDTH), 4, 1, JUMP_CELL_GAP);
+		addJumpCell(row, jumpRegionIdPlane, 5, 1, JUMP_CELL_GAP);
+		addJumpCell(row, jumpRegionIdButton, 6, 1, JUMP_BUTTON_GAP);
+		addJumpGlue(row);
 		return row;
 	}
 
 	private JPanel jumpRegionRow()
 	{
 		JPanel row = compactInputRow();
-		row.add(toolbarLabel("RX"));
-		row.add(jumpRegionX);
-		row.add(toolbarLabel("RY"));
-		row.add(jumpRegionY);
-		row.add(toolbarLabel("Z"));
-		row.add(jumpRegionPlane);
-		row.add(jumpRegionButton);
+		addJumpCell(row, jumpLabel("RX", JUMP_LABEL_A_WIDTH), 0, 1, 0);
+		addJumpCell(row, jumpRegionX, 1, 1, JUMP_CELL_GAP);
+		addJumpCell(row, jumpLabel("RY", JUMP_LABEL_B_WIDTH), 2, 1, JUMP_CELL_GAP);
+		addJumpCell(row, jumpRegionY, 3, 1, JUMP_CELL_GAP);
+		addJumpCell(row, jumpLabel("Z", JUMP_LABEL_Z_WIDTH), 4, 1, JUMP_CELL_GAP);
+		addJumpCell(row, jumpRegionPlane, 5, 1, JUMP_CELL_GAP);
+		addJumpCell(row, jumpRegionButton, 6, 1, JUMP_BUTTON_GAP);
+		addJumpGlue(row);
 		return row;
 	}
 
 	private JPanel jumpTileRow()
 	{
 		JPanel row = compactInputRow();
-		row.add(toolbarLabel("X"));
-		row.add(jumpTileX);
-		row.add(toolbarLabel("Y"));
-		row.add(jumpTileY);
-		row.add(toolbarLabel("Z"));
-		row.add(jumpTilePlane);
-		row.add(jumpTileButton);
+		addJumpCell(row, jumpLabel("X", JUMP_LABEL_A_WIDTH), 0, 1, 0);
+		addJumpCell(row, jumpTileX, 1, 1, JUMP_CELL_GAP);
+		addJumpCell(row, jumpLabel("Y", JUMP_LABEL_B_WIDTH), 2, 1, JUMP_CELL_GAP);
+		addJumpCell(row, jumpTileY, 3, 1, JUMP_CELL_GAP);
+		addJumpCell(row, jumpLabel("Z", JUMP_LABEL_Z_WIDTH), 4, 1, JUMP_CELL_GAP);
+		addJumpCell(row, jumpTilePlane, 5, 1, JUMP_CELL_GAP);
+		addJumpCell(row, jumpTileButton, 6, 1, JUMP_BUTTON_GAP);
+		addJumpGlue(row);
 		return row;
 	}
 
 	private JPanel compactInputRow()
 	{
-		JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+		JPanel row = new JPanel(new GridBagLayout());
 		row.setOpaque(false);
 		row.setAlignmentX(Component.LEFT_ALIGNMENT);
-		Dimension size = new Dimension(CONTROLS_INNER_WIDTH, 28);
+		Dimension size = new Dimension(CONTROLS_INNER_WIDTH, JUMP_ROW_HEIGHT);
 		row.setMinimumSize(size);
 		row.setPreferredSize(size);
 		row.setMaximumSize(size);
 		return row;
+	}
+
+	private static JLabel jumpLabel(String text, int width)
+	{
+		JLabel label = toolbarLabel(text);
+		label.setHorizontalAlignment(SwingConstants.LEFT);
+		setFixedControlSize(label, new Dimension(width, JUMP_FIELD_HEIGHT));
+		return label;
+	}
+
+	private static void addJumpCell(JPanel row, Component component, int gridx, int gridwidth, int leadingGap)
+	{
+		GridBagConstraints constraints = new GridBagConstraints();
+		constraints.gridx = gridx;
+		constraints.gridy = 0;
+		constraints.gridwidth = gridwidth;
+		constraints.anchor = GridBagConstraints.WEST;
+		constraints.fill = GridBagConstraints.NONE;
+		constraints.insets = new Insets(0, leadingGap, 0, 0);
+		row.add(component, constraints);
+	}
+
+	private static void addJumpGlue(JPanel row)
+	{
+		GridBagConstraints constraints = new GridBagConstraints();
+		constraints.gridx = 7;
+		constraints.gridy = 0;
+		constraints.weightx = 1.0;
+		constraints.fill = GridBagConstraints.HORIZONTAL;
+		row.add(Box.createHorizontalStrut(0), constraints);
 	}
 
 	private void jumpToRegionIdInput()
@@ -1248,6 +1306,19 @@ public final class Map3DPanel extends JPanel
 		scheduleStateSave();
 	}
 
+	private void chooseAgilityOverlayColor()
+	{
+		Color picked = JColorChooser.showDialog(this, "Agility Overlay Color", agilityOverlayColor);
+		if (picked == null)
+		{
+			return;
+		}
+		agilityOverlayColor = withAlpha(picked, agilityOverlayColor.getAlpha());
+		styleColorButton(agilityOverlayColorButton, agilityOverlayColor);
+		requestPluginOverlayRefresh();
+		scheduleStateSave();
+	}
+
 	private void applyOverlayColorSettings()
 	{
 		Color outline = npcOutlineColor;
@@ -1284,6 +1355,7 @@ public final class Map3DPanel extends JPanel
 	{
 		agilityLevelLabelsCheckBox.setEnabled(agilityObstaclesVisible);
 		agilityWikiSyncLevelColorsCheckBox.setEnabled(agilityObstaclesVisible && wikiSyncAgilityLevel != null);
+		agilityOverlayColorButton.setEnabled(agilityObstaclesVisible);
 	}
 
 	private void applyNpcRendererSettings()
@@ -1570,6 +1642,7 @@ public final class Map3DPanel extends JPanel
 			agilityWikiSyncLevelColors = state.agilityWikiSyncLevelColors();
 			agilityLevelLabelsVisible = state.agilityLevelLabelsVisible();
 			minimapVisible = state.minimapVisible();
+			agilityOverlayColor = new Color(state.agilityOverlayColorArgb(), true);
 			npcOutlineColor = new Color(state.npcOutlineColorArgb(), true);
 			tileHoverSelectorColor = new Color(state.tileHoverColorArgb(), true);
 			refreshWikiSyncLevels();
@@ -1600,6 +1673,7 @@ public final class Map3DPanel extends JPanel
 		agilityWikiSyncLevelColors = false;
 		agilityLevelLabelsVisible = false;
 		minimapVisible = true;
+		agilityOverlayColor = new Color(Viewer3DState.DEFAULT_AGILITY_OVERLAY_COLOR_ARGB, true);
 		npcOutlineColor = new Color(Viewer3DState.DEFAULT_NPC_OUTLINE_COLOR_ARGB, true);
 		tileHoverSelectorColor = new Color(Viewer3DState.DEFAULT_TILE_HOVER_COLOR_ARGB, true);
 		refreshWikiSyncLevels();
@@ -1930,6 +2004,7 @@ public final class Map3DPanel extends JPanel
 			agilityWikiSyncLevelColors,
 			agilityLevelLabelsVisible,
 			minimapVisible,
+			argb(agilityOverlayColor),
 			argb(npcOutlineColor),
 			argb(tileHoverSelectorColor)
 		);
@@ -3413,7 +3488,9 @@ public final class Map3DPanel extends JPanel
 		{
 			return AGILITY_SHORTCUT_HIGH_LEVEL_COLOR;
 		}
-		return AGILITY_OVERLAY_COLOR;
+		return agilityOverlayColor == null
+			? new Color(Viewer3DState.DEFAULT_AGILITY_OVERLAY_COLOR_ARGB, true)
+			: agilityOverlayColor;
 	}
 
 	private static Color agilityFillColor(Color outline)

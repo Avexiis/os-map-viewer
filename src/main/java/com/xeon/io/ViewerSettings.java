@@ -66,6 +66,7 @@ public final class ViewerSettings
 	private static final String KEY_3D_AGILITY_WIKISYNC_LEVEL_COLORS = "viewer3d.state.agilityWikiSyncLevelColors";
 	private static final String KEY_3D_AGILITY_LEVEL_LABELS_VISIBLE = "viewer3d.state.agilityLevelLabelsVisible";
 	private static final String KEY_3D_MINIMAP_VISIBLE = "viewer3d.state.minimapVisible";
+	private static final String KEY_3D_AGILITY_OVERLAY_COLOR = "viewer3d.state.agilityOverlayColor";
 	private static final String KEY_3D_NPC_OUTLINE_COLOR = "viewer3d.state.npcOutlineColor";
 	private static final String KEY_3D_TILE_HOVER_COLOR = "viewer3d.state.tileHoverColor";
 	private static final String KEY_3D_CACHE_ASK_ON_OPEN = "viewer3d.cache.askOnOpen";
@@ -92,6 +93,7 @@ public final class ViewerSettings
 	private static final String FIELD_AGILITY_WIKISYNC_LEVEL_COLORS = "agilityWikiSyncLevelColors";
 	private static final String FIELD_AGILITY_LEVEL_LABELS_VISIBLE = "agilityLevelLabelsVisible";
 	private static final String FIELD_MINIMAP_VISIBLE = "minimapVisible";
+	private static final String FIELD_AGILITY_OVERLAY_COLOR = "agilityOverlayColor";
 	private static final String FIELD_NPC_OUTLINE_COLOR = "npcOutlineColor";
 	private static final String FIELD_TILE_HOVER_COLOR = "tileHoverColor";
 	private static final String SHORTEST_PATH_NAMESPACE = "shortest-path";
@@ -255,6 +257,8 @@ public final class ViewerSettings
 			configManager.getBoolean(CORE, KEY_3D_AGILITY_WIKISYNC_LEVEL_COLORS, false),
 			configManager.getBoolean(CORE, KEY_3D_AGILITY_LEVEL_LABELS_VISIBLE, false),
 			configManager.getBoolean(CORE, KEY_3D_MINIMAP_VISIBLE, true),
+			parseArgb(configManager.getString(CORE, KEY_3D_AGILITY_OVERLAY_COLOR, null),
+				Viewer3DState.DEFAULT_AGILITY_OVERLAY_COLOR_ARGB),
 			parseArgb(configManager.getString(CORE, KEY_3D_NPC_OUTLINE_COLOR, null),
 				Viewer3DState.DEFAULT_NPC_OUTLINE_COLOR_ARGB),
 			parseArgb(configManager.getString(CORE, KEY_3D_TILE_HOVER_COLOR, null),
@@ -297,6 +301,7 @@ public final class ViewerSettings
 		object.addProperty(FIELD_AGILITY_WIKISYNC_LEVEL_COLORS, state.agilityWikiSyncLevelColors());
 		object.addProperty(FIELD_AGILITY_LEVEL_LABELS_VISIBLE, state.agilityLevelLabelsVisible());
 		object.addProperty(FIELD_MINIMAP_VISIBLE, state.minimapVisible());
+		object.addProperty(FIELD_AGILITY_OVERLAY_COLOR, colorToArgbHex(state.agilityOverlayColorArgb()));
 		object.addProperty(FIELD_NPC_OUTLINE_COLOR, colorToArgbHex(state.npcOutlineColorArgb()));
 		object.addProperty(FIELD_TILE_HOVER_COLOR, colorToArgbHex(state.tileHoverColorArgb()));
 		configManager.setElement(CORE, KEY_3D_STATE, object);
@@ -407,6 +412,7 @@ public final class ViewerSettings
 			jsonBoolean(object, FIELD_AGILITY_WIKISYNC_LEVEL_COLORS, false),
 			jsonBoolean(object, FIELD_AGILITY_LEVEL_LABELS_VISIBLE, false),
 			jsonBoolean(object, FIELD_MINIMAP_VISIBLE, true),
+			jsonArgb(object, FIELD_AGILITY_OVERLAY_COLOR, Viewer3DState.DEFAULT_AGILITY_OVERLAY_COLOR_ARGB),
 			jsonArgb(object, FIELD_NPC_OUTLINE_COLOR, Viewer3DState.DEFAULT_NPC_OUTLINE_COLOR_ARGB),
 			jsonArgb(object, FIELD_TILE_HOVER_COLOR, Viewer3DState.DEFAULT_TILE_HOVER_COLOR_ARGB)
 		);
