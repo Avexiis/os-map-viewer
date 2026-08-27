@@ -2,7 +2,7 @@
   <img alt="Logo" src="https://i.imgur.com/S0c2g3J.png">
   <a href="https://github.com/Avexiis/os-map-viewer/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/badge/License:-BSD_2--Clause-purple?style=for-the-badge"/></a>
   <a href="https://oldschool.runescape.wiki/w/Update:Mad_Angel_Combat_Achievements"><img alt="Revision 240.4" src="https://img.shields.io/badge/Cache_Revision:-240.4-blue?style=for-the-badge"/></a>
-  <a href="https://github.com/Avexiis/os-map-viewer"><img alt="Lines of Code" src="https://img.shields.io/badge/Lines_of_Java:-50%2C002-green?style=for-the-badge"/></a>
+  <a href="https://github.com/search?q=repo%3AAvexiis%2Fos-map-viewer++language%3AJava&type=code"><img alt="Lines of Code" src="https://img.shields.io/badge/Lines_of_Java:-50%2C002-green?style=for-the-badge"/></a>
 </p>
 
 OS Map Viewer is a desktop map viewer for the Old School RuneScape world map.
