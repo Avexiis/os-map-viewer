@@ -185,6 +185,7 @@ public final class MapControlsPanel extends JPanel
 		switch3DRow.add(btnSwitch3D, BorderLayout.CENTER);
 		jumpRows.add(Box.createVerticalStrut(8));
 		jumpRows.add(switch3DRow);
+		leftAlignChildren(jumpRows);
 		body.add(jumpRows, BorderLayout.CENTER);
 
 		chkGrid.addActionListener(e -> onToggleGrid.emit(chkGrid.isSelected()));
@@ -335,19 +336,30 @@ public final class MapControlsPanel extends JPanel
 
 	private static JPanel leftAlignedRow(Component component)
 	{
-		JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+		JPanel row = new JPanel(new BorderLayout());
 		row.setOpaque(false);
 		row.setAlignmentX(Component.LEFT_ALIGNMENT);
 		if (component instanceof JComponent jComponent)
 		{
 			jComponent.setAlignmentX(Component.LEFT_ALIGNMENT);
 		}
-		row.add(component);
+		row.add(component, BorderLayout.WEST);
 		Dimension size = component.getPreferredSize();
-		row.setMinimumSize(size);
-		row.setPreferredSize(size);
-		row.setMaximumSize(size);
+		row.setMinimumSize(new Dimension(size.width, size.height));
+		row.setPreferredSize(new Dimension(size.width, size.height));
+		row.setMaximumSize(new Dimension(Integer.MAX_VALUE, size.height));
 		return row;
+	}
+
+	private static void leftAlignChildren(Container container)
+	{
+		for (Component component : container.getComponents())
+		{
+			if (component instanceof JComponent jComponent)
+			{
+				jComponent.setAlignmentX(Component.LEFT_ALIGNMENT);
+			}
+		}
 	}
 
 	private int normalizedPlane(Integer plane)
