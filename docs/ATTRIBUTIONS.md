@@ -6,6 +6,8 @@
 
 - The 3D viewer uses the RuneLite cache module to read local cache map data. Parts of its terrain color, NPC definition decoding, and cache interpretation logic are adapted from RuneLite.
 
+- 3D agility obstacle highlighting includes obstacle id, category, and shortcut requirement data adapted from RuneLite's core Agility plugin and `AgilityShortcut` definitions.
+
 - 3D NPC spawn placement was implemented with reference to the https://osrs.world map viewer.
 
 - The Shortest Path plugin for this application includes data and adapted pathfinding/collision map code from the RuneLite hub plugin `shortest-path` of the same name.

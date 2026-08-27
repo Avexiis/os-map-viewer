@@ -1006,14 +1006,17 @@ public class MapPanel extends JComponent implements MapView
 			g.clip(target);
 			g.setColor(mapBackgroundColor);
 			g.fillRect(target.x, target.y, target.width, target.height);
-			drawTilesLODProgressive(g, lodNow, visibleMap, AtlasLayerType.BASE, target, originX, originY, scale, snapshotZoom);
+			drawTilesLODProgressive(g, lodNow, visibleMap, AtlasLayerType.BASE, target, originX, originY, scale,
+				snapshotZoom, !forceFullLod);
 			if (includeIcons)
 			{
-				drawTilesLODProgressive(g, lodNow, visibleMap, AtlasLayerType.ICONS, target, originX, originY, scale, snapshotZoom);
+				drawTilesLODProgressive(g, lodNow, visibleMap, AtlasLayerType.ICONS, target, originX, originY, scale,
+					snapshotZoom, !forceFullLod);
 			}
 			if (includeLabels)
 			{
-				drawTilesLODProgressive(g, lodNow, visibleMap, AtlasLayerType.LABELS, target, originX, originY, scale, snapshotZoom);
+				drawTilesLODProgressive(g, lodNow, visibleMap, AtlasLayerType.LABELS, target, originX, originY, scale,
+					snapshotZoom, !forceFullLod);
 			}
 			if (!layers.isEmpty())
 			{
@@ -1385,6 +1388,13 @@ public class MapPanel extends JComponent implements MapView
 	private void drawTilesLODProgressive(Graphics2D g, LOD targetLod, Rectangle visibleMap, AtlasLayerType layerKind,
 	                                     Rectangle view, double originX, double originY, double scale, double zoomUi)
 	{
+		drawTilesLODProgressive(g, targetLod, visibleMap, layerKind, view, originX, originY, scale, zoomUi, true);
+	}
+
+	private void drawTilesLODProgressive(Graphics2D g, LOD targetLod, Rectangle visibleMap, AtlasLayerType layerKind,
+	                                     Rectangle view, double originX, double originY, double scale, double zoomUi,
+	                                     boolean allowCoarserFallbacks)
+	{
 		if (g == null || targetLod == null || visibleMap == null || visibleMap.isEmpty()
 			|| view == null || view.width <= 0 || view.height <= 0 || scale <= 0.0)
 		{
@@ -1485,7 +1495,8 @@ public class MapPanel extends JComponent implements MapView
 			int srcY = 0;
 			int srcW = 0;
 			int srcH = 0;
-			for (LOD coarse : targetLod.coarserChain())
+			List<LOD> fallbackLods = allowCoarserFallbacks ? targetLod.coarserChain() : List.of();
+			for (LOD coarse : fallbackLods)
 			{
 				int ratio = coarse.subsample / targetLod.subsample;
 				if (ratio <= 1)

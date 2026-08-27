@@ -55,6 +55,8 @@ public final class TerrainMesh
 	private final float maxY;
 	private final List<AnimatedObjectMesh> animatedObjects;
 	private final List<NpcMesh> npcMeshes;
+	private final List<AgilityObstacleInstance> agilityObstacles;
+	private final List<ObjectOverlayMesh> objectOverlays;
 	private final SceneTextureSet textureSet;
 	private final int[] sceneHeights;
 	private final boolean[] renderableTiles;
@@ -76,6 +78,8 @@ public final class TerrainMesh
 			new int[Region.Z],
 			new int[Region.Z],
 			new int[Region.Z],
+			List.of(),
+			List.of(),
 			List.of(),
 			List.of(),
 			SceneTextureSet.empty(),
@@ -101,6 +105,8 @@ public final class TerrainMesh
 		int[] planeTransparentVertexCounts,
 		List<AnimatedObjectMesh> animatedObjects,
 		List<NpcMesh> npcMeshes,
+		List<AgilityObstacleInstance> agilityObstacles,
+		List<ObjectOverlayMesh> objectOverlays,
 		SceneTextureSet textureSet,
 		int[] sceneHeights,
 		boolean[] renderableTiles,
@@ -122,6 +128,8 @@ public final class TerrainMesh
 		this.planeTransparentVertexCounts = normalizedPlaneArray(planeTransparentVertexCounts);
 		this.animatedObjects = animatedObjects == null ? List.of() : List.copyOf(animatedObjects);
 		this.npcMeshes = npcMeshes == null ? List.of() : List.copyOf(npcMeshes);
+		this.agilityObstacles = agilityObstacles == null ? List.of() : List.copyOf(agilityObstacles);
+		this.objectOverlays = objectOverlays == null ? List.of() : List.copyOf(objectOverlays);
 		float[] bounds = heightBounds(this.vertexData, this.animatedObjects, this.npcMeshes);
 		this.minY = bounds[0];
 		this.maxY = bounds[1];
@@ -191,6 +199,10 @@ public final class TerrainMesh
 		{
 			npcMesh.releaseVertexData();
 		}
+		for (ObjectOverlayMesh objectOverlay : objectOverlays)
+		{
+			objectOverlay.releaseVertexData();
+		}
 	}
 
 	void compactStaticVertexData()
@@ -224,15 +236,28 @@ public final class TerrainMesh
 				vertexData = new float[0];
 			}
 		}
+		for (ObjectOverlayMesh objectOverlay : objectOverlays)
+		{
+			objectOverlay.compactVertexData(pause);
+		}
 	}
 
 	synchronized long retainedStaticVertexBytes()
 	{
+		long bytes = 0L;
 		if (vertexData != null && vertexData.length > 0)
 		{
-			return (long) vertexData.length * Float.BYTES;
+			bytes += (long) vertexData.length * Float.BYTES;
 		}
-		return compressedVertexData == null ? 0L : compressedVertexData.length;
+		else if (compressedVertexData != null)
+		{
+			bytes += compressedVertexData.length;
+		}
+		for (ObjectOverlayMesh objectOverlay : objectOverlays)
+		{
+			bytes += objectOverlay.retainedVertexBytes();
+		}
+		return bytes;
 	}
 
 	public int vertexCount()
@@ -283,6 +308,16 @@ public final class TerrainMesh
 	List<NpcMesh> npcMeshes()
 	{
 		return npcMeshes;
+	}
+
+	List<AgilityObstacleInstance> agilityObstacles()
+	{
+		return agilityObstacles;
+	}
+
+	List<ObjectOverlayMesh> objectOverlays()
+	{
+		return objectOverlays;
 	}
 
 	float worldHeightAt(int samplePlane, float x, float y)

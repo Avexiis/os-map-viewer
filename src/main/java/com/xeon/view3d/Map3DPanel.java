@@ -132,6 +132,10 @@ public final class Map3DPanel extends JPanel
 	private static final int HIGH_VERTEX_COUNT = 1_500_000;
 	private static final String DEBUG_TEXT_COLOR = "#f2d84a";
 	private static final String DEBUG_WARNING_COLOR = "#ff5656";
+	private static final Color AGILITY_OVERLAY_COLOR = Color.GREEN;
+	private static final Color AGILITY_SHORTCUT_HIGH_LEVEL_COLOR = Color.ORANGE;
+	private static final Color AGILITY_TRAP_COLOR = Color.RED;
+	private static final Color AGILITY_PORTAL_COLOR = Color.MAGENTA;
 	private static final int DEFAULT_ANTIALIASING_SAMPLES = 4;
 	private static final int MIN_FOV_DEGREES = 35;
 	private static final int MAX_FOV_DEGREES = 100;
@@ -185,6 +189,9 @@ public final class Map3DPanel extends JPanel
 	private final JCheckBox npcOutlinesCheckBox = new JCheckBox("Outlines", true);
 	private final JCheckBox npcHoverTextCheckBox = new JCheckBox("Hover Text", true);
 	private final JCheckBox npcWikiSyncCombatColorsCheckBox = new JCheckBox("WikiSync Level Colors", false);
+	private final JCheckBox agilityObstaclesCheckBox = new JCheckBox("Obstacles", false);
+	private final JCheckBox agilityLevelLabelsCheckBox = new JCheckBox("Levels", false);
+	private final JCheckBox agilityWikiSyncLevelColorsCheckBox = new JCheckBox("WikiSync Colors", false);
 	private final JButton npcBrowserButton = new JButton("Browse NPCs");
 	private final Component npcBrowserSpacer = Box.createVerticalStrut(6);
 	private final Component controlsBottomSpacer = Box.createVerticalStrut(CONTROLS_BOTTOM_PADDING);
@@ -260,9 +267,13 @@ public final class Map3DPanel extends JPanel
 	private boolean npcOutlinesVisible = true;
 	private boolean npcHoverTextVisible = true;
 	private boolean npcWikiSyncCombatColors;
+	private boolean agilityObstaclesVisible;
+	private boolean agilityWikiSyncLevelColors;
+	private boolean agilityLevelLabelsVisible;
 	private boolean minimapVisible = true;
 	private boolean developerModeAvailable;
 	private Integer wikiSyncCombatLevel;
+	private Integer wikiSyncAgilityLevel;
 	private Color npcOutlineColor = new Color(Viewer3DState.DEFAULT_NPC_OUTLINE_COLOR_ARGB, true);
 	private Color tileHoverSelectorColor = new Color(Viewer3DState.DEFAULT_TILE_HOVER_COLOR_ARGB, true);
 	private boolean cameraInitialized;
@@ -630,15 +641,28 @@ public final class Map3DPanel extends JPanel
 		styleCheckBox(npcHoverTextCheckBox);
 		styleCheckBox(npcWikiSyncCombatColorsCheckBox);
 		npcWikiSyncCombatColorsCheckBox.setToolTipText("Show combat levels based on the stored WikiSync profile.");
+		styleCheckBox(agilityObstaclesCheckBox);
+		styleCheckBox(agilityLevelLabelsCheckBox);
+		styleCheckBox(agilityWikiSyncLevelColorsCheckBox);
+		agilityObstaclesCheckBox.setToolTipText("Highlight agility shortcuts, obstacles, traps, and portals.");
+		agilityLevelLabelsCheckBox.setToolTipText("Show agility level requirements over highlighted obstacles.");
+		agilityWikiSyncLevelColorsCheckBox.setToolTipText("Color obstacles based on the stored WikiSync Agility level.");
 		npcVisibleCheckBox.setSelected(npcsVisible);
 		npcOutlinesCheckBox.setSelected(npcOutlinesVisible);
 		npcHoverTextCheckBox.setSelected(npcHoverTextVisible);
 		npcWikiSyncCombatColorsCheckBox.setSelected(npcWikiSyncCombatColors);
+		agilityObstaclesCheckBox.setSelected(agilityObstaclesVisible);
+		agilityLevelLabelsCheckBox.setSelected(agilityLevelLabelsVisible);
+		agilityWikiSyncLevelColorsCheckBox.setSelected(agilityWikiSyncLevelColors);
 		npcVisibleCheckBox.addActionListener(e -> applyNpcVisibilitySelection());
 		npcOutlinesCheckBox.addActionListener(e -> applyNpcOverlaySelection());
 		npcHoverTextCheckBox.addActionListener(e -> applyNpcOverlaySelection());
 		npcWikiSyncCombatColorsCheckBox.addActionListener(e -> applyNpcCombatColorSelection());
+		agilityObstaclesCheckBox.addActionListener(e -> applyAgilityOverlaySelection());
+		agilityLevelLabelsCheckBox.addActionListener(e -> applyAgilityOverlaySelection());
+		agilityWikiSyncLevelColorsCheckBox.addActionListener(e -> applyAgilityColorSelection());
 		updateNpcControlState();
+		updateAgilityControlState();
 
 		styleCollapseButton(collapseControlsButton, new Dimension(30, 28));
 		collapseControlsButton.addActionListener(e -> setControlsCollapsed(!controlsCollapsed));
@@ -663,6 +687,9 @@ public final class Map3DPanel extends JPanel
 		rows.add(fovRow());
 		rows.add(sectionSeparator());
 		rows.add(sectionTitleRow("Overlays"));
+		rows.add(centeredControlRow(agilityObstaclesCheckBox, agilityLevelLabelsCheckBox,
+			agilityWikiSyncLevelColorsCheckBox));
+		rows.add(Box.createVerticalStrut(6));
 		rows.add(centeredButtonRow(tileHoverColorButton));
 		rows.add(Box.createVerticalStrut(6));
 		rows.add(centeredButtonRow(overlayPriorityButton));
@@ -1162,13 +1189,35 @@ public final class Map3DPanel extends JPanel
 
 	private void applyNpcCombatColorSelection()
 	{
-		refreshWikiSyncCombatLevel();
+		refreshWikiSyncLevels();
 		npcWikiSyncCombatColors = npcWikiSyncCombatColorsCheckBox.isSelected();
 		npcHoverOverlay.setCombatColorProfile(npcWikiSyncCombatColors, wikiSyncCombatLevel);
 		updateNpcControlState();
 		if (npcWikiSyncCombatColors && wikiSyncCombatLevel == null)
 		{
 			detail.setText("No stored WikiSync combat level found");
+		}
+		scheduleStateSave();
+	}
+
+	private void applyAgilityOverlaySelection()
+	{
+		agilityObstaclesVisible = agilityObstaclesCheckBox.isSelected();
+		agilityLevelLabelsVisible = agilityLevelLabelsCheckBox.isSelected();
+		updateAgilityControlState();
+		requestPluginOverlayRefresh();
+		scheduleStateSave();
+	}
+
+	private void applyAgilityColorSelection()
+	{
+		refreshWikiSyncLevels();
+		agilityWikiSyncLevelColors = agilityWikiSyncLevelColorsCheckBox.isSelected();
+		updateAgilityControlState();
+		requestPluginOverlayRefresh();
+		if (agilityWikiSyncLevelColors && wikiSyncAgilityLevel == null)
+		{
+			detail.setText("No stored WikiSync Agility level found");
 		}
 		scheduleStateSave();
 	}
@@ -1231,6 +1280,12 @@ public final class Map3DPanel extends JPanel
 		npcWikiSyncCombatColorsCheckBox.setEnabled(npcsVisible && npcHoverTextVisible && wikiSyncCombatLevel != null);
 	}
 
+	private void updateAgilityControlState()
+	{
+		agilityLevelLabelsCheckBox.setEnabled(agilityObstaclesVisible);
+		agilityWikiSyncLevelColorsCheckBox.setEnabled(agilityObstaclesVisible && wikiSyncAgilityLevel != null);
+	}
+
 	private void applyNpcRendererSettings()
 	{
 		boolean visible = npcsVisible;
@@ -1247,25 +1302,36 @@ public final class Map3DPanel extends JPanel
 		}
 	}
 
-	private void refreshWikiSyncCombatLevel()
+	private void refreshWikiSyncLevels()
 	{
 		wikiSyncCombatLevel = settings == null ? null : settings.wikiSyncCombatLevel();
+		wikiSyncAgilityLevel = settings == null ? null : settings.wikiSyncAgilityLevel();
 		npcHoverOverlay.setCombatColorProfile(npcWikiSyncCombatColors, wikiSyncCombatLevel);
 	}
 
-	private void maybeRefreshWikiSyncCombatLevel(long now)
+	private void maybeRefreshWikiSyncLevels(long now)
 	{
 		if (settings == null || now - lastWikiSyncCombatRefreshNanos < WIKISYNC_COMBAT_REFRESH_NANOS)
 		{
 			return;
 		}
 		lastWikiSyncCombatRefreshNanos = now;
-		Integer previous = wikiSyncCombatLevel;
-		refreshWikiSyncCombatLevel();
-		if (previous == null && wikiSyncCombatLevel != null
-			|| previous != null && !previous.equals(wikiSyncCombatLevel))
+		Integer previousCombat = wikiSyncCombatLevel;
+		Integer previousAgility = wikiSyncAgilityLevel;
+		refreshWikiSyncLevels();
+		if (previousCombat == null && wikiSyncCombatLevel != null
+			|| previousCombat != null && !previousCombat.equals(wikiSyncCombatLevel))
 		{
 			updateNpcControlState();
+		}
+		if (previousAgility == null && wikiSyncAgilityLevel != null
+			|| previousAgility != null && !previousAgility.equals(wikiSyncAgilityLevel))
+		{
+			updateAgilityControlState();
+			if (agilityWikiSyncLevelColors)
+			{
+				requestPluginOverlayRefresh();
+			}
 		}
 	}
 
@@ -1500,12 +1566,16 @@ public final class Map3DPanel extends JPanel
 			npcOutlinesVisible = state.npcOutlinesVisible();
 			npcHoverTextVisible = state.npcHoverTextVisible();
 			npcWikiSyncCombatColors = state.npcWikiSyncCombatColors();
+			agilityObstaclesVisible = state.agilityObstaclesVisible();
+			agilityWikiSyncLevelColors = state.agilityWikiSyncLevelColors();
+			agilityLevelLabelsVisible = state.agilityLevelLabelsVisible();
 			minimapVisible = state.minimapVisible();
 			npcOutlineColor = new Color(state.npcOutlineColorArgb(), true);
 			tileHoverSelectorColor = new Color(state.tileHoverColorArgb(), true);
-			refreshWikiSyncCombatLevel();
+			refreshWikiSyncLevels();
 			applyNpcRendererSettings();
 			applyOverlayColorSettings();
+			requestPluginOverlayRefresh();
 			return;
 		}
 		AntialiasingScale scale = AntialiasingScale.forSamples(DEFAULT_ANTIALIASING_SAMPLES);
@@ -1526,12 +1596,16 @@ public final class Map3DPanel extends JPanel
 		npcOutlinesVisible = true;
 		npcHoverTextVisible = true;
 		npcWikiSyncCombatColors = false;
+		agilityObstaclesVisible = false;
+		agilityWikiSyncLevelColors = false;
+		agilityLevelLabelsVisible = false;
 		minimapVisible = true;
 		npcOutlineColor = new Color(Viewer3DState.DEFAULT_NPC_OUTLINE_COLOR_ARGB, true);
 		tileHoverSelectorColor = new Color(Viewer3DState.DEFAULT_TILE_HOVER_COLOR_ARGB, true);
-		refreshWikiSyncCombatLevel();
+		refreshWikiSyncLevels();
 		applyNpcRendererSettings();
 		applyOverlayColorSettings();
+		requestPluginOverlayRefresh();
 	}
 
 	private void openWorldMapDock()
@@ -1852,6 +1926,9 @@ public final class Map3DPanel extends JPanel
 			npcOutlinesVisible,
 			npcHoverTextVisible,
 			npcWikiSyncCombatColors,
+			agilityObstaclesVisible,
+			agilityWikiSyncLevelColors,
+			agilityLevelLabelsVisible,
 			minimapVisible,
 			argb(npcOutlineColor),
 			argb(tileHoverSelectorColor)
@@ -3262,6 +3339,20 @@ public final class Map3DPanel extends JPanel
 		loadedMeshes.clear();
 	}
 
+	private Map3DOverlay currentSceneOverlay()
+	{
+		Map3DOverlay agilityOverlay = currentAgilityOverlay();
+		try
+		{
+			return mergeOverlays(agilityOverlay, currentPluginOverlay());
+		}
+		catch (RuntimeException ex)
+		{
+			System.err.println("3D plugin overlay failed: " + rootMessage(ex));
+			return agilityOverlay;
+		}
+	}
+
 	private Map3DOverlay currentPluginOverlay()
 	{
 		if (active3DLayer == null)
@@ -3270,6 +3361,103 @@ public final class Map3DPanel extends JPanel
 		}
 		Map3DOverlay overlay = active3DLayer.overlay(new Map3DRenderContext(cameraTile(), List.copyOf(loadedRegionIds)));
 		return overlay == null ? Map3DOverlay.empty() : overlay;
+	}
+
+	private Map3DOverlay currentAgilityOverlay()
+	{
+		if (!agilityObstaclesVisible || loadedMeshes.isEmpty())
+		{
+			return Map3DOverlay.empty();
+		}
+
+		List<Map3DObjectOverlay> objectOverlays = new ArrayList<>();
+		for (TerrainMesh mesh : loadedMeshes.values())
+		{
+			for (AgilityObstacleInstance obstacle : mesh.agilityObstacles())
+			{
+				if (obstacle == null || obstacle.tile() == null)
+				{
+					continue;
+				}
+				Color outline = agilityObstacleColor(obstacle);
+				Color fill = agilityFillColor(outline);
+				Tile baseTile = obstacle.tile();
+				String label = agilityLevelLabelsVisible && obstacle.level() > 0
+					? "Agility " + obstacle.level()
+					: "";
+				objectOverlays.add(new Map3DObjectOverlay(baseTile, obstacle.objectId(), fill, outline, label));
+			}
+		}
+
+		if (objectOverlays.isEmpty())
+		{
+			return Map3DOverlay.empty();
+		}
+		return new Map3DOverlay(List.of(), List.of(), List.of(), List.of(), objectOverlays);
+	}
+
+	private Color agilityObstacleColor(AgilityObstacleInstance obstacle)
+	{
+		return switch (obstacle.kind())
+		{
+			case TRAP -> AGILITY_TRAP_COLOR;
+			case PORTAL -> AGILITY_PORTAL_COLOR;
+			default -> agilityRequirementColor(obstacle);
+		};
+	}
+
+	private Color agilityRequirementColor(AgilityObstacleInstance obstacle)
+	{
+		if (agilityWikiSyncLevelColors && wikiSyncAgilityLevel != null
+			&& obstacle.level() > wikiSyncAgilityLevel)
+		{
+			return AGILITY_SHORTCUT_HIGH_LEVEL_COLOR;
+		}
+		return AGILITY_OVERLAY_COLOR;
+	}
+
+	private static Color agilityFillColor(Color outline)
+	{
+		return new Color(
+			outline.getRed(),
+			outline.getGreen(),
+			outline.getBlue(),
+			Math.max(1, outline.getAlpha() / 5)
+		);
+	}
+
+	private static Map3DOverlay mergeOverlays(Map3DOverlay first, Map3DOverlay second)
+	{
+		if (isOverlayEmpty(first))
+		{
+			return second == null ? Map3DOverlay.empty() : second;
+		}
+		if (isOverlayEmpty(second))
+		{
+			return first;
+		}
+
+		List<Map3DPathSegment> segments = new ArrayList<>(first.segments());
+		segments.addAll(second.segments());
+		List<Map3DMarker> markers = new ArrayList<>(first.markers());
+		markers.addAll(second.markers());
+		List<Map3DLabel> labels = new ArrayList<>(first.labels());
+		labels.addAll(second.labels());
+		List<Map3DTileOverlay> tileOverlays = new ArrayList<>(first.tileOverlays());
+		tileOverlays.addAll(second.tileOverlays());
+		List<Map3DObjectOverlay> objectOverlays = new ArrayList<>(first.objectOverlays());
+		objectOverlays.addAll(second.objectOverlays());
+		return new Map3DOverlay(segments, markers, labels, tileOverlays, objectOverlays);
+	}
+
+	private static boolean isOverlayEmpty(Map3DOverlay overlay)
+	{
+		return overlay == null
+			|| overlay.segments().isEmpty()
+			&& overlay.markers().isEmpty()
+			&& overlay.labels().isEmpty()
+			&& overlay.tileOverlays().isEmpty()
+			&& overlay.objectOverlays().isEmpty();
 	}
 
 	private void requestPluginOverlayRefresh()
@@ -3314,12 +3502,12 @@ public final class Map3DPanel extends JPanel
 		pluginOverlayDirty = false;
 		try
 		{
-			renderer.setPluginOverlay(currentPluginOverlay());
+			renderer.setPluginOverlay(currentSceneOverlay());
 		}
 		catch (RuntimeException ex)
 		{
 			renderer.setPluginOverlay(Map3DOverlay.empty());
-			System.err.println("3D plugin overlay failed: " + rootMessage(ex));
+			System.err.println("3D scene overlay failed: " + rootMessage(ex));
 		}
 	}
 
@@ -3386,7 +3574,7 @@ public final class Map3DPanel extends JPanel
 		}
 		updatePluginOverlayContext();
 		updateCompassHud();
-		maybeRefreshWikiSyncCombatLevel(now);
+		maybeRefreshWikiSyncLevels(now);
 		maybeSaveViewerState(now);
 		if (minimapOverlay != null)
 		{

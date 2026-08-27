@@ -25,6 +25,8 @@
  */
 package com.xeon.view3d;
 
+import com.xeon.model.Tile;
+
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -78,7 +80,8 @@ final class ObjectMeshBuilder
 		ObjectModelProvider modelProvider,
 		ObjectAnimationProvider animationProvider,
 		RSTextureProvider textureProvider,
-		SceneTextureSet textureSet
+		SceneTextureSet textureSet,
+		List<ObjectOverlayMesh> objectOverlays
 	)
 	{
 		List<AnimatedObjectMesh> animatedObjects = new ArrayList<>();
@@ -116,6 +119,21 @@ final class ObjectMeshBuilder
 				continue;
 			}
 
+			ObjectOverlayMesh objectOverlay = objectOverlayMesh(
+				modelProvider,
+				definition,
+				location.getId(),
+				displayPlane,
+				heightMaps[sourcePlane],
+				localX,
+				localY,
+				location
+			);
+			if (objectOverlay != null && objectOverlays != null)
+			{
+				objectOverlays.add(objectOverlay);
+			}
+
 			AnimatedObjectMesh animatedObject = animatedObject(
 				modelProvider,
 				animationProvider,
@@ -150,7 +168,7 @@ final class ObjectMeshBuilder
 		return animatedObjects;
 	}
 
-	private static ObjectDefinition completionStateDefinition(ObjectManager objectManager, ObjectDefinition definition)
+	static ObjectDefinition completionStateDefinition(ObjectManager objectManager, ObjectDefinition definition)
 	{
 		return completionStateDefinition(objectManager, definition, new HashSet<>(), 0);
 	}
@@ -323,6 +341,97 @@ final class ObjectMeshBuilder
 			modelUse.modelOrientation(),
 			placement.withYaw(modelUse.extraYaw())
 		);
+	}
+
+	private static ObjectOverlayMesh objectOverlayMesh(
+		ObjectModelProvider modelProvider,
+		ObjectDefinition definition,
+		int rawObjectId,
+		int displayPlane,
+		TerrainHeightMap heightMap,
+		int localX,
+		int localY,
+		Location location
+	)
+	{
+		if (modelProvider == null || definition == null || location == null || location.getPosition() == null)
+		{
+			return null;
+		}
+
+		ObjectOverlayBuilder builder = new ObjectOverlayBuilder();
+		int type = location.getType();
+		int orientation = location.getOrientation();
+		if (type == TYPE_WALL_CORNER)
+		{
+			Placement placement = singleTilePlacement(heightMap, localX, localY, 0, 0, 0);
+			appendObjectOverlayModel(builder, modelProvider, definition, type, orientation + 4, placement);
+			appendObjectOverlayModel(builder, modelProvider, definition, type, orientation + 1 & 3, placement);
+		}
+		else
+		{
+			Placement placement = placementFor(heightMap, definition, localX, localY, type, orientation);
+			ModelUse modelUse = modelUseFor(type, orientation);
+			appendObjectOverlayModel(
+				builder,
+				modelProvider,
+				definition,
+				modelUse.modelType(),
+				modelUse.modelOrientation(),
+				placement.withYaw(modelUse.extraYaw())
+			);
+		}
+
+		Position position = location.getPosition();
+		return builder.build(
+			new Tile(position.getX(), position.getY(), displayPlane),
+			rawObjectId,
+			definition.getId()
+		);
+	}
+
+	private static void appendObjectOverlayModel(
+		ObjectOverlayBuilder builder,
+		ObjectModelProvider modelProvider,
+		ObjectDefinition definition,
+		int modelType,
+		int orientation,
+		Placement placement
+	)
+	{
+		int[] modelIds = modelIds(definition, modelType);
+		if (modelIds == null)
+		{
+			return;
+		}
+
+		for (int modelId : modelIds)
+		{
+			ModelDefinition model = modelProvider.load(modelId);
+			if (model == null || model.vertexCount == 0 || model.faceCount == 0)
+			{
+				continue;
+			}
+			TransformedModel transformed = transform(definition, model, modelType, orientation, placement);
+			for (int face = 0; face < model.faceCount; face++)
+			{
+				if (isHidden(model, face) || faceAlpha(model, face) <= MIN_VISIBLE_ALPHA)
+				{
+					continue;
+				}
+
+				int a = model.faceIndices1[face];
+				int b = model.faceIndices2[face];
+				int c = model.faceIndices3[face];
+				if (transformed.inverted())
+				{
+					int tmp = a;
+					a = c;
+					c = tmp;
+				}
+				builder.addTriangle(transformed.vertex(a), transformed.vertex(b), transformed.vertex(c));
+			}
+		}
 	}
 
 	private static AnimatedObjectMesh animatedObject(
@@ -1055,6 +1164,82 @@ final class ObjectMeshBuilder
 		hash = hash * 31 + position.getY();
 		hash = hash * 31 + position.getZ();
 		return Math.floorMod(hash, totalLength);
+	}
+
+	private static boolean finiteVertex(Vertex vertex)
+	{
+		return vertex != null
+			&& Float.isFinite(vertex.x())
+			&& Float.isFinite(vertex.y())
+			&& Float.isFinite(vertex.z());
+	}
+
+	private static final class ObjectOverlayBuilder
+	{
+		private final PositionList triangles = new PositionList();
+
+		private void addTriangle(Vertex a, Vertex b, Vertex c)
+		{
+			if (!finiteVertex(a) || !finiteVertex(b) || !finiteVertex(c))
+			{
+				return;
+			}
+			triangles.add(a);
+			triangles.add(b);
+			triangles.add(c);
+		}
+
+		private ObjectOverlayMesh build(Tile tile, int objectId, int renderedObjectId)
+		{
+			if (triangles.vertexCount() == 0)
+			{
+				return null;
+			}
+
+			return new ObjectOverlayMesh(tile, objectId, renderedObjectId, triangles.array());
+		}
+	}
+
+	private static final class PositionList
+	{
+		private float[] values = new float[96];
+		private int size;
+
+		private void add(Vertex vertex)
+		{
+			ensureCapacity(size + 3);
+			values[size++] = vertex.x();
+			values[size++] = vertex.y();
+			values[size++] = vertex.z();
+		}
+
+		private int vertexCount()
+		{
+			return size / 3;
+		}
+
+		private float[] array()
+		{
+			float[] out = new float[size];
+			System.arraycopy(values, 0, out, 0, size);
+			return out;
+		}
+
+		private void ensureCapacity(int minimum)
+		{
+			if (minimum <= values.length)
+			{
+				return;
+			}
+			int next = values.length;
+			while (next < minimum)
+			{
+				next *= 2;
+			}
+			float[] expanded = new float[next];
+			System.arraycopy(values, 0, expanded, 0, size);
+			values = expanded;
+		}
 	}
 
 	private record ModelUse(

@@ -25,6 +25,7 @@
  */
 package com.xeon.view3d;
 
+import java.util.ArrayList;
 import java.util.List;
 import net.runelite.cache.ObjectManager;
 import net.runelite.cache.OverlayManager;
@@ -117,6 +118,12 @@ final class TerrainMeshBuilder
 			}
 		}
 		List<AnimatedObjectMesh> animatedObjects = List.of();
+		List<AgilityObstacleInstance> agilityObstacles = List.of();
+		List<ObjectOverlayMesh> objectOverlays = new ArrayList<>();
+		if (objectManager != null)
+		{
+			agilityObstacles = AgilityObstacleData.collect(region, objectManager);
+		}
 		if (objectManager != null && modelProvider != null)
 		{
 			animatedObjects = ObjectMeshBuilder.append(
@@ -128,7 +135,8 @@ final class TerrainMeshBuilder
 				modelProvider,
 				animationProvider,
 				textureProvider,
-				textureSet
+				textureSet,
+				objectOverlays
 			);
 		}
 		SceneMeshBuffer data = new SceneMeshBuffer(
@@ -175,6 +183,8 @@ final class TerrainMeshBuilder
 			planeTransparentVertexCounts,
 			animatedObjects,
 			npcMeshes,
+			agilityObstacles,
+			objectOverlays,
 			textureSet,
 			sceneHeights,
 			renderableTiles,

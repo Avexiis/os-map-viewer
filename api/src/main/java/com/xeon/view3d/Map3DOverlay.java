@@ -6,14 +6,25 @@ public record Map3DOverlay(
 	List<Map3DPathSegment> segments,
 	List<Map3DMarker> markers,
 	List<Map3DLabel> labels,
-	List<Map3DTileOverlay> tileOverlays
+	List<Map3DTileOverlay> tileOverlays,
+	List<Map3DObjectOverlay> objectOverlays
 )
 {
-	private static final Map3DOverlay EMPTY = new Map3DOverlay(List.of(), List.of(), List.of(), List.of());
+	private static final Map3DOverlay EMPTY = new Map3DOverlay(List.of(), List.of(), List.of(), List.of(), List.of());
 
 	public Map3DOverlay(List<Map3DPathSegment> segments, List<Map3DMarker> markers, List<Map3DLabel> labels)
 	{
 		this(segments, markers, labels, List.of());
+	}
+
+	public Map3DOverlay(
+		List<Map3DPathSegment> segments,
+		List<Map3DMarker> markers,
+		List<Map3DLabel> labels,
+		List<Map3DTileOverlay> tileOverlays
+	)
+	{
+		this(segments, markers, labels, tileOverlays, List.of());
 	}
 
 	public Map3DOverlay
@@ -22,6 +33,7 @@ public record Map3DOverlay(
 		markers = markers == null ? List.of() : List.copyOf(markers);
 		labels = labels == null ? List.of() : List.copyOf(labels);
 		tileOverlays = tileOverlays == null ? List.of() : List.copyOf(tileOverlays);
+		objectOverlays = objectOverlays == null ? List.of() : List.copyOf(objectOverlays);
 	}
 
 	public static Map3DOverlay empty()

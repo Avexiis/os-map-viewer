@@ -223,6 +223,9 @@ public final class MyPlugin implements MapViewerPlugin, MapLayer, MapTool, Map3D
 - `Map3DMarker`: tile outline markers.
 - `Map3DLabel`: billboarded text labels, optionally with a warp target.
 - `Map3DTileOverlay`: filled tile overlays with an outline and optional label.
+- `Map3DObjectOverlay`: filled and outlined object-model overlays, matched by world tile and object id.
+
+`Map3DObjectOverlay` draws against retained object geometry in loaded 3D regions. The `objectId` can be either the raw scene object id or the transformed object id used by the renderer. The fill is drawn on the object model/clickbox geometry, the outline is a projected screen-space silhouette built from the same coverage-mask path used for NPC outlines, and the optional label floats over the matched model without a flag or stem. If no matching object geometry is loaded, the overlay is skipped.
 
 Keep `overlay(context)` data-only and fast. If a Swing event changes plugin state, call `context.repaintVisible()` or `context.invoke3DRenderLater(...)` so the 3D renderer refreshes safely.
 
