@@ -1,5 +1,12 @@
 # OS Map Viewer
 <img width="1917" height="1048" alt="image" src="https://github.com/user-attachments/assets/5558f01c-c0bd-4244-af9a-2ea187ec7c10" /> 
+
+<p align="center">
+  <a href="https://github.com/Avexiis/os-map-viewer/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/badge/License:-BSD_2--Clause-purple"/></a>
+  <a href="https://oldschool.runescape.wiki/w/Update:Mad_Angel_Combat_Achievements"><img alt="Revision 240.4" src="https://img.shields.io/badge/Cache_Revision:-240.4-blue"/></a>
+  <a href="https://github.com/Mark7625/OpenRune-Server/"><img alt="Lines of Code" src="https://img.shields.io/badge/Lines_of_Java:-50%2C002-green"/></a>
+</p>
+
 OS Map Viewer is a desktop map viewer for the Old School RuneScape world map.
 
 The app includes a 2D world map, a 3D cache-backed scene viewer, cache-backed NPC spawns, and built-in plugins for RuneLite/HDOS ground markers and shortest-path routing.
