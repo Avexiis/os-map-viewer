@@ -170,6 +170,10 @@ public final class GroundMarkerSidebarPanel extends JPanel
 			{
 				lbRegion.setText("Region: none");
 				lbTile.setText("Tile: none");
+				tfLabel.setText("");
+				tfColor.setText(GroundMarker.DEFAULT_COLOR);
+				tfAlpha.setInt(255);
+				btnSave.setText("Add Marker");
 			}
 			else if (selectedTiles.size() > 1)
 			{

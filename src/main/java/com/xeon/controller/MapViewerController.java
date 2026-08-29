@@ -93,6 +93,9 @@ public class MapViewerController
 		"Enables source-build developer tools in the 3D viewer. NPC spawn editing only works while no "
 			+ "plugin is active, and it can modify source JSON/TSV data files.";
 	private static final double FULL_JUMP_ZOOM = Double.POSITIVE_INFINITY;
+	private static final int LEFT_PLUGIN_SIDEBAR_WIDTH = 320;
+	private static final int RIGHT_PLUGIN_SIDEBAR_WIDTH = 330;
+	private static final int COLLAPSED_PLUGIN_SIDEBAR_WIDTH = 36;
 	private static final MemoryPreset[] MEMORY_PRESETS = new MemoryPreset[]{
 		new MemoryPreset("512 MB", 512),
 		new MemoryPreset("1 GB", 1024),
@@ -116,7 +119,8 @@ public class MapViewerController
 	private JPanel toolRail;
 	private JTabbedPane leftTabs;
 	private JTabbedPane rightTabs;
-	private JPanel rightSidebar;
+	private PluginSidebarHost leftSidebar;
+	private PluginSidebarHost rightSidebar;
 	private JLayeredPane viewerPane;
 	private final JButton btnOptions = new JButton(new HamburgerIcon());
 	private final JButton btnMapLegend = new JButton("Map Legend");
@@ -351,9 +355,8 @@ public class MapViewerController
 		westPanel.add(toolRail, BorderLayout.WEST);
 		leftTabs = new JTabbedPane();
 		rightTabs = new JTabbedPane();
-		rightSidebar = new JPanel(new BorderLayout());
-		rightSidebar.setMinimumSize(new Dimension(330, 0));
-		rightSidebar.setPreferredSize(new Dimension(330, 0));
+		leftSidebar = new PluginSidebarHost("Plugins", leftTabs, true, LEFT_PLUGIN_SIDEBAR_WIDTH);
+		rightSidebar = new PluginSidebarHost("Plugins", rightTabs, false, RIGHT_PLUGIN_SIDEBAR_WIDTH);
 		viewerPane = buildViewerPane(mapScrollPane);
 
 		frame.add(westPanel, BorderLayout.WEST);
@@ -769,22 +772,20 @@ public class MapViewerController
 
 		if (leftTabs.getTabCount() > 0)
 		{
-			leftTabs.setMinimumSize(new Dimension(320, 0));
-			leftTabs.setPreferredSize(new Dimension(320, 0));
-			if (leftTabs.getParent() == null)
+			leftSidebar.refreshLayout();
+			if (leftSidebar.getParent() == null)
 			{
-				westPanel.add(leftTabs, BorderLayout.CENTER);
+				westPanel.add(leftSidebar, BorderLayout.CENTER);
 			}
 		}
-		else if (leftTabs.getParent() != null)
+		else if (leftSidebar.getParent() != null)
 		{
-			westPanel.remove(leftTabs);
+			westPanel.remove(leftSidebar);
 		}
 
-		rightSidebar.removeAll();
 		if (rightTabs.getTabCount() > 0)
 		{
-			rightSidebar.add(rightTabs, BorderLayout.CENTER);
+			rightSidebar.refreshLayout();
 			if (rightSidebar.getParent() == null)
 			{
 				frame.add(rightSidebar, BorderLayout.EAST);
@@ -1465,12 +1466,14 @@ public class MapViewerController
 			return;
 		}
 		Map3DPanel old3DPanel = map3DPanel;
+		Tile cameraTile = old3DPanel.getCameraTile();
 		map3DPanel = null;
 		old3DPanel.dispose();
 		mapScrollPane.setViewportView(mapPanel);
 		mapScrollPane.setHorizontalScrollBarPolicy(mapScrollHorizontalPolicy);
 		mapScrollPane.setVerticalScrollBarPolicy(mapScrollVerticalPolicy);
 		mapControls.setVisible(true);
+		focus2DMapOn3DCameraRegion(cameraTile);
 		if (mapFooterCenter != null)
 		{
 			mapFooterCenter.setVisible(true);
@@ -1478,7 +1481,40 @@ public class MapViewerController
 		viewerPane.revalidate();
 		viewerPane.repaint();
 		sync3DPluginState();
-		setStatus("Switched to 2D map viewer");
+		if (cameraTile == null)
+		{
+			setStatus("Switched to 2D map viewer");
+		}
+		else
+		{
+			setStatus("Switched to 2D map viewer at region " + regionIdForTile(cameraTile));
+		}
+	}
+
+	private void focus2DMapOn3DCameraRegion(Tile cameraTile)
+	{
+		if (mapPanel == null || cameraTile == null)
+		{
+			return;
+		}
+		int regionId = regionIdForTile(cameraTile);
+		boolean locked = mapPanel.isMapLocked();
+		if (locked)
+		{
+			mapPanel.setMapLocked(false);
+		}
+		try
+		{
+			mapPanel.focusRegion(regionId, cameraTile.z, null);
+			mapControls.setSelectedPlane(mapPanel.getPlane());
+		}
+		finally
+		{
+			if (locked)
+			{
+				mapPanel.setMapLocked(true);
+			}
+		}
 	}
 
 	private boolean is3DViewerActive()
@@ -2249,6 +2285,119 @@ public class MapViewerController
 		button.setPreferredSize(size);
 		button.setMaximumSize(size);
 		button.setAlignmentX(Component.CENTER_ALIGNMENT);
+	}
+
+	private static void styleSidebarToggleButton(AbstractButton button)
+	{
+		button.setFocusable(false);
+		button.setMargin(new Insets(0, 0, 0, 0));
+		button.setBorder(BorderFactory.createCompoundBorder(
+			BorderFactory.createLineBorder(new Color(80, 80, 80)),
+			BorderFactory.createEmptyBorder(2, 2, 2, 2)
+		));
+		Dimension size = new Dimension(28, 28);
+		button.setMinimumSize(size);
+		button.setPreferredSize(size);
+		button.setMaximumSize(size);
+	}
+
+	private static void setSidebarWidth(JComponent component, int width)
+	{
+		component.setMinimumSize(new Dimension(width, 0));
+		component.setPreferredSize(new Dimension(width, 0));
+	}
+
+	private static final class PluginSidebarHost extends JPanel
+	{
+		private final String titleText;
+		private final JComponent content;
+		private final boolean leftSide;
+		private final int expandedWidth;
+		private final JPanel header = new JPanel(new BorderLayout(6, 0));
+		private final JLabel title = new JLabel();
+		private final JButton toggle = new JButton();
+		private boolean collapsed;
+
+		private PluginSidebarHost(String titleText, JComponent content, boolean leftSide, int expandedWidth)
+		{
+			super(new BorderLayout());
+			this.titleText = titleText == null || titleText.isBlank() ? "Plugins" : titleText;
+			this.content = content;
+			this.leftSide = leftSide;
+			this.expandedWidth = expandedWidth;
+
+			setOpaque(true);
+			setBorder(BorderFactory.createMatteBorder(
+				0,
+				leftSide ? 0 : 1,
+				0,
+				leftSide ? 1 : 0,
+				new Color(65, 65, 65)
+			));
+			header.setOpaque(false);
+			header.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
+			title.setText(this.titleText);
+			title.setFont(title.getFont().deriveFont(Font.BOLD, 12f));
+			styleSidebarToggleButton(toggle);
+			toggle.addActionListener(e -> setCollapsed(!collapsed));
+
+			add(header, BorderLayout.NORTH);
+			add(content, BorderLayout.CENTER);
+			refreshLayout();
+		}
+
+		private void setCollapsed(boolean collapsed)
+		{
+			if (this.collapsed == collapsed)
+			{
+				return;
+			}
+			this.collapsed = collapsed;
+			refreshLayout();
+			Container parent = getParent();
+			if (parent != null)
+			{
+				parent.revalidate();
+				parent.repaint();
+			}
+		}
+
+		private void refreshLayout()
+		{
+			int width = collapsed ? COLLAPSED_PLUGIN_SIDEBAR_WIDTH : expandedWidth;
+			setSidebarWidth(this, width);
+			setSidebarWidth(content, expandedWidth);
+			content.setVisible(!collapsed);
+
+			header.removeAll();
+			toggle.setText(toggleText());
+			toggle.setToolTipText((collapsed ? "Expand " : "Collapse ") + titleText);
+			if (collapsed)
+			{
+				header.add(toggle, BorderLayout.CENTER);
+			}
+			else if (leftSide)
+			{
+				header.add(title, BorderLayout.CENTER);
+				header.add(toggle, BorderLayout.EAST);
+			}
+			else
+			{
+				header.add(toggle, BorderLayout.WEST);
+				header.add(title, BorderLayout.CENTER);
+			}
+			revalidate();
+			repaint();
+		}
+
+		private String toggleText()
+		{
+			if (leftSide)
+			{
+				return collapsed ? ">" : "<";
+			}
+			return collapsed ? "<" : ">";
+		}
 	}
 
 	private static final class PluginHandle

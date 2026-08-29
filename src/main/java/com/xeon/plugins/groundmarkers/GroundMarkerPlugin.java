@@ -95,6 +95,7 @@ public final class GroundMarkerPlugin implements MapViewerPlugin, MapLayer, MapT
 		toolbar = new GroundMarkerToolbarPanel();
 		sidebar = new GroundMarkerSidebarPanel();
 		markerList = new MarkerListPanel(project);
+		clearSelectionState();
 
 		toolbar.setOnImportRuneLite(e -> importClientMarkers(GroundMarkerConfigImporter.Client.RUNELITE));
 		toolbar.setOnImportHdos(e -> importClientMarkers(GroundMarkerConfigImporter.Client.HDOS));
@@ -941,14 +942,7 @@ public final class GroundMarkerPlugin implements MapViewerPlugin, MapLayer, MapT
 			rememberConfigSourceTiles(markers);
 		}
 		int changed = project.addAll(markers);
-		if (currentRegionId < 0 && markers != null && !markers.isEmpty())
-		{
-			selectMarker(markers.get(0), true);
-		}
-		else
-		{
-			refreshPanels();
-		}
+		refreshPanels();
 		context.repaintVisible();
 		context.setStatus(status + " (" + changed + " changed)");
 	}
@@ -1054,8 +1048,21 @@ public final class GroundMarkerPlugin implements MapViewerPlugin, MapLayer, MapT
 			{
 				markerList.selectTile(selectedTile);
 			}
+			else
+			{
+				markerList.clearSelection();
+			}
 		}
 		context.setStatus(statusText());
+	}
+
+	private void clearSelectionState()
+	{
+		selectedRegionIds.clear();
+		selectedTiles.clear();
+		selectedTile = null;
+		selectedMarker = null;
+		currentRegionId = -1;
 	}
 
 	private String statusText()

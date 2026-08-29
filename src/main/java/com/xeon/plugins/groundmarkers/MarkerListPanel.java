@@ -184,6 +184,19 @@ public final class MarkerListPanel extends JPanel
 		}
 	}
 
+	public void clearSelection()
+	{
+		suppressSelectionEvents = true;
+		try
+		{
+			clearSelections();
+		}
+		finally
+		{
+			suppressSelectionEvents = false;
+		}
+	}
+
 	private void clearSelections()
 	{
 		listAll.clearSelection();
