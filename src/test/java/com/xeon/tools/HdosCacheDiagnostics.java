@@ -43,7 +43,9 @@ public final class HdosCacheDiagnostics
         new IndexRequirement(7, "models", true),
         new IndexRequirement(8, "sprites", true),
         new IndexRequirement(9, "textures", true),
-        new IndexRequirement(22, "animayas", false)
+        new IndexRequirement(16, "locs/objects", true),
+        new IndexRequirement(22, "animayas", false),
+        new IndexRequirement(26, "materials", false)
     );
 
     private static final Map<Integer, String> CONFIG_ARCHIVE_HINTS = Map.ofEntries(

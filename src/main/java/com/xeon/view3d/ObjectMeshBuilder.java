@@ -61,6 +61,9 @@ final class ObjectMeshBuilder
 	private static final int MODEL_LIGHT_X = -42;
 	private static final int MODEL_LIGHT_Y = 82;
 	private static final int MODEL_LIGHT_Z = -58;
+	private static final int HDOS_MODEL_LIGHT_X = -50;
+	private static final int HDOS_MODEL_LIGHT_Y = 10;
+	private static final int HDOS_MODEL_LIGHT_Z = 50;
 	private static final int MODEL_BASE_AMBIENT = 64;
 	private static final int MODEL_BASE_CONTRAST = 768;
 	private static final int NORMAL_SCALE = 256;
@@ -81,7 +84,8 @@ final class ObjectMeshBuilder
 		ObjectAnimationProvider animationProvider,
 		RSTextureProvider textureProvider,
 		SceneTextureSet textureSet,
-		List<ObjectOverlayMesh> objectOverlays
+		List<ObjectOverlayMesh> objectOverlays,
+		boolean hdosCache
 	)
 	{
 		List<AnimatedObjectMesh> animatedObjects = new ArrayList<>();
@@ -144,7 +148,8 @@ final class ObjectMeshBuilder
 				heightMaps[sourcePlane],
 				localX,
 				localY,
-				location
+				location,
+				hdosCache
 			);
 			if (animatedObject != null)
 			{
@@ -162,7 +167,8 @@ final class ObjectMeshBuilder
 				definition,
 				localX,
 				localY,
-				location
+				location,
+				hdosCache
 			);
 		}
 		return animatedObjects;
@@ -315,7 +321,8 @@ final class ObjectMeshBuilder
 		ObjectDefinition definition,
 		int localX,
 		int localY,
-		Location location
+		Location location,
+		boolean hdosCache
 	)
 	{
 		int type = location.getType();
@@ -323,8 +330,8 @@ final class ObjectMeshBuilder
 		if (type == TYPE_WALL_CORNER)
 		{
 			Placement placement = singleTilePlacement(heightMap, localX, localY, 0, 0, 0);
-			appendModel(data, transparentData, modelProvider, textureProvider, textureSet, definition, type, orientation + 4, placement);
-			appendModel(data, transparentData, modelProvider, textureProvider, textureSet, definition, type, orientation + 1 & 3, placement);
+			appendModel(data, transparentData, modelProvider, textureProvider, textureSet, definition, type, orientation + 4, placement, hdosCache);
+			appendModel(data, transparentData, modelProvider, textureProvider, textureSet, definition, type, orientation + 1 & 3, placement, hdosCache);
 			return;
 		}
 
@@ -339,7 +346,8 @@ final class ObjectMeshBuilder
 			definition,
 			modelUse.modelType(),
 			modelUse.modelOrientation(),
-			placement.withYaw(modelUse.extraYaw())
+			placement.withYaw(modelUse.extraYaw()),
+			hdosCache
 		);
 	}
 
@@ -444,7 +452,8 @@ final class ObjectMeshBuilder
 		TerrainHeightMap heightMap,
 		int localX,
 		int localY,
-		Location location
+		Location location,
+		boolean hdosCache
 	)
 	{
 		if (animationProvider == null || definition.getAnimationID() < 0)
@@ -478,7 +487,8 @@ final class ObjectMeshBuilder
 				frame,
 				localX,
 				localY,
-				location
+				location,
+				hdosCache
 			);
 			frames[frame] = new AnimatedObjectMesh.Frame(
 				frameData.toArray(),
@@ -516,7 +526,8 @@ final class ObjectMeshBuilder
 		int frame,
 		int localX,
 		int localY,
-		Location location
+		Location location,
+		boolean hdosCache
 	)
 	{
 		int type = location.getType();
@@ -536,7 +547,8 @@ final class ObjectMeshBuilder
 				frame,
 				type,
 				orientation + 4,
-				placement
+				placement,
+				hdosCache
 			);
 			appendAnimatedModel(
 				data,
@@ -550,7 +562,8 @@ final class ObjectMeshBuilder
 				frame,
 				type,
 				orientation + 1 & 3,
-				placement
+				placement,
+				hdosCache
 			);
 			return;
 		}
@@ -569,7 +582,8 @@ final class ObjectMeshBuilder
 			frame,
 			modelUse.modelType(),
 			modelUse.modelOrientation(),
-			placement.withYaw(modelUse.extraYaw())
+			placement.withYaw(modelUse.extraYaw()),
+			hdosCache
 		);
 	}
 
@@ -585,7 +599,8 @@ final class ObjectMeshBuilder
 		int frame,
 		int modelType,
 		int orientation,
-		Placement placement
+		Placement placement,
+		boolean hdosCache
 	)
 	{
 		int[] modelIds = modelIds(definition, modelType);
@@ -606,7 +621,7 @@ final class ObjectMeshBuilder
 			{
 				continue;
 			}
-			appendModel(data, transparentData, textureProvider, textureSet, definition, model, modelType, orientation, placement);
+			appendModel(data, transparentData, textureProvider, textureSet, definition, model, modelType, orientation, placement, hdosCache);
 		}
 	}
 
@@ -705,7 +720,8 @@ final class ObjectMeshBuilder
 		ObjectDefinition definition,
 		int modelType,
 		int orientation,
-		Placement placement
+		Placement placement,
+		boolean hdosCache
 	)
 	{
 		int[] modelIds = modelIds(definition, modelType);
@@ -721,7 +737,7 @@ final class ObjectMeshBuilder
 			{
 				continue;
 			}
-			appendModel(data, transparentData, textureProvider, textureSet, definition, model, modelType, orientation, placement);
+			appendModel(data, transparentData, textureProvider, textureSet, definition, model, modelType, orientation, placement, hdosCache);
 		}
 	}
 
@@ -758,7 +774,8 @@ final class ObjectMeshBuilder
 		ModelDefinition model,
 		int modelType,
 		int orientation,
-		Placement placement
+		Placement placement,
+		boolean hdosCache
 	)
 	{
 		if (model.faceTextures != null)
@@ -799,8 +816,8 @@ final class ObjectMeshBuilder
 			}
 			Normal normal = faceNormal(va, vb, vc);
 			int rgb = textureFace.textured()
-				? texturedFaceTint(definition, normal)
-				: faceRgb(model, definition, textureProvider, face, normal);
+				? texturedFaceTint(definition, normal, hdosCache)
+				: faceRgb(model, definition, textureProvider, face, normal, hdosCache);
 			float depthBias = faceDepthBias(model, face);
 			SceneMeshBuffer targetData = alpha < 0.999f && transparentData != null ? transparentData : data;
 			putVertex(targetData, va, normal, rgb, alpha, depthBias, textureFace, uva);
@@ -865,9 +882,9 @@ final class ObjectMeshBuilder
 		return new TextureFace(layer, textureSet.materialForLayer(layer), a, b, c);
 	}
 
-	private static int texturedFaceTint(ObjectDefinition definition, Normal normal)
+	private static int texturedFaceTint(ObjectDefinition definition, Normal normal, boolean hdosCache)
 	{
-		int component = clamp(clampLightness(modelLight(definition, normal)) * 255 / 127, 24, 255);
+		int component = clamp(clampLightness(modelLight(definition, normal, hdosCache)) * 255 / 127, 24, 255);
 		return component << 16 | component << 8 | component;
 	}
 
@@ -995,7 +1012,8 @@ final class ObjectMeshBuilder
 		ObjectDefinition definition,
 		RSTextureProvider textureProvider,
 		int face,
-		Normal normal
+		Normal normal,
+		boolean hdosCache
 	)
 	{
 		if (faceRenderType(model, face) == 3)
@@ -1011,6 +1029,13 @@ final class ObjectMeshBuilder
 				int textureHsl = textureProvider.getAverageTextureRGB(texture);
 				if (textureHsl != -2)
 				{
+					if (hdosCache)
+					{
+						return HdosColorUtil.rgbForHsl(HdosColorUtil.adjustOverlayLight(
+							textureHsl,
+							modelLight(definition, normal, true)
+						));
+					}
 					int fullHsl = JagexColor.packHSLFull(
 						JagexColor.unpackHue((short) textureHsl) * 4,
 						JagexColor.unpackSaturation((short) textureHsl) * 32,
@@ -1035,7 +1060,12 @@ final class ObjectMeshBuilder
 		{
 			return DEFAULT_RGB;
 		}
-		return JagexColor.HSLtoRGB(adjustLightness(hsl, modelLight(definition, normal)), JagexColor.BRIGHTNESS_MIN);
+		int light = modelLight(definition, normal, hdosCache);
+		if (hdosCache)
+		{
+			return HdosColorUtil.rgbForHsl(adjustLightness(hsl, light) & 0xFFFF);
+		}
+		return JagexColor.HSLtoRGB(adjustLightness(hsl, light), JagexColor.BRIGHTNESS_MIN);
 	}
 
 	private static short adjustLightness(short hsl, int lightness)
@@ -1049,18 +1079,19 @@ final class ObjectMeshBuilder
 		return clamp(lightness, 2, 126);
 	}
 
-	private static int modelLight(ObjectDefinition definition, Normal normal)
+	private static int modelLight(ObjectDefinition definition, Normal normal, boolean hdosCache)
 	{
 		int ambient = definition.getAmbient() + MODEL_BASE_AMBIENT;
 		int contrast = definition.getContrast() + MODEL_BASE_CONTRAST;
-		int magnitude = (int) Math.sqrt(MODEL_LIGHT_X * MODEL_LIGHT_X
-			+ MODEL_LIGHT_Y * MODEL_LIGHT_Y
-			+ MODEL_LIGHT_Z * MODEL_LIGHT_Z);
+		int lightX = hdosCache ? HDOS_MODEL_LIGHT_X : MODEL_LIGHT_X;
+		int lightY = hdosCache ? HDOS_MODEL_LIGHT_Y : MODEL_LIGHT_Y;
+		int lightZ = hdosCache ? HDOS_MODEL_LIGHT_Z : MODEL_LIGHT_Z;
+		int magnitude = (int) Math.sqrt(lightX * lightX + lightY * lightY + lightZ * lightZ);
 		int intensity = Math.max(1, magnitude * contrast >> 8);
 		int normalX = Math.round(normal.x() * NORMAL_SCALE);
 		int normalY = Math.round(normal.y() * NORMAL_SCALE);
 		int normalZ = Math.round(normal.z() * NORMAL_SCALE);
-		return ambient + (MODEL_LIGHT_X * normalX + MODEL_LIGHT_Y * normalY + MODEL_LIGHT_Z * normalZ) / intensity;
+		return ambient + (lightX * normalX + lightY * normalY + lightZ * normalZ) / intensity;
 	}
 
 	private static short faceTexture(ModelDefinition model, ObjectDefinition definition, int face)

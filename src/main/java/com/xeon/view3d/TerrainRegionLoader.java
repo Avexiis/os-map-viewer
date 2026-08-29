@@ -82,19 +82,22 @@ public final class TerrainRegionLoader
 			throw new IOException("Cache directory is not set.");
 		}
 
-		Store store = openStore(cacheDirectory, hdosCache);
+		boolean effectiveHdosCache = hdosCache || HdosCacheDetector.isLikelyHdosCache(cacheDirectory);
+		Store store = openStore(cacheDirectory, effectiveHdosCache);
 		try
 		{
 			store.load();
-			UnderlayProvider underlays = loadUnderlays(store, hdosCache);
-			OverlayProvider overlays = loadOverlays(store, hdosCache);
-			ObjectManager objects = loadObjects(store, hdosCache);
-			TextureResources textures = loadTextureResources(store, hdosCache);
-			TerrainFloorTextures floorTextures = TerrainFloorTextures.load(store, hdosCache);
-			RegionSource regionSource = openRegionSource(store, hdosCache);
+			UnderlayProvider underlays = loadUnderlays(store, effectiveHdosCache);
+			OverlayProvider overlays = loadOverlays(store, effectiveHdosCache);
+			ObjectManager objects = loadObjects(store, effectiveHdosCache);
+			TextureResources textures = loadTextureResources(store, effectiveHdosCache);
+			TerrainFloorTextures floorTextures = TerrainFloorTextures.load(store, effectiveHdosCache);
+			RegionSource regionSource = openRegionSource(store, effectiveHdosCache);
+			ObjectModelProvider modelProvider = new ObjectModelProvider(store, effectiveHdosCache);
+			ObjectAnimationProvider animationProvider = effectiveHdosCache ? null : new ObjectAnimationProvider(store);
 			return new Session(
 				store,
-				hdosCache,
+				effectiveHdosCache,
 				regionSource,
 				underlays,
 				overlays,
@@ -102,8 +105,8 @@ public final class TerrainRegionLoader
 				NpcSpawnIndex.loadDefault(),
 				new NpcDefinitionProvider(store),
 				NpcWanderCollisionMap.loadDefault(),
-				new ObjectModelProvider(store),
-				new ObjectAnimationProvider(store),
+				modelProvider,
+				animationProvider,
 				textures.textureProvider(),
 				floorTextures,
 				textures.textureSet()
@@ -193,6 +196,21 @@ public final class TerrainRegionLoader
 	private static ObjectManager loadObjects(Store store, boolean allowPartial)
 		throws IOException
 	{
+		if (allowPartial)
+		{
+			try
+			{
+				HdosObjectManager objects = new HdosObjectManager(store);
+				objects.load();
+				return objects;
+			}
+			catch (IOException | RuntimeException ex)
+			{
+				System.err.println("Failed to load HDOS loc/object definitions from index "
+					+ HdosObjectManager.OBJECT_INDEX + ": " + ex.getMessage());
+			}
+		}
+
 		if (allowPartial && !hasConfigArchive(store, ConfigType.OBJECT))
 		{
 			return null;
@@ -227,19 +245,13 @@ public final class TerrainRegionLoader
 		{
 			try
 			{
-				HdosTextureData textures = HdosTextureData.load(store);
-				if (textures.textures().isEmpty())
-				{
-					return new TextureResources(null, SceneTextureSet.empty());
-				}
-				return new TextureResources(
-					new RSTextureProvider(textures, textures),
-					SceneTextureSet.build(textures.textures(), textures)
-				);
+				// HDOS uses RS2 procedural materials. Keep texture pixels disabled for now,
+				// but expose material HSL metadata to the HDOS scene color path.
+				return new TextureResources(HdosMaterialTextureProvider.load(store), SceneTextureSet.empty());
 			}
 			catch (IOException | RuntimeException ex)
 			{
-				System.err.println("Failed to load HDOS cache texture metadata for 3D terrain: " + ex.getMessage());
+				System.err.println("Failed to load HDOS material metadata for 3D terrain: " + ex.getMessage());
 				return new TextureResources(null, SceneTextureSet.empty());
 			}
 		}
@@ -394,13 +406,20 @@ public final class TerrainRegionLoader
 					textureProvider,
 					floorTextures,
 					textureSet,
-					npcFrameCache
+					npcFrameCache,
+					hdosCache
 				);
 			}
 			finally
 			{
-				modelProvider.clearCache();
-				animationProvider.clearCache();
+				if (modelProvider != null)
+				{
+					modelProvider.clearCache();
+				}
+				if (animationProvider != null)
+				{
+					animationProvider.clearCache();
+				}
 			}
 		}
 
@@ -430,8 +449,14 @@ public final class TerrainRegionLoader
 			}
 			finally
 			{
-				modelProvider.clearCache();
-				animationProvider.clearCache();
+				if (modelProvider != null)
+				{
+					modelProvider.clearCache();
+				}
+				if (animationProvider != null)
+				{
+					animationProvider.clearCache();
+				}
 			}
 		}
 

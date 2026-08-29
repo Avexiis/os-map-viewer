@@ -42,7 +42,9 @@ final class ObjectModelProvider
 	private static final int MODEL_CACHE_LIMIT = 512;
 
 	private final Store store;
+	private final boolean hdosCache;
 	private final ModelLoader loader = new ModelLoader();
+	private final HdosModelLoader hdosLoader = new HdosModelLoader();
 	private final Map<Integer, ModelDefinition> models = new LinkedHashMap<>(MODEL_CACHE_LIMIT, 0.75f, true)
 	{
 		@Override
@@ -54,7 +56,13 @@ final class ObjectModelProvider
 
 	ObjectModelProvider(Store store)
 	{
+		this(store, false);
+	}
+
+	ObjectModelProvider(Store store, boolean hdosCache)
+	{
 		this.store = store;
+		this.hdosCache = hdosCache;
 	}
 
 	ModelDefinition load(int modelId)
@@ -76,6 +84,14 @@ final class ObjectModelProvider
 			if (archive == null)
 			{
 				return null;
+			}
+
+			if (store.getStorage() instanceof DispleeCacheStorage storage)
+			{
+				byte[] contents = storage.loadArchiveFile(IndexType.MODELS.getNumber(), modelId, 0, null);
+				return contents == null || contents.length == 0
+					? null
+					: hdosCache ? hdosLoader.load(modelId, contents) : loader.load(modelId, contents);
 			}
 
 			byte[] archiveData = store.getStorage().loadArchive(archive);

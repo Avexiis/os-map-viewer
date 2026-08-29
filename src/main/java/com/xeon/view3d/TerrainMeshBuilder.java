@@ -56,7 +56,8 @@ final class TerrainMeshBuilder
 		RSTextureProvider textureProvider,
 		TerrainFloorTextures floorTextures,
 		SceneTextureSet textureSet,
-		NpcMeshBuilder.FrameCache npcFrameCache
+		NpcMeshBuilder.FrameCache npcFrameCache,
+		boolean hdosCache
 	)
 	{
 		SceneMeshBuffer[] planeData = new SceneMeshBuffer[Region.Z];
@@ -73,23 +74,44 @@ final class TerrainMeshBuilder
 		boolean[] renderableTiles = new boolean[Region.Z * Region.X * Region.Y];
 		boolean[] renderedTiles = new boolean[Region.Z * Region.X * Region.Y];
 		TerrainColorizer[] colorizers = new TerrainColorizer[Region.Z];
+		HdosTerrainColorizer[] hdosColorizers = new HdosTerrainColorizer[Region.Z];
 		TerrainHeightMap[] heightMaps = new TerrainHeightMap[Region.Z];
 		TerrainLightMap[] lightMaps = new TerrainLightMap[Region.Z];
 		float maxHeight = Float.NEGATIVE_INFINITY;
+		int[][][] hdosLightOcclusions = hdosCache
+			? HdosSceneLighting.tileLightOcclusions(region, objectManager)
+			: null;
 
 		for (int sourcePlane = 0; sourcePlane < Region.Z; sourcePlane++)
 		{
-			colorizers[sourcePlane] = new TerrainColorizer(
-				regionContext,
-				underlays,
-				overlays,
-				textureProvider,
-				floorTextures,
-				textureSet,
-				sourcePlane
-			);
 			heightMaps[sourcePlane] = new TerrainHeightMap(regionContext, sourcePlane);
-			lightMaps[sourcePlane] = new TerrainLightMap(heightMaps[sourcePlane]);
+			if (hdosCache)
+			{
+				hdosColorizers[sourcePlane] = new HdosTerrainColorizer(
+					regionContext,
+					underlays,
+					overlays,
+					textureProvider,
+					floorTextures,
+					textureSet,
+					heightMaps[sourcePlane],
+					hdosLightOcclusions[sourcePlane],
+					sourcePlane
+				);
+			}
+			else
+			{
+				colorizers[sourcePlane] = new TerrainColorizer(
+					regionContext,
+					underlays,
+					overlays,
+					textureProvider,
+					floorTextures,
+					textureSet,
+					sourcePlane
+				);
+				lightMaps[sourcePlane] = new TerrainLightMap(heightMaps[sourcePlane]);
+			}
 		}
 
 		for (int sourcePlane = 0; sourcePlane < Region.Z; sourcePlane++)
@@ -99,21 +121,41 @@ final class TerrainMeshBuilder
 				for (int y = 0; y < Region.Y; y++)
 				{
 					int displayPlane = SceneTileFlags.displayPlaneForSource(region, sourcePlane, x, y);
-					maxHeight = putSourceTile(
-						planeData[displayPlane],
-						region,
-						colorizers,
-						heightMaps,
-						lightMaps,
-						renderableTiles,
-						renderedTiles,
-						displayPlane,
-						sourcePlane,
-						x,
-						y,
-						textureSet,
-						maxHeight
-					);
+					if (hdosCache)
+					{
+						maxHeight = putHdosSourceTile(
+							planeData[displayPlane],
+							region,
+							hdosColorizers,
+							heightMaps,
+							renderableTiles,
+							renderedTiles,
+							displayPlane,
+							sourcePlane,
+							x,
+							y,
+							textureSet,
+							maxHeight
+						);
+					}
+					else
+					{
+						maxHeight = putSourceTile(
+							planeData[displayPlane],
+							region,
+							colorizers,
+							heightMaps,
+							lightMaps,
+							renderableTiles,
+							renderedTiles,
+							displayPlane,
+							sourcePlane,
+							x,
+							y,
+							textureSet,
+							maxHeight
+						);
+					}
 				}
 			}
 		}
@@ -136,7 +178,8 @@ final class TerrainMeshBuilder
 				animationProvider,
 				textureProvider,
 				textureSet,
-				objectOverlays
+				objectOverlays,
+				hdosCache
 			);
 		}
 		SceneMeshBuffer data = new SceneMeshBuffer(
@@ -155,19 +198,19 @@ final class TerrainMeshBuilder
 			planeTransparentVertexCounts[plane] = transparentPlaneData[plane].size() / TerrainMesh.FLOATS_PER_VERTEX;
 			data.addAll(transparentPlaneData[plane]);
 		}
-		List<NpcMesh> npcMeshes = NpcMeshBuilder.build(
-			region,
-			heightMaps,
-			npcSpawnIndex,
-			npcDefinitionProvider,
-			npcCollisionMap,
-			objectManager,
-			modelProvider,
-			animationProvider,
-			textureProvider,
-			textureSet,
-			npcFrameCache
-		);
+		List<NpcMesh> npcMeshes = hdosCache ? List.of() : NpcMeshBuilder.build(
+				region,
+				heightMaps,
+				npcSpawnIndex,
+				npcDefinitionProvider,
+				npcCollisionMap,
+				objectManager,
+				modelProvider,
+				animationProvider,
+				textureProvider,
+				textureSet,
+				npcFrameCache
+			);
 
 		return new TerrainMesh(
 			region.getRegionID(),
@@ -192,6 +235,54 @@ final class TerrainMeshBuilder
 			Math.max(16.0f, maxHeight + 18.0f),
 			0.0f
 		);
+	}
+
+	private static float putHdosSourceTile(
+		SceneMeshBuffer data,
+		Region region,
+		HdosTerrainColorizer[] colorizers,
+		TerrainHeightMap[] heightMaps,
+		boolean[] renderableTiles,
+		boolean[] renderedTiles,
+		int displayPlane,
+		int sourcePlane,
+		int x,
+		int y,
+		SceneTextureSet textureSet,
+		float maxHeight
+	)
+	{
+		if (!SceneTileFlags.canRenderSourceLayer(region, sourcePlane, x, y))
+		{
+			return maxHeight;
+		}
+
+		int index = tileIndex(sourcePlane, x, y);
+		if (renderedTiles[index])
+		{
+			return maxHeight;
+		}
+
+		HdosTerrainColorizer colorizer = colorizers[sourcePlane];
+		HdosTerrainPaint paint = colorizer.paintFor(x, y);
+		if (paint == null || (!paint.hasUnderlay() && !paint.hasOverlay()))
+		{
+			return maxHeight;
+		}
+
+		TerrainHeightMap heightMap = heightMaps[sourcePlane];
+		renderedTiles[index] = true;
+		renderableTiles[tileIndex(displayPlane, x, y)] = true;
+		maxHeight = Math.max(maxHeight, maxCornerHeight(heightMap, x, y));
+		if (!paint.hasOverlay())
+		{
+			putHdosTileQuad(data, heightMap, x, y, paint, false, 0, textureSet);
+		}
+		else
+		{
+			putHdosOverlayTile(data, heightMap, x, y, paint, textureSet);
+		}
+		return maxHeight;
 	}
 
 	private static float putSourceTile(
@@ -327,6 +418,75 @@ final class TerrainMeshBuilder
 		}
 	}
 
+	private static void putHdosTileQuad(
+		SceneMeshBuffer data,
+		TerrainHeightMap heightMap,
+		int x,
+		int y,
+		HdosTerrainPaint paint,
+		boolean overlay,
+		int textureLayer,
+		SceneTextureSet textureSet
+	)
+	{
+		Vertex[] corners = tileCorners(heightMap, x, y);
+		int rgbSw = overlay ? paint.overlayRgbForVertex(1) : paint.underlayRgbForVertex(1);
+		int rgbSe = overlay ? paint.overlayRgbForVertex(3) : paint.underlayRgbForVertex(3);
+		int rgbNe = overlay ? paint.overlayRgbForVertex(5) : paint.underlayRgbForVertex(5);
+		int rgbNw = overlay ? paint.overlayRgbForVertex(7) : paint.underlayRgbForVertex(7);
+		putHdosQuad(data, corners[0], corners[1], corners[2], corners[3], rgbSw, rgbSe, rgbNe, rgbNw, x, y, textureLayer, textureSet);
+	}
+
+	private static void putHdosOverlayTile(
+		SceneMeshBuffer data,
+		TerrainHeightMap heightMap,
+		int x,
+		int y,
+		HdosTerrainPaint paint,
+		SceneTextureSet textureSet
+	)
+	{
+		int shapeType = TileShapeModel.shapeTypeFor(paint.overlayPath());
+		if (shapeType == TileShapeModel.SIMPLE_OVERLAY_TYPE || !TileShapeModel.isShaped(shapeType))
+		{
+			putHdosTileQuad(data, heightMap, x, y, paint, true, paint.overlayTextureLayer(), textureSet);
+			return;
+		}
+
+		int rotation = paint.overlayRotation() & 3;
+		int[] vertexTypes = TileShapeModel.vertexTypes(shapeType);
+		Vertex[] vertices = new Vertex[vertexTypes.length];
+		int[] underlayRgb = new int[vertexTypes.length];
+		int[] overlayRgb = new int[vertexTypes.length];
+		for (int i = 0; i < vertexTypes.length; i++)
+		{
+			int vertexType = TileShapeModel.rotateVertexType(vertexTypes[i], rotation);
+			vertices[i] = vertexAt(
+				heightMap,
+				x + TileShapeModel.localX(vertexType),
+				y + TileShapeModel.localY(vertexType)
+			);
+			underlayRgb[i] = paint.underlayRgbForVertex(vertexType);
+			overlayRgb[i] = paint.overlayRgbForVertex(vertexType);
+		}
+
+		int[] faceData = TileShapeModel.faceData(shapeType);
+		for (int i = 0; i < faceData.length; i += TileShapeModel.FACE_STRIDE)
+		{
+			int a = TileShapeModel.rotateFaceVertex(faceData[i + 1], rotation);
+			int b = TileShapeModel.rotateFaceVertex(faceData[i + 2], rotation);
+			int c = TileShapeModel.rotateFaceVertex(faceData[i + 3], rotation);
+			boolean overlayFace = faceData[i] == TileShapeModel.FACE_OVERLAY;
+			if (overlayFace && !paint.hasOverlay() || !overlayFace && !paint.hasUnderlay())
+			{
+				continue;
+			}
+			int textureLayer = overlayFace ? paint.overlayTextureLayer() : 0;
+			int[] rgb = overlayFace ? overlayRgb : underlayRgb;
+			putHdosTriangle(data, vertices[a], vertices[b], vertices[c], rgb[a], rgb[b], rgb[c], x, y, textureLayer, textureSet);
+		}
+	}
+
 	private static Vertex[] tileCorners(TerrainHeightMap heightMap, int x, int y)
 	{
 		return new Vertex[]{
@@ -373,6 +533,45 @@ final class TerrainMeshBuilder
 		putVertex(data, c, rgb, lightMap, tileX, tileY, textureLayer, textureSet);
 	}
 
+	private static void putHdosQuad(
+		SceneMeshBuffer data,
+		Vertex v00,
+		Vertex v10,
+		Vertex v11,
+		Vertex v01,
+		int rgbSw,
+		int rgbSe,
+		int rgbNe,
+		int rgbNw,
+		int tileX,
+		int tileY,
+		int textureLayer,
+		SceneTextureSet textureSet
+	)
+	{
+		putHdosTriangle(data, v00, v11, v10, rgbSw, rgbNe, rgbSe, tileX, tileY, textureLayer, textureSet);
+		putHdosTriangle(data, v00, v01, v11, rgbSw, rgbNw, rgbNe, tileX, tileY, textureLayer, textureSet);
+	}
+
+	private static void putHdosTriangle(
+		SceneMeshBuffer data,
+		Vertex a,
+		Vertex b,
+		Vertex c,
+		int rgbA,
+		int rgbB,
+		int rgbC,
+		int tileX,
+		int tileY,
+		int textureLayer,
+		SceneTextureSet textureSet
+	)
+	{
+		putHdosVertex(data, a, rgbA, tileX, tileY, textureLayer, textureSet);
+		putHdosVertex(data, b, rgbB, tileX, tileY, textureLayer, textureSet);
+		putHdosVertex(data, c, rgbC, tileX, tileY, textureLayer, textureSet);
+	}
+
 	private static void putVertex(
 		SceneMeshBuffer data,
 		Vertex vertex,
@@ -395,6 +594,36 @@ final class TerrainMeshBuilder
 			vertex.normalY(),
 			vertex.normalZ(),
 			rgb,
+			1.0f,
+			0.0f,
+			vertex.tileX() - tileX,
+			vertex.tileY() - tileY,
+			textureLayer,
+			material.animationU(),
+			material.animationV(),
+			material.alphaCutoff()
+		);
+	}
+
+	private static void putHdosVertex(
+		SceneMeshBuffer data,
+		Vertex vertex,
+		int rgb,
+		int tileX,
+		int tileY,
+		int textureLayer,
+		SceneTextureSet textureSet
+	)
+	{
+		SceneTextureSet.Material material = textureSet.materialForLayer(textureLayer);
+		data.addVertex(
+			vertex.x(),
+			vertex.y(),
+			vertex.z(),
+			vertex.normalX(),
+			vertex.normalY(),
+			vertex.normalZ(),
+			textureLayer > 0 ? 0xFF_FFFF : rgb,
 			1.0f,
 			0.0f,
 			vertex.tileX() - tileX,

@@ -49,6 +49,7 @@ import com.xeon.view.MapLegendDialog;
 import com.xeon.view.MapPanel;
 import com.xeon.view.MapView;
 import com.xeon.view.NpcLocationLayer;
+import com.xeon.view3d.HdosCacheDetector;
 import com.xeon.view3d.Map3DPanel;
 
 import java.util.Enumeration;
@@ -1311,7 +1312,7 @@ public class MapViewerController
 			show3DCacheLoadFailure("No installed OSRS cache was found in the standard RuneLite or Bolt cache locations.");
 			return new CacheDirectoryResult(null, false, false, true);
 		}
-		return new CacheDirectoryResult(cacheDirectory, false, false, false);
+		return new CacheDirectoryResult(cacheDirectory, HdosCacheDetector.isLikelyHdosCache(cacheDirectory), false, false);
 	}
 
 	private CacheDirectoryResult savedCustomCacheResult()
@@ -1326,7 +1327,8 @@ public class MapViewerController
 			setStatus("Saved custom 3D cache folder is unavailable");
 			return null;
 		}
-		return new CacheDirectoryResult(customDirectory, settings.viewer3DCacheHdos(), false, false);
+		boolean hdos = settings.viewer3DCacheHdos() || HdosCacheDetector.isLikelyHdosCache(customDirectory);
+		return new CacheDirectoryResult(customDirectory, hdos, false, false);
 	}
 
 	private CacheSelection choose3DCacheSelection(Component owner)
@@ -1400,7 +1402,7 @@ public class MapViewerController
 			show3DCacheLoadFailure("The selected folder is missing OSRS cache files.");
 			return new CacheDirectoryResult(null, false, false, true);
 		}
-		return new CacheDirectoryResult(selected, false, false, false);
+		return new CacheDirectoryResult(selected, HdosCacheDetector.isLikelyHdosCache(selected), false, false);
 	}
 
 	private void promptChoose3DCustomCache(Window owner)
@@ -1452,7 +1454,7 @@ public class MapViewerController
 			return;
 		}
 
-		boolean hdos = hdosCache.isSelected();
+		boolean hdos = hdosCache.isSelected() || HdosCacheDetector.isLikelyHdosCache(selected);
 		settings.setViewer3DCustomCacheDirectory(selected, hdos);
 		settings.setViewer3DCachePrompt(false, false);
 		setStatus("Custom 3D cache set to " + selected.getFileName() + (hdos ? " (HDOS)" : ""));
@@ -1520,6 +1522,7 @@ public class MapViewerController
 		{
 			return;
 		}
+		hdosCache = hdosCache || HdosCacheDetector.isLikelyHdosCache(cacheDirectory);
 		Path atlasPath;
 		try
 		{
