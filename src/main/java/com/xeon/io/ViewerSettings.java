@@ -30,6 +30,8 @@ import com.google.gson.JsonObject;
 import com.xeon.config.ConfigManager;
 
 import java.awt.Color;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
 
 public final class ViewerSettings
 {
@@ -71,6 +73,8 @@ public final class ViewerSettings
 	private static final String KEY_3D_TILE_HOVER_COLOR = "viewer3d.state.tileHoverColor";
 	private static final String KEY_3D_CACHE_ASK_ON_OPEN = "viewer3d.cache.askOnOpen";
 	private static final String KEY_3D_CACHE_AUTO_DETECT = "viewer3d.cache.autoDetect";
+	private static final String KEY_3D_CACHE_CUSTOM_DIRECTORY = "viewer3d.cache.customDirectory";
+	private static final String KEY_3D_CACHE_HDOS = "viewer3d.cache.hdos";
 	private static final String KEY_DEVELOPER_MODE_ENABLED = "developer.mode.enabled";
 	private static final String KEY_DEVELOPER_NPC_BACKUP_PROMPT_SUPPRESSED =
 		"developer.npcSpawnBackupPrompt.suppressed";
@@ -314,6 +318,41 @@ public final class ViewerSettings
 	{
 		configManager.setBoolean(CORE, KEY_3D_CACHE_ASK_ON_OPEN, askOnOpen);
 		configManager.setBoolean(CORE, KEY_3D_CACHE_AUTO_DETECT, autoDetect);
+	}
+
+	public Path viewer3DCustomCacheDirectory()
+	{
+		String value = configManager.getString(CORE, KEY_3D_CACHE_CUSTOM_DIRECTORY, null);
+		if (value == null || value.isBlank())
+		{
+			return null;
+		}
+		try
+		{
+			return Path.of(value.trim()).toAbsolutePath().normalize();
+		}
+		catch (InvalidPathException ex)
+		{
+			return null;
+		}
+	}
+
+	public boolean viewer3DCacheHdos()
+	{
+		return configManager.getBoolean(CORE, KEY_3D_CACHE_HDOS, false);
+	}
+
+	public void setViewer3DCustomCacheDirectory(Path directory, boolean hdos)
+	{
+		if (directory == null)
+		{
+			configManager.remove(CORE, KEY_3D_CACHE_CUSTOM_DIRECTORY);
+			configManager.setBoolean(CORE, KEY_3D_CACHE_HDOS, false);
+			return;
+		}
+		configManager.setString(CORE, KEY_3D_CACHE_CUSTOM_DIRECTORY,
+			directory.toAbsolutePath().normalize().toString());
+		configManager.setBoolean(CORE, KEY_3D_CACHE_HDOS, hdos);
 	}
 
 	public boolean developerModeEnabled()

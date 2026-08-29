@@ -39,6 +39,11 @@ val useNvidiaPrime = providers.gradleProperty("osmapviewer.nvidiaPrime")
     .orElse(false)
 val nvidiaPrimeProvider = providers.gradleProperty("osmapviewer.nvidiaPrimeProvider")
     .orElse(providers.environmentVariable("OSMAPVIEWER_NVIDIA_PRIME_PROVIDER"))
+val defaultHdosCacheDir = providers.systemProperty("user.home")
+    .map { "$it/.local/share/bolt-launcher/hdos/bin/cache/staged/runescape" }
+val hdosCacheProbeDir = providers.gradleProperty("osmapviewer.hdosCache")
+    .orElse(providers.environmentVariable("OSMAPVIEWER_HDOS_CACHE"))
+    .orElse(defaultHdosCacheDir)
 
 fun JavaExec.useNvidiaPrimeOffload()
 {
@@ -104,6 +109,7 @@ sourceSets {
 
 dependencies {
     implementation(project(":api"))
+    implementation(project(":rs-cache-library"))
     implementation("com.formdev:flatlaf:2.6")
     implementation(platform("org.lwjgl:lwjgl-bom:$lwjglVersion"))
     implementation("org.joml:joml:$jomlVersion")
@@ -112,6 +118,7 @@ dependencies {
     implementation("net.runelite:rlawt:1.8")
     compileOnly(files(runeliteCacheShadedJar))
     runtimeOnly(files(runeliteCacheShadedJar))
+    testImplementation(files(runeliteCacheShadedJar))
     lwjglBundledNativeClassifiers.forEach { classifier ->
         runtimeOnly("org.lwjgl:lwjgl::$classifier")
         runtimeOnly("org.lwjgl:lwjgl-opengl::$classifier")
@@ -143,6 +150,20 @@ tasks.register<JavaExec>("inspectAtlas") {
     classpath = sourceSets["test"].runtimeClasspath
     mainClass.set("com.xeon.tools.AtlasInspectorApp")
     workingDir = projectDir
+}
+
+tasks.register<JavaExec>("probeHdosCache") {
+    group = "verification"
+    description = "Probes an HDOS cache with RuneLite and Displee cache libraries. Override with -Posmapviewer.hdosCache=/path."
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.xeon.tools.HdosCacheProbe")
+    workingDir = projectDir
+    doFirst {
+        if (args.isNullOrEmpty()) {
+            args("--cache", hdosCacheProbeDir.get())
+        }
+    }
 }
 
 tasks.withType<Jar>().configureEach {

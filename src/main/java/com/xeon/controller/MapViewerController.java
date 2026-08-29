@@ -78,6 +78,9 @@ public class MapViewerController
 	private static final Color WARNING_ORANGE = new Color(0xD98C20);
 	private static final int DEFAULT_3D_REGION_ID = 12850;
 	private static final boolean DEVELOPER_MODE_BUILD_ENABLED = true;
+	private static final Path DEFAULT_HDOS_CACHE_DIRECTORY =
+		Path.of(System.getProperty("user.home"), ".local", "share", "bolt-launcher", "hdos", "bin", "cache",
+			"staged", "runescape");
 	private static final String GITHUB_URL = "https://github.com/Avexiis/os-map-viewer";
 	private static final String RELEASE_URL = "https://github.com/Avexiis/os-map-viewer/releases/tag/Release";
 	private static final String DISCORD_URL = "https://discord.gg/W59sFN7auq";
@@ -237,7 +240,7 @@ public class MapViewerController
 			CacheDirectoryResult cacheResult = resolve3DCacheDirectoryResult(frame);
 			if (cacheResult.directory() != null)
 			{
-				openInitial3DMode(cacheResult.directory());
+				openInitial3DMode(cacheResult.directory(), cacheResult.hdos());
 				return;
 			}
 			if (cacheResult.failed())
@@ -255,13 +258,13 @@ public class MapViewerController
 		finishInitialUi();
 	}
 
-	private void openInitial3DMode(Path cacheDirectory)
+	private void openInitial3DMode(Path cacheDirectory, boolean hdosCache)
 	{
 		Viewer3DState saved3DState = settings.viewer3DState();
 		int regionId = saved3DState == null ? DEFAULT_3D_REGION_ID : saved3DState.regionId();
 		buildUi();
 		initialize2DMapPosition();
-		enter3DViewer(cacheDirectory, regionId, null);
+		enter3DViewer(cacheDirectory, hdosCache, regionId, null);
 		finishInitialUi();
 	}
 
@@ -456,6 +459,9 @@ public class MapViewerController
 				promptOpen3DViewer(frame);
 			}
 		});
+		JMenuItem custom3DCache = new JMenuItem("Choose 3D Cache Folder...");
+		custom3DCache.setVisible(false);
+		custom3DCache.addActionListener(e -> promptChoose3DCustomCache(frame));
 		JMenuItem experimentalOptions = new JMenuItem("Experimental Options");
 		experimentalOptions.addActionListener(e -> showExperimentalOptionsDialog());
 		JMenuItem backgroundColor = new JMenuItem("Map Background Color...");
@@ -474,6 +480,7 @@ public class MapViewerController
 		optionsMenu.add(pluginsItem);
 		optionsMenu.add(loadPlugin);
 		optionsMenu.add(viewer3D);
+		optionsMenu.add(custom3DCache);
 		optionsMenu.add(experimentalOptions);
 		optionsMenu.addSeparator();
 		optionsMenu.add(backgroundColor);
@@ -485,6 +492,7 @@ public class MapViewerController
 			public void popupMenuWillBecomeVisible(PopupMenuEvent e)
 			{
 				viewer3D.setText(is3DViewerActive() ? "Switch to 2D Map" : "Open 3D Viewer");
+				custom3DCache.setVisible(showDeveloper3DCacheMenuItem());
 			}
 
 			@Override
@@ -1243,8 +1251,8 @@ public class MapViewerController
 
 	private void promptOpen3DViewer(Window owner)
 	{
-		Path cacheDirectory = resolve3DCacheDirectory(owner);
-		if (cacheDirectory == null)
+		CacheDirectoryResult cacheResult = resolve3DCacheDirectoryResult(owner);
+		if (cacheResult.directory() == null)
 		{
 			return;
 		}
@@ -1256,7 +1264,7 @@ public class MapViewerController
 		{
 			dialog.dispose();
 		}
-		enter3DViewer(cacheDirectory, regionId, null);
+		enter3DViewer(cacheResult.directory(), cacheResult.hdos(), regionId, null);
 	}
 
 	private void switchTo3DFrom2DMap()
@@ -1265,28 +1273,32 @@ public class MapViewerController
 		{
 			return;
 		}
-		Path cacheDirectory = resolve3DCacheDirectory(frame);
-		if (cacheDirectory == null)
+		CacheDirectoryResult cacheResult = resolve3DCacheDirectoryResult(frame);
+		if (cacheResult.directory() == null)
 		{
 			return;
 		}
 
 		Tile centerTile = mapPanel.getCenterTile();
 		int regionId = centerTile == null ? DEFAULT_3D_REGION_ID : regionIdForTile(centerTile);
-		enter3DViewer(cacheDirectory, regionId, centerTile);
-	}
-
-	private Path resolve3DCacheDirectory(Component owner)
-	{
-		return resolve3DCacheDirectoryResult(owner).directory();
+		enter3DViewer(cacheResult.directory(), cacheResult.hdos(), regionId, centerTile);
 	}
 
 	private CacheDirectoryResult resolve3DCacheDirectoryResult(Component owner)
 	{
+		if (!settings.viewer3DCacheAskOnOpen() && !settings.viewer3DCacheAutoDetect())
+		{
+			CacheDirectoryResult customResult = savedCustomCacheResult();
+			if (customResult != null)
+			{
+				return customResult;
+			}
+		}
+
 		CacheSelection selection = choose3DCacheSelection(owner);
 		if (selection.cancelled())
 		{
-			return new CacheDirectoryResult(null, true, false);
+			return new CacheDirectoryResult(null, false, true, false);
 		}
 		if (!selection.autoDetect())
 		{
@@ -1297,9 +1309,24 @@ public class MapViewerController
 		if (cacheDirectory == null)
 		{
 			show3DCacheLoadFailure("No installed OSRS cache was found in the standard RuneLite or Bolt cache locations.");
-			return new CacheDirectoryResult(null, false, true);
+			return new CacheDirectoryResult(null, false, false, true);
 		}
-		return new CacheDirectoryResult(cacheDirectory, false, false);
+		return new CacheDirectoryResult(cacheDirectory, false, false, false);
+	}
+
+	private CacheDirectoryResult savedCustomCacheResult()
+	{
+		Path customDirectory = settings.viewer3DCustomCacheDirectory();
+		if (customDirectory == null)
+		{
+			return null;
+		}
+		if (!RuneLiteCacheLocator.isCacheDirectory(customDirectory))
+		{
+			setStatus("Saved custom 3D cache folder is unavailable");
+			return null;
+		}
+		return new CacheDirectoryResult(customDirectory, settings.viewer3DCacheHdos(), false, false);
 	}
 
 	private CacheSelection choose3DCacheSelection(Component owner)
@@ -1364,16 +1391,107 @@ public class MapViewerController
 
 		if (chooser.showOpenDialog(parent == null ? frame : parent) != JFileChooser.APPROVE_OPTION)
 		{
-			return new CacheDirectoryResult(null, true, false);
+			return new CacheDirectoryResult(null, false, true, false);
 		}
 
 		Path selected = chooser.getSelectedFile().toPath().toAbsolutePath().normalize();
 		if (!RuneLiteCacheLocator.isCacheDirectory(selected))
 		{
 			show3DCacheLoadFailure("The selected folder is missing OSRS cache files.");
-			return new CacheDirectoryResult(null, false, true);
+			return new CacheDirectoryResult(null, false, false, true);
 		}
-		return new CacheDirectoryResult(selected, false, false);
+		return new CacheDirectoryResult(selected, false, false, false);
+	}
+
+	private void promptChoose3DCustomCache(Window owner)
+	{
+		if (!showDeveloper3DCacheMenuItem())
+		{
+			setStatus("Custom 3D cache selection requires developer mode in 3D mode");
+			return;
+		}
+
+		JCheckBox hdosCache = new JCheckBox("HDOS cache", settings.viewer3DCacheHdos());
+		hdosCache.setToolTipText("Marks the selected cache for future HDOS-specific loading and rendering.");
+		JTextArea description = wrappedText(
+			"Choose the folder that contains main_file_cache.dat2. HDOS caches are stored for future cache-specific "
+				+ "decoding and rendering work.",
+			330,
+			82
+		);
+		JPanel accessory = new JPanel();
+		accessory.setLayout(new BoxLayout(accessory, BoxLayout.Y_AXIS));
+		accessory.setBorder(BorderFactory.createEmptyBorder(0, 8, 0, 0));
+		accessory.add(hdosCache);
+		accessory.add(Box.createVerticalStrut(8));
+		accessory.add(description);
+
+		JFileChooser chooser = new JFileChooser();
+		chooser.setDialogTitle("Choose 3D Cache Directory");
+		chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+		chooser.setAcceptAllFileFilterUsed(false);
+		chooser.setAccessory(accessory);
+		Path initialDirectory = initialCustom3DCacheDirectory();
+		if (initialDirectory != null)
+		{
+			chooser.setCurrentDirectory((Files.isDirectory(initialDirectory)
+				? initialDirectory
+				: initialDirectory.getParent()).toFile());
+			chooser.setSelectedFile(initialDirectory.toFile());
+		}
+
+		if (chooser.showOpenDialog(owner == null ? frame : owner) != JFileChooser.APPROVE_OPTION)
+		{
+			return;
+		}
+
+		Path selected = chooser.getSelectedFile().toPath().toAbsolutePath().normalize();
+		if (!RuneLiteCacheLocator.isCacheDirectory(selected))
+		{
+			show3DCacheLoadFailure("The selected custom 3D cache folder is missing OSRS cache files:\n" + selected);
+			return;
+		}
+
+		boolean hdos = hdosCache.isSelected();
+		settings.setViewer3DCustomCacheDirectory(selected, hdos);
+		settings.setViewer3DCachePrompt(false, false);
+		setStatus("Custom 3D cache set to " + selected.getFileName() + (hdos ? " (HDOS)" : ""));
+		reload3DViewerWithCache(selected, hdos);
+	}
+
+	private Path initialCustom3DCacheDirectory()
+	{
+		Path saved = settings.viewer3DCustomCacheDirectory();
+		if (saved != null && Files.exists(saved))
+		{
+			return saved;
+		}
+		if (map3DPanel != null && map3DPanel.cacheDirectory() != null && Files.exists(map3DPanel.cacheDirectory()))
+		{
+			return map3DPanel.cacheDirectory();
+		}
+		if (Files.exists(DEFAULT_HDOS_CACHE_DIRECTORY))
+		{
+			return DEFAULT_HDOS_CACHE_DIRECTORY;
+		}
+		Path candidate = firstExistingCacheCandidate();
+		if (candidate != null)
+		{
+			return candidate;
+		}
+		return Path.of(System.getProperty("user.home")).toAbsolutePath().normalize();
+	}
+
+	private void reload3DViewerWithCache(Path cacheDirectory, boolean hdosCache)
+	{
+		if (!is3DViewerActive())
+		{
+			return;
+		}
+		Tile cameraTile = map3DPanel.getCameraTile();
+		int regionId = cameraTile == null ? DEFAULT_3D_REGION_ID : regionIdForTile(cameraTile);
+		exit3DViewer();
+		enter3DViewer(cacheDirectory, hdosCache, regionId, cameraTile);
 	}
 
 	private boolean confirmMapPrintNotice(Window owner)
@@ -1388,10 +1506,15 @@ public class MapViewerController
 
 	private void enter3DViewer(Path cacheDirectory, int regionId)
 	{
-		enter3DViewer(cacheDirectory, regionId, null);
+		enter3DViewer(cacheDirectory, false, regionId, null);
 	}
 
 	private void enter3DViewer(Path cacheDirectory, int regionId, Tile startupTile)
+	{
+		enter3DViewer(cacheDirectory, false, regionId, startupTile);
+	}
+
+	private void enter3DViewer(Path cacheDirectory, boolean hdosCache, int regionId, Tile startupTile)
 	{
 		if (is3DViewerActive())
 		{
@@ -1421,7 +1544,8 @@ public class MapViewerController
 				this::handle3DViewerFailure,
 				startupTile,
 				developerModeCurrentlyAvailable(),
-				wikiSyncManager);
+				wikiSyncManager,
+				hdosCache);
 		}
 		catch (RuntimeException ex)
 		{
@@ -1440,7 +1564,7 @@ public class MapViewerController
 		viewerPane.revalidate();
 		viewerPane.repaint();
 		sync3DPluginState();
-		setStatus("Opened 3D viewer for region " + regionId);
+		setStatus("Opened 3D viewer for region " + regionId + (hdosCache ? " with HDOS cache" : ""));
 	}
 
 	private void handle3DViewerFailure(String message)
@@ -1638,6 +1762,13 @@ public class MapViewerController
 		return DEVELOPER_MODE_BUILD_ENABLED
 			&& settings.developerModeEnabled()
 			&& enabledPluginCount() == 0;
+	}
+
+	private boolean showDeveloper3DCacheMenuItem()
+	{
+		return DEVELOPER_MODE_BUILD_ENABLED
+			&& settings.developerModeEnabled()
+			&& is3DViewerActive();
 	}
 
 	private void chooseMapBackgroundColor()
@@ -2423,7 +2554,7 @@ public class MapViewerController
 	{
 	}
 
-	private record CacheDirectoryResult(Path directory, boolean cancelled, boolean failed)
+	private record CacheDirectoryResult(Path directory, boolean hdos, boolean cancelled, boolean failed)
 	{
 	}
 

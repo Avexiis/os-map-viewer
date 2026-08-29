@@ -57,7 +57,20 @@ public final class TerrainRegionLoader
 		}
 	}
 
+	public TerrainMesh loadFullScene(Path cacheDirectory, int regionId, boolean hdosCache) throws IOException
+	{
+		try (Session session = open(cacheDirectory, hdosCache))
+		{
+			return session.loadRegion(regionId);
+		}
+	}
+
 	public Session open(Path cacheDirectory) throws IOException
+	{
+		return open(cacheDirectory, false);
+	}
+
+	public Session open(Path cacheDirectory, boolean hdosCache) throws IOException
 	{
 		if (cacheDirectory == null)
 		{
@@ -79,6 +92,7 @@ public final class TerrainRegionLoader
 			RegionLoader regionLoader = new RegionLoader(store, loadKeyProvider());
 			return new Session(
 				store,
+				hdosCache,
 				regionLoader,
 				underlays,
 				overlays,
@@ -159,6 +173,7 @@ public final class TerrainRegionLoader
 	public static final class Session implements AutoCloseable
 	{
 		private final Store store;
+		private final boolean hdosCache;
 		private final RegionLoader regionLoader;
 		private final UnderlayManager underlays;
 		private final OverlayManager overlays;
@@ -175,6 +190,7 @@ public final class TerrainRegionLoader
 
 		private Session(
 			Store store,
+			boolean hdosCache,
 			RegionLoader regionLoader,
 			UnderlayManager underlays,
 			OverlayManager overlays,
@@ -190,6 +206,7 @@ public final class TerrainRegionLoader
 		)
 		{
 			this.store = store;
+			this.hdosCache = hdosCache;
 			this.regionLoader = regionLoader;
 			this.underlays = underlays;
 			this.overlays = overlays;
@@ -202,6 +219,11 @@ public final class TerrainRegionLoader
 			this.textureProvider = textureProvider;
 			this.floorTextures = floorTextures;
 			this.textureSet = textureSet;
+		}
+
+		public boolean hdosCache()
+		{
+			return hdosCache;
 		}
 
 		public synchronized TerrainMesh loadRegion(int regionId) throws IOException

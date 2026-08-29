@@ -169,6 +169,7 @@ public final class Map3DPanel extends JPanel
 	private final Canvas canvas;
 	private final JLayeredPane sceneLayer;
 	private final Path cacheDirectory;
+	private final boolean hdosCache;
 	private final Path atlasPath;
 	private final long mapCacheBudgetBytes;
 	private final ViewerSettings settings;
@@ -360,8 +361,18 @@ public final class Map3DPanel extends JPanel
 	                  Consumer<String> failureAction, Tile initialFocusTile, boolean developerModeAvailable,
 	                  WikiSyncManager wikiSyncManager)
 	{
+		this(cacheDirectory, regionId, atlasPath, mapCacheBudgetBytes, settings, activePlugin, exitAction,
+			failureAction, initialFocusTile, developerModeAvailable, wikiSyncManager, false);
+	}
+
+	public Map3DPanel(Path cacheDirectory, int regionId, Path atlasPath, long mapCacheBudgetBytes,
+	                  ViewerSettings settings, MapViewerPlugin activePlugin, Runnable exitAction,
+	                  Consumer<String> failureAction, Tile initialFocusTile, boolean developerModeAvailable,
+	                  WikiSyncManager wikiSyncManager, boolean hdosCache)
+	{
 		super(new BorderLayout());
 		this.cacheDirectory = cacheDirectory;
+		this.hdosCache = hdosCache;
 		this.atlasPath = atlasPath;
 		this.mapCacheBudgetBytes = mapCacheBudgetBytes <= 0L ? DEFAULT_MAP_CACHE_BUDGET_BYTES : mapCacheBudgetBytes;
 		this.settings = settings;
@@ -522,6 +533,16 @@ public final class Map3DPanel extends JPanel
 	public Tile getCameraTile()
 	{
 		return cameraTile();
+	}
+
+	public Path cacheDirectory()
+	{
+		return cacheDirectory;
+	}
+
+	public boolean hdosCache()
+	{
+		return hdosCache;
 	}
 
 	public void repaintPluginViews()
@@ -3172,7 +3193,7 @@ public final class Map3DPanel extends JPanel
 		TerrainRegionLoader.Session session = loaderSession;
 		if (session == null)
 		{
-			session = loader.open(cacheDirectory);
+			session = loader.open(cacheDirectory, hdosCache);
 			loaderSession = session;
 		}
 		return session;
