@@ -26,10 +26,10 @@
  */
 package com.xeon.view3d;
 
-import net.runelite.cache.OverlayManager;
-import net.runelite.cache.UnderlayManager;
 import net.runelite.cache.definitions.OverlayDefinition;
 import net.runelite.cache.definitions.UnderlayDefinition;
+import net.runelite.cache.definitions.providers.OverlayProvider;
+import net.runelite.cache.definitions.providers.UnderlayProvider;
 import net.runelite.cache.item.RSTextureProvider;
 import net.runelite.cache.models.JagexColor;
 import net.runelite.cache.region.Region;
@@ -41,8 +41,8 @@ final class TerrainColorizer
 	private static final int DEFAULT_TERRAIN_RGB = 0x2F3430;
 
 	private final TerrainRegionContext regionContext;
-	private final UnderlayManager underlays;
-	private final OverlayManager overlays;
+	private final UnderlayProvider underlays;
+	private final OverlayProvider overlays;
 	private final RSTextureProvider textureProvider;
 	private final TerrainFloorTextures floorTextures;
 	private final SceneTextureSet textureSet;
@@ -50,8 +50,8 @@ final class TerrainColorizer
 
 	TerrainColorizer(
 		TerrainRegionContext regionContext,
-		UnderlayManager underlays,
-		OverlayManager overlays,
+		UnderlayProvider underlays,
+		OverlayProvider overlays,
 		RSTextureProvider textureProvider,
 		TerrainFloorTextures floorTextures,
 		SceneTextureSet textureSet,

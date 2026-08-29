@@ -28,8 +28,8 @@ package com.xeon.view3d;
 import java.util.ArrayList;
 import java.util.List;
 import net.runelite.cache.ObjectManager;
-import net.runelite.cache.OverlayManager;
-import net.runelite.cache.UnderlayManager;
+import net.runelite.cache.definitions.providers.OverlayProvider;
+import net.runelite.cache.definitions.providers.UnderlayProvider;
 import net.runelite.cache.item.RSTextureProvider;
 import net.runelite.cache.region.Region;
 
@@ -45,8 +45,8 @@ final class TerrainMeshBuilder
 
 	static TerrainMesh build(
 		TerrainRegionContext regionContext,
-		UnderlayManager underlays,
-		OverlayManager overlays,
+		UnderlayProvider underlays,
+		OverlayProvider overlays,
 		ObjectManager objectManager,
 		NpcSpawnIndex npcSpawnIndex,
 		NpcDefinitionProvider npcDefinitionProvider,

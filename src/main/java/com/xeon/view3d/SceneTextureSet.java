@@ -34,6 +34,7 @@ import net.runelite.cache.SpriteManager;
 import net.runelite.cache.TextureManager;
 import net.runelite.cache.definitions.SpriteDefinition;
 import net.runelite.cache.definitions.TextureDefinition;
+import net.runelite.cache.definitions.providers.SpriteProvider;
 
 final class SceneTextureSet
 {
@@ -71,6 +72,11 @@ final class SceneTextureSet
 
 	static SceneTextureSet build(TextureManager textureManager, SpriteManager spriteManager)
 	{
+		return build(textureManager.getTextures(), spriteManager);
+	}
+
+	static SceneTextureSet build(Iterable<TextureDefinition> textures, SpriteProvider spriteProvider)
+	{
 		List<int[]> layerPixels = new ArrayList<>();
 		List<Material> layerMaterials = new ArrayList<>();
 		Map<Integer, Integer> textureLayers = new HashMap<>();
@@ -79,11 +85,11 @@ final class SceneTextureSet
 		layerPixels.add(fallback);
 		layerMaterials.add(Material.NONE);
 
-		for (TextureDefinition definition : textureManager.getTextures())
+		for (TextureDefinition definition : textures)
 		{
 			try
 			{
-				int[] pixels = pixelsFor(definition, spriteManager);
+				int[] pixels = pixelsFor(definition, spriteProvider);
 				if (pixels == null)
 				{
 					continue;
@@ -131,7 +137,7 @@ final class SceneTextureSet
 		return materials.length;
 	}
 
-	private static int[] pixelsFor(TextureDefinition definition, SpriteManager spriteManager)
+	private static int[] pixelsFor(TextureDefinition definition, SpriteProvider spriteProvider)
 	{
 		int[] fileIds = definition.getFileIds();
 		if (fileIds == null || fileIds.length == 0)
@@ -142,7 +148,7 @@ final class SceneTextureSet
 		int[] pixels = new int[PIXELS_PER_TEXTURE];
 		for (int fileIndex = 0; fileIndex < fileIds.length; fileIndex++)
 		{
-			SpriteDefinition sprite = spriteManager.provide(fileIds[fileIndex], 0);
+			SpriteDefinition sprite = spriteProvider.provide(fileIds[fileIndex], 0);
 			if (sprite == null)
 			{
 				return null;
@@ -175,7 +181,13 @@ final class SceneTextureSet
 	)
 	{
 		int spriteWidth = sprite.getMaxWidth();
-		if (TEXTURE_SIZE == spriteWidth)
+		int spriteHeight = sprite.getMaxHeight();
+		if (spriteWidth <= 0 || spriteHeight <= 0)
+		{
+			throw new IllegalArgumentException("Unsupported texture sprite dimensions: " + spriteWidth + "x" + spriteHeight);
+		}
+
+		if (TEXTURE_SIZE == spriteWidth && TEXTURE_SIZE == spriteHeight)
 		{
 			for (int i = 0; i < pixels.length; i++)
 			{
@@ -184,22 +196,14 @@ final class SceneTextureSet
 			return;
 		}
 
-		if (spriteWidth == 64)
+		for (int y = 0; y < TEXTURE_SIZE; y++)
 		{
-			int out = 0;
-			for (int y = 0; y < TEXTURE_SIZE; y++)
+			int sourceY = y * spriteHeight / TEXTURE_SIZE;
+			for (int x = 0; x < TEXTURE_SIZE; x++)
 			{
-				for (int x = 0; x < TEXTURE_SIZE; x++)
-				{
-					pixels[out++] = palette[palettePixels[(y >> 1 << 6) + (x >> 1)] & 0xFF];
-				}
+				int sourceX = x * spriteWidth / TEXTURE_SIZE;
+				pixels[y * TEXTURE_SIZE + x] = palette[palettePixels[sourceY * spriteWidth + sourceX] & 0xFF];
 			}
-			return;
-		}
-
-		if (spriteWidth != 128)
-		{
-			throw new IllegalArgumentException("Unsupported texture sprite size: " + spriteWidth);
 		}
 	}
 

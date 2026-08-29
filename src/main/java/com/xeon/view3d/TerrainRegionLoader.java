@@ -33,11 +33,16 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import net.runelite.cache.ConfigType;
+import net.runelite.cache.IndexType;
 import net.runelite.cache.ObjectManager;
 import net.runelite.cache.OverlayManager;
 import net.runelite.cache.SpriteManager;
 import net.runelite.cache.TextureManager;
 import net.runelite.cache.UnderlayManager;
+import net.runelite.cache.definitions.providers.OverlayProvider;
+import net.runelite.cache.definitions.providers.UnderlayProvider;
+import net.runelite.cache.fs.Index;
 import net.runelite.cache.fs.Store;
 import net.runelite.cache.item.RSTextureProvider;
 import net.runelite.cache.region.Region;
@@ -77,23 +82,20 @@ public final class TerrainRegionLoader
 			throw new IOException("Cache directory is not set.");
 		}
 
-		Store store = new Store(cacheDirectory.toFile());
+		Store store = openStore(cacheDirectory, hdosCache);
 		try
 		{
 			store.load();
-			UnderlayManager underlays = new UnderlayManager(store);
-			underlays.load();
-			OverlayManager overlays = new OverlayManager(store);
-			overlays.load();
-			ObjectManager objects = new ObjectManager(store);
-			objects.load();
-			TextureResources textures = loadTextureResources(store);
-			TerrainFloorTextures floorTextures = TerrainFloorTextures.load(store);
-			RegionLoader regionLoader = new RegionLoader(store, loadKeyProvider());
+			UnderlayProvider underlays = loadUnderlays(store, hdosCache);
+			OverlayProvider overlays = loadOverlays(store, hdosCache);
+			ObjectManager objects = loadObjects(store, hdosCache);
+			TextureResources textures = loadTextureResources(store, hdosCache);
+			TerrainFloorTextures floorTextures = TerrainFloorTextures.load(store, hdosCache);
+			RegionSource regionSource = openRegionSource(store, hdosCache);
 			return new Session(
 				store,
 				hdosCache,
-				regionLoader,
+				regionSource,
 				underlays,
 				overlays,
 				objects,
@@ -121,8 +123,127 @@ public final class TerrainRegionLoader
 		}
 	}
 
-	private static TextureResources loadTextureResources(Store store)
+	private static Store openStore(Path cacheDirectory, boolean hdosCache) throws IOException
 	{
+		if (hdosCache)
+		{
+			return new Store(new DispleeCacheStorage(cacheDirectory));
+		}
+		return new Store(cacheDirectory.toFile());
+	}
+
+	private static RegionSource openRegionSource(Store store, boolean hdosCache) throws IOException
+	{
+		KeyProvider keyProvider = loadKeyProvider();
+		if (hdosCache)
+		{
+			HdosRegionLoader regionLoader = new HdosRegionLoader(store, keyProvider);
+			return regionLoader::loadRegionFromArchive;
+		}
+		RegionLoader regionLoader = new RegionLoader(store, keyProvider);
+		return regionLoader::loadRegionFromArchive;
+	}
+
+	private static UnderlayProvider loadUnderlays(Store store, boolean hdosCache)
+		throws IOException
+	{
+		if (hdosCache)
+		{
+			try
+			{
+				Map<Integer, net.runelite.cache.definitions.UnderlayDefinition> underlays =
+					HdosFloorDefinitions.loadUnderlays(store);
+				return underlays::get;
+			}
+			catch (IOException | RuntimeException ex)
+			{
+				System.err.println("Failed to load HDOS underlay definitions for 3D terrain: " + ex.getMessage());
+				return underlayId -> null;
+			}
+		}
+
+		UnderlayManager underlays = new UnderlayManager(store);
+		underlays.load();
+		return underlays;
+	}
+
+	private static OverlayProvider loadOverlays(Store store, boolean hdosCache)
+		throws IOException
+	{
+		if (hdosCache)
+		{
+			try
+			{
+				Map<Integer, net.runelite.cache.definitions.OverlayDefinition> overlays =
+					HdosFloorDefinitions.loadOverlays(store);
+				return overlays::get;
+			}
+			catch (IOException | RuntimeException ex)
+			{
+				System.err.println("Failed to load HDOS overlay definitions for 3D terrain: " + ex.getMessage());
+				return overlayId -> null;
+			}
+		}
+
+		OverlayManager overlays = new OverlayManager(store);
+		overlays.load();
+		return overlays;
+	}
+
+	private static ObjectManager loadObjects(Store store, boolean allowPartial)
+		throws IOException
+	{
+		if (allowPartial && !hasConfigArchive(store, ConfigType.OBJECT))
+		{
+			return null;
+		}
+
+		ObjectManager objects = new ObjectManager(store);
+		try
+		{
+			objects.load();
+			return objects;
+		}
+		catch (IOException | RuntimeException ex)
+		{
+			if (!allowPartial)
+			{
+				throw ex;
+			}
+			System.err.println("Failed to load HDOS object definitions for 3D terrain: " + ex.getMessage());
+			return null;
+		}
+	}
+
+	private static boolean hasConfigArchive(Store store, ConfigType configType)
+	{
+		Index index = store.getIndex(IndexType.CONFIGS);
+		return index != null && index.getArchive(configType.getId()) != null;
+	}
+
+	private static TextureResources loadTextureResources(Store store, boolean hdosCache)
+	{
+		if (hdosCache)
+		{
+			try
+			{
+				HdosTextureData textures = HdosTextureData.load(store);
+				if (textures.textures().isEmpty())
+				{
+					return new TextureResources(null, SceneTextureSet.empty());
+				}
+				return new TextureResources(
+					new RSTextureProvider(textures, textures),
+					SceneTextureSet.build(textures.textures(), textures)
+				);
+			}
+			catch (IOException | RuntimeException ex)
+			{
+				System.err.println("Failed to load HDOS cache texture metadata for 3D terrain: " + ex.getMessage());
+				return new TextureResources(null, SceneTextureSet.empty());
+			}
+		}
+
 		try
 		{
 			TextureManager textures = new TextureManager(store);
@@ -174,9 +295,9 @@ public final class TerrainRegionLoader
 	{
 		private final Store store;
 		private final boolean hdosCache;
-		private final RegionLoader regionLoader;
-		private final UnderlayManager underlays;
-		private final OverlayManager overlays;
+		private final RegionSource regionSource;
+		private final UnderlayProvider underlays;
+		private final OverlayProvider overlays;
 		private final ObjectManager objects;
 		private volatile NpcSpawnIndex npcSpawnIndex;
 		private final NpcDefinitionProvider npcDefinitionProvider;
@@ -191,9 +312,9 @@ public final class TerrainRegionLoader
 		private Session(
 			Store store,
 			boolean hdosCache,
-			RegionLoader regionLoader,
-			UnderlayManager underlays,
-			OverlayManager overlays,
+			RegionSource regionSource,
+			UnderlayProvider underlays,
+			OverlayProvider overlays,
 			ObjectManager objects,
 			NpcSpawnIndex npcSpawnIndex,
 			NpcDefinitionProvider npcDefinitionProvider,
@@ -207,7 +328,7 @@ public final class TerrainRegionLoader
 		{
 			this.store = store;
 			this.hdosCache = hdosCache;
-			this.regionLoader = regionLoader;
+			this.regionSource = regionSource;
 			this.underlays = underlays;
 			this.overlays = overlays;
 			this.objects = objects;
@@ -233,7 +354,7 @@ public final class TerrainRegionLoader
 				throw new IOException("Region ID is not valid.");
 			}
 
-			Region region = regionLoader.loadRegionFromArchive(regionId);
+			Region region = regionSource.loadRegion(regionId);
 			if (region == null)
 			{
 				throw new IOException("Region " + regionId + " was not found in the cache.");
@@ -331,7 +452,7 @@ public final class TerrainRegionLoader
 		{
 			try
 			{
-				return regionLoader.loadRegionFromArchive(regionId);
+				return regionSource.loadRegion(regionId);
 			}
 			catch (IOException | RuntimeException ex)
 			{
@@ -345,5 +466,10 @@ public final class TerrainRegionLoader
 			npcFrameCache.clear();
 			store.close();
 		}
+	}
+
+	private interface RegionSource
+	{
+		Region loadRegion(int regionId) throws IOException;
 	}
 }

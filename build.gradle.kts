@@ -119,6 +119,8 @@ dependencies {
     compileOnly(files(runeliteCacheShadedJar))
     runtimeOnly(files(runeliteCacheShadedJar))
     testImplementation(files(runeliteCacheShadedJar))
+    testImplementation(platform("org.junit:junit-bom:5.10.2"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
     lwjglBundledNativeClassifiers.forEach { classifier ->
         runtimeOnly("org.lwjgl:lwjgl::$classifier")
         runtimeOnly("org.lwjgl:lwjgl-opengl::$classifier")
@@ -154,10 +156,10 @@ tasks.register<JavaExec>("inspectAtlas") {
 
 tasks.register<JavaExec>("probeHdosCache") {
     group = "verification"
-    description = "Probes an HDOS cache with RuneLite and Displee cache libraries. Override with -Posmapviewer.hdosCache=/path."
+    description = "Runs Displee-only HDOS cache diagnostics. Override with -Posmapviewer.hdosCache=/path."
     dependsOn(tasks.named("testClasses"))
     classpath = sourceSets["test"].runtimeClasspath
-    mainClass.set("com.xeon.tools.HdosCacheProbe")
+    mainClass.set("com.xeon.tools.HdosCacheDiagnostics")
     workingDir = projectDir
     doFirst {
         if (args.isNullOrEmpty()) {
@@ -176,6 +178,10 @@ tasks.withType<Jar>().configureEach {
 
 tasks.processResources {
     dependsOn(generateAppVersionProperties)
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
 
 tasks.shadowJar {

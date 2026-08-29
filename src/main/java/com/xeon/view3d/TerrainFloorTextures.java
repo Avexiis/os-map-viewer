@@ -27,6 +27,7 @@ package com.xeon.view3d;
 
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import net.runelite.cache.ConfigType;
 import net.runelite.cache.IndexType;
@@ -57,16 +58,22 @@ final class TerrainFloorTextures
 
 	static TerrainFloorTextures load(Store store)
 	{
+		return load(store, false);
+	}
+
+	static TerrainFloorTextures load(Store store, boolean hdosCache)
+	{
 		try
 		{
 			return new TerrainFloorTextures(
-				loadUnderlayTextures(store),
-				loadOverlayTextures(store)
+				hdosCache ? loadHdosUnderlayTextures(store) : loadUnderlayTextures(store),
+				hdosCache ? loadHdosOverlayTextures(store) : loadOverlayTextures(store)
 			);
 		}
 		catch (IOException | RuntimeException ex)
 		{
-			System.err.println("Failed to load floor texture metadata for 3D terrain: " + ex.getMessage());
+			String prefix = hdosCache ? "HDOS floor" : "floor";
+			System.err.println("Failed to load " + prefix + " texture metadata for 3D terrain: " + ex.getMessage());
 			return empty();
 		}
 	}
@@ -109,6 +116,34 @@ final class TerrainFloorTextures
 		return textures;
 	}
 
+	private static Map<Integer, Integer> loadHdosUnderlayTextures(Store store) throws IOException
+	{
+		Map<Integer, Integer> textures = new HashMap<>();
+		for (DispleeCacheStorage.DecodedFile file : hdosFilesFor(store, ConfigType.UNDERLAY))
+		{
+			int texture = decodeUnderlayTexture(file.data());
+			if (texture >= 0)
+			{
+				textures.put(file.id(), texture);
+			}
+		}
+		return textures;
+	}
+
+	private static Map<Integer, Integer> loadHdosOverlayTextures(Store store) throws IOException
+	{
+		Map<Integer, Integer> textures = new HashMap<>();
+		for (DispleeCacheStorage.DecodedFile file : hdosFilesFor(store, ConfigType.OVERLAY))
+		{
+			int texture = decodeOverlayTexture(file.data());
+			if (texture >= 0)
+			{
+				textures.put(file.id(), texture);
+			}
+		}
+		return textures;
+	}
+
 	private static Iterable<FSFile> filesFor(Store store, ConfigType configType) throws IOException
 	{
 		Index index = store.getIndex(IndexType.CONFIGS);
@@ -116,6 +151,21 @@ final class TerrainFloorTextures
 		byte[] archiveData = store.getStorage().loadArchive(archive);
 		ArchiveFiles files = archive.getFiles(archiveData);
 		return files.getFiles();
+	}
+
+	private static Iterable<DispleeCacheStorage.DecodedFile> hdosFilesFor(Store store, ConfigType configType)
+		throws IOException
+	{
+		Index index = store.getIndex(IndexType.CONFIGS);
+		if (index == null || index.getArchive(configType.getId()) == null)
+		{
+			return List.of();
+		}
+		if (store.getStorage() instanceof DispleeCacheStorage storage)
+		{
+			return storage.loadArchiveFiles(IndexType.CONFIGS.getNumber(), configType.getId());
+		}
+		throw new IOException("HDOS floor texture decoder requires Displee cache storage.");
 	}
 
 	private static int decodeUnderlayTexture(byte[] bytes)
