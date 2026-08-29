@@ -168,6 +168,34 @@ tasks.register<JavaExec>("probeHdosCache") {
     }
 }
 
+tasks.register<JavaExec>("scanHdosObjectModels") {
+    group = "verification"
+    description = "Scans placed HDOS object models near a region. Pass --args=\"--center=12850 --radius=2\"."
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.xeon.view3d.HdosObjectModelScan")
+    workingDir = projectDir
+    doFirst {
+        if (args.isNullOrEmpty()) {
+            args("--cache", hdosCacheProbeDir.get())
+        }
+    }
+}
+
+tasks.register<JavaExec>("scanHdosXteas") {
+    group = "verification"
+    description = "Scans HDOS location archives for likely missing XTEA keys. Pass --args=\"--center=12850 --radius=2\"."
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.xeon.view3d.HdosXteaScan")
+    workingDir = projectDir
+    doFirst {
+        if (args.isNullOrEmpty()) {
+            args("--cache", hdosCacheProbeDir.get())
+        }
+    }
+}
+
 tasks.withType<Jar>().configureEach {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     manifest {
@@ -182,6 +210,7 @@ tasks.processResources {
 
 tasks.test {
     useJUnitPlatform()
+    maxHeapSize = "2g"
 }
 
 tasks.shadowJar {

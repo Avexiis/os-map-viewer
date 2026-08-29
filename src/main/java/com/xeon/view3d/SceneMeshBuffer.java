@@ -117,6 +117,11 @@ final class SceneMeshBuffer
 		size += other.size;
 	}
 
+	void copyTo(float[] target, int offset)
+	{
+		System.arraycopy(values, 0, target, offset, size);
+	}
+
 	float[] toArray()
 	{
 		return Arrays.copyOf(values, size);

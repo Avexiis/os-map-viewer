@@ -28,12 +28,9 @@
 package com.xeon.view3d;
 
 import net.runelite.cache.definitions.ModelDefinition;
-import net.runelite.cache.definitions.loaders.ModelLoader;
 
 final class HdosModelLoader
 {
-	private final ModelLoader runeliteLoader = new ModelLoader();
-
 	ModelDefinition load(int modelId, byte[] data)
 	{
 		if (data == null || data.length < 2)
@@ -42,6 +39,22 @@ final class HdosModelLoader
 		}
 
 		ModelDefinition definition;
+		if (data[data.length - 1] == -3 && data[data.length - 2] == -1)
+		{
+			definition = new ModelDefinition();
+			definition.id = modelId;
+			decodeType3(definition, data);
+			finish(definition);
+			return definition;
+		}
+		if (data[data.length - 1] == -2 && data[data.length - 2] == -1)
+		{
+			definition = new ModelDefinition();
+			definition.id = modelId;
+			decodeType2(definition, data);
+			finish(definition);
+			return definition;
+		}
 		if (data[data.length - 1] == -1 && data[data.length - 2] == -1)
 		{
 			definition = new ModelDefinition();
@@ -51,8 +64,10 @@ final class HdosModelLoader
 			return definition;
 		}
 
-		definition = runeliteLoader.load(modelId, data);
-		validate(definition);
+		definition = new ModelDefinition();
+		definition.id = modelId;
+		decodeOldFormat(definition, data);
+		finish(definition);
 		return definition;
 	}
 
@@ -60,11 +75,326 @@ final class HdosModelLoader
 	{
 		validate(definition);
 		definition.computeNormals();
-		if (definition.faceTextures != null)
-		{
-			definition.computeTextureUVCoordinates();
-		}
+		definition.faceTextureUCoordinates = null;
+		definition.faceTextureVCoordinates = null;
 		definition.computeAnimationTables();
+	}
+
+	private static void decodeType3(ModelDefinition def, byte[] data)
+	{
+		HdosByteBuffer buf1 = new HdosByteBuffer(data);
+		HdosByteBuffer buf2 = new HdosByteBuffer(data);
+		HdosByteBuffer buf3 = new HdosByteBuffer(data);
+		HdosByteBuffer buf4 = new HdosByteBuffer(data);
+		HdosByteBuffer buf5 = new HdosByteBuffer(data);
+		HdosByteBuffer buf6 = new HdosByteBuffer(data);
+		HdosByteBuffer buf7 = new HdosByteBuffer(data);
+		HdosByteBuffer buf8 = new HdosByteBuffer(data);
+		buf1.offset = data.length - 26;
+		int vertexCount = buf1.readUnsignedShort();
+		int faceCount = buf1.readUnsignedShort();
+		int textureFaceCount = buf1.readUnsignedByte();
+		int hasFaceRenderTypes = buf1.readUnsignedByte();
+		int modelPriority = buf1.readUnsignedByte();
+		int hasFaceAlpha = buf1.readUnsignedByte();
+		int hasFaceSkins = buf1.readUnsignedByte();
+		int hasFaceTextures = buf1.readUnsignedByte();
+		int hasVertexSkins = buf1.readUnsignedByte();
+		int hasAnimayaGroups = buf1.readUnsignedByte();
+		int vertexXBytes = buf1.readUnsignedShort();
+		int vertexYBytes = buf1.readUnsignedShort();
+		int vertexZBytes = buf1.readUnsignedShort();
+		int faceIndexBytes = buf1.readUnsignedShort();
+		int textureIndexBytes = buf1.readUnsignedShort();
+		int vertexSkinBytes = buf1.readUnsignedShort();
+
+		int simpleTextureFaceCount = 0;
+		int complexTextureFaceCount = 0;
+		int cubeTextureFaceCount = 0;
+		if (textureFaceCount > 0)
+		{
+			def.textureRenderTypes = new byte[textureFaceCount];
+			buf1.offset = 0;
+			for (int i = 0; i < textureFaceCount; i++)
+			{
+				byte type = def.textureRenderTypes[i] = buf1.readByte();
+				if (type == 0)
+				{
+					simpleTextureFaceCount++;
+				}
+				if (type >= 1 && type <= 3)
+				{
+					complexTextureFaceCount++;
+				}
+				if (type == 2)
+				{
+					cubeTextureFaceCount++;
+				}
+			}
+		}
+
+		int offset = textureFaceCount + vertexCount;
+		int faceRenderTypesOffset = offset;
+		if (hasFaceRenderTypes == 1)
+		{
+			offset += faceCount;
+		}
+		int faceCompressionTypesOffset = offset;
+		offset += faceCount;
+		int facePrioritiesOffset = offset;
+		if (modelPriority == 255)
+		{
+			offset += faceCount;
+		}
+		int faceSkinsOffset = offset;
+		if (hasFaceSkins == 1)
+		{
+			offset += faceCount;
+		}
+		int vertexSkinsOffset = offset;
+		offset += vertexSkinBytes;
+		int faceAlphasOffset = offset;
+		if (hasFaceAlpha == 1)
+		{
+			offset += faceCount;
+		}
+		int faceIndicesOffset = offset;
+		offset += faceIndexBytes;
+		int faceMaterialsOffset = offset;
+		if (hasFaceTextures == 1)
+		{
+			offset += faceCount * 2;
+		}
+		int textureIndicesOffset = offset;
+		offset += textureIndexBytes;
+		int faceColorsOffset = offset;
+		offset += faceCount * 2;
+		int vertexXOffset = offset;
+		offset += vertexXBytes;
+		int vertexYOffset = offset;
+		offset += vertexYBytes;
+		int vertexZOffset = offset;
+		offset += vertexZBytes;
+		int simpleTexturesOffset = offset;
+		offset += simpleTextureFaceCount * 6;
+		int complexTexturesOffset = offset;
+		offset += complexTextureFaceCount * 6;
+		int textureScalesOffset = offset;
+		offset += complexTextureFaceCount * 6;
+		int textureRotationsOffset = offset;
+		offset += complexTextureFaceCount * 2;
+		int textureDirectionsOffset = offset;
+		offset += complexTextureFaceCount;
+		int textureTranslationsOffset = offset;
+		offset += complexTextureFaceCount * 2 + cubeTextureFaceCount * 2;
+
+		allocate(def, vertexCount, faceCount, textureFaceCount, hasVertexSkins == 1,
+			hasFaceRenderTypes == 1, modelPriority, hasFaceAlpha == 1, hasFaceSkins == 1,
+			hasFaceTextures == 1, hasAnimayaGroups == 1);
+
+		readVertices(def, buf1, buf2, buf3, buf4, buf5, textureFaceCount, vertexXOffset, vertexYOffset,
+			vertexZOffset, vertexSkinsOffset, hasVertexSkins == 1);
+		if (hasAnimayaGroups == 1)
+		{
+			readAnimayaGroups(def, buf5);
+		}
+		readFaces(def, buf1, buf2, buf3, buf4, buf5, buf6, buf7, faceColorsOffset, faceRenderTypesOffset,
+			facePrioritiesOffset, faceAlphasOffset, faceSkinsOffset, faceMaterialsOffset,
+			textureIndicesOffset, hasFaceRenderTypes == 1, modelPriority, hasFaceAlpha == 1,
+			hasFaceSkins == 1, hasFaceTextures == 1);
+		readFaceIndices(def, buf1, buf2, faceIndicesOffset, faceCompressionTypesOffset);
+		if (textureFaceCount > 0)
+		{
+			readTextureMappings(def, buf1, buf2, buf3, buf4, buf5, buf6, simpleTexturesOffset,
+				complexTexturesOffset, textureScalesOffset, textureRotationsOffset, textureDirectionsOffset,
+				textureTranslationsOffset, 13);
+		}
+
+		buf8.offset = offset;
+		if (buf8.remaining() > 0)
+		{
+			int extra = buf8.readUnsignedByte();
+			if (extra != 0)
+			{
+				buf8.readUnsignedShort();
+				buf8.readUnsignedShort();
+				buf8.readUnsignedShort();
+				buf8.readInt();
+			}
+		}
+		if (buf8.remaining() > 0 && buf8.readUnsignedByte() == 1)
+		{
+			def.faceZOffsets = new byte[faceCount];
+			for (int i = 0; i < faceCount; i++)
+			{
+				def.faceZOffsets[i] = buf8.readByte();
+			}
+		}
+		cleanupTextureReferences(def);
+	}
+
+	private static void decodeType2(ModelDefinition def, byte[] data)
+	{
+		boolean usesFaceRenderTypes = false;
+		boolean usesFaceTextures = false;
+		HdosByteBuffer buf1 = new HdosByteBuffer(data);
+		HdosByteBuffer buf2 = new HdosByteBuffer(data);
+		HdosByteBuffer buf3 = new HdosByteBuffer(data);
+		HdosByteBuffer buf4 = new HdosByteBuffer(data);
+		HdosByteBuffer buf5 = new HdosByteBuffer(data);
+		buf1.offset = data.length - 23;
+		int vertexCount = buf1.readUnsignedShort();
+		int faceCount = buf1.readUnsignedShort();
+		int textureFaceCount = buf1.readUnsignedByte();
+		int hasFaceRenderTypes = buf1.readUnsignedByte();
+		int modelPriority = buf1.readUnsignedByte();
+		int hasFaceAlpha = buf1.readUnsignedByte();
+		int hasFaceSkins = buf1.readUnsignedByte();
+		int hasVertexSkins = buf1.readUnsignedByte();
+		int hasAnimayaGroups = buf1.readUnsignedByte();
+		int vertexXBytes = buf1.readUnsignedShort();
+		int vertexYBytes = buf1.readUnsignedShort();
+		int vertexZBytes = buf1.readUnsignedShort();
+		int faceIndexBytes = buf1.readUnsignedShort();
+		int vertexSkinBytes = buf1.readUnsignedShort();
+
+		int offset = 0;
+		int vertexFlagsOffset = offset;
+		offset += vertexCount;
+		int faceCompressionTypesOffset = offset;
+		offset += faceCount;
+		int facePrioritiesOffset = offset;
+		if (modelPriority == 255)
+		{
+			offset += faceCount;
+		}
+		int faceSkinsOffset = offset;
+		if (hasFaceSkins == 1)
+		{
+			offset += faceCount;
+		}
+		int faceRenderTypesOffset = offset;
+		if (hasFaceRenderTypes == 1)
+		{
+			offset += faceCount;
+		}
+		int vertexSkinsOffset = offset;
+		offset += vertexSkinBytes;
+		int faceAlphasOffset = offset;
+		if (hasFaceAlpha == 1)
+		{
+			offset += faceCount;
+		}
+		int faceIndicesOffset = offset;
+		offset += faceIndexBytes;
+		int faceColorsOffset = offset;
+		offset += faceCount * 2;
+		int textureIndicesOffset = offset;
+		offset += textureFaceCount * 6;
+		int vertexXOffset = offset;
+		offset += vertexXBytes;
+		int vertexYOffset = offset;
+		offset += vertexYBytes;
+		int vertexZOffset = offset;
+		offset += vertexZBytes;
+		int faceZOffsetsOffset = offset;
+
+		allocate(def, vertexCount, faceCount, textureFaceCount, hasVertexSkins == 1,
+			hasFaceRenderTypes == 1, modelPriority, hasFaceAlpha == 1, hasFaceSkins == 1,
+			false, hasAnimayaGroups == 1);
+		if (hasFaceRenderTypes == 1)
+		{
+			def.textureCoords = new byte[faceCount];
+			def.faceTextures = new short[faceCount];
+		}
+
+		readVertices(def, buf1, buf2, buf3, buf4, buf5, vertexFlagsOffset, vertexXOffset, vertexYOffset,
+			vertexZOffset, vertexSkinsOffset, hasVertexSkins == 1);
+		if (hasAnimayaGroups == 1)
+		{
+			readAnimayaGroups(def, buf5);
+		}
+
+		buf1.offset = faceColorsOffset;
+		buf2.offset = faceRenderTypesOffset;
+		buf3.offset = facePrioritiesOffset;
+		buf4.offset = faceAlphasOffset;
+		buf5.offset = faceSkinsOffset;
+		for (int i = 0; i < faceCount; i++)
+		{
+			def.faceColors[i] = (short) buf1.readUnsignedShort();
+			if (hasFaceRenderTypes == 1)
+			{
+				int flags = buf2.readUnsignedByte();
+				if ((flags & 1) == 1)
+				{
+					def.faceRenderTypes[i] = 1;
+					usesFaceRenderTypes = true;
+				}
+				else
+				{
+					def.faceRenderTypes[i] = 0;
+				}
+
+				if ((flags & 2) == 2)
+				{
+					def.textureCoords[i] = (byte) (flags >> 2);
+					def.faceTextures[i] = def.faceColors[i];
+					def.faceColors[i] = 127;
+					if (def.faceTextures[i] != -1)
+					{
+						usesFaceTextures = true;
+					}
+				}
+				else
+				{
+					def.textureCoords[i] = -1;
+					def.faceTextures[i] = -1;
+				}
+			}
+			if (modelPriority == 255)
+			{
+				def.faceRenderPriorities[i] = buf3.readByte();
+			}
+			if (hasFaceAlpha == 1)
+			{
+				def.faceTransparencies[i] = buf4.readByte();
+			}
+			if (hasFaceSkins == 1)
+			{
+				def.packedTransparencyVertexGroups[i] = buf5.readUnsignedByte();
+			}
+		}
+
+		readFaceIndices(def, buf1, buf2, faceIndicesOffset, faceCompressionTypesOffset);
+
+		buf1.offset = textureIndicesOffset;
+		for (int i = 0; i < textureFaceCount; i++)
+		{
+			def.textureRenderTypes[i] = 0;
+			def.texIndices1[i] = (short) buf1.readUnsignedShort();
+			def.texIndices2[i] = (short) buf1.readUnsignedShort();
+			def.texIndices3[i] = (short) buf1.readUnsignedShort();
+		}
+
+		buf1.offset = faceZOffsetsOffset;
+		if (buf1.remaining() > 0 && buf1.readUnsignedByte() == 1)
+		{
+			def.faceZOffsets = new byte[faceCount];
+			for (int i = 0; i < faceCount; i++)
+			{
+				def.faceZOffsets[i] = buf1.readByte();
+			}
+		}
+		cleanupTextureReferences(def);
+		if (!usesFaceTextures)
+		{
+			def.faceTextures = null;
+		}
+		if (!usesFaceRenderTypes)
+		{
+			def.faceRenderTypes = null;
+		}
 	}
 
 	private static void decodeType1(ModelDefinition def, byte[] data)
@@ -255,6 +585,226 @@ final class HdosModelLoader
 		}
 	}
 
+	private static void decodeOldFormat(ModelDefinition def, byte[] data)
+	{
+		boolean usesFaceRenderTypes = false;
+		boolean usesFaceTextures = false;
+		HdosByteBuffer buf1 = new HdosByteBuffer(data);
+		HdosByteBuffer buf2 = new HdosByteBuffer(data);
+		HdosByteBuffer buf3 = new HdosByteBuffer(data);
+		HdosByteBuffer buf4 = new HdosByteBuffer(data);
+		HdosByteBuffer buf5 = new HdosByteBuffer(data);
+		buf1.offset = data.length - 18;
+		int vertexCount = buf1.readUnsignedShort();
+		int faceCount = buf1.readUnsignedShort();
+		int textureFaceCount = buf1.readUnsignedByte();
+		int hasFaceTextureFlags = buf1.readUnsignedByte();
+		int modelPriority = buf1.readUnsignedByte();
+		int hasFaceAlpha = buf1.readUnsignedByte();
+		int hasFaceSkins = buf1.readUnsignedByte();
+		int hasVertexSkins = buf1.readUnsignedByte();
+		int vertexXBytes = buf1.readUnsignedShort();
+		int vertexYBytes = buf1.readUnsignedShort();
+		int vertexZBytes = buf1.readUnsignedShort();
+		int faceIndexBytes = buf1.readUnsignedShort();
+
+		int offset = 0;
+		int vertexFlagsOffset = offset;
+		offset += vertexCount;
+		int faceCompressionTypesOffset = offset;
+		offset += faceCount;
+		int facePrioritiesOffset = offset;
+		if (modelPriority == 255)
+		{
+			offset += faceCount;
+		}
+		int faceSkinsOffset = offset;
+		if (hasFaceSkins == 1)
+		{
+			offset += faceCount;
+		}
+		int faceTextureFlagsOffset = offset;
+		if (hasFaceTextureFlags == 1)
+		{
+			offset += faceCount;
+		}
+		int vertexSkinsOffset = offset;
+		if (hasVertexSkins == 1)
+		{
+			offset += vertexCount;
+		}
+		int faceAlphasOffset = offset;
+		if (hasFaceAlpha == 1)
+		{
+			offset += faceCount;
+		}
+		int faceIndicesOffset = offset;
+		offset += faceIndexBytes;
+		int faceColorsOffset = offset;
+		offset += faceCount * 2;
+		int textureIndicesOffset = offset;
+		offset += textureFaceCount * 6;
+		int vertexXOffset = offset;
+		offset += vertexXBytes;
+		int vertexYOffset = offset;
+		offset += vertexYBytes;
+		int vertexZOffset = offset;
+
+		allocate(def, vertexCount, faceCount, textureFaceCount, hasVertexSkins == 1,
+			hasFaceTextureFlags == 1, modelPriority, hasFaceAlpha == 1, hasFaceSkins == 1,
+			false, false);
+		if (hasFaceTextureFlags == 1)
+		{
+			def.textureCoords = new byte[faceCount];
+			def.faceTextures = new short[faceCount];
+		}
+
+		readVertices(def, buf1, buf2, buf3, buf4, buf5, vertexFlagsOffset, vertexXOffset, vertexYOffset,
+			vertexZOffset, vertexSkinsOffset, hasVertexSkins == 1);
+
+		buf1.offset = faceColorsOffset;
+		buf2.offset = faceTextureFlagsOffset;
+		buf3.offset = facePrioritiesOffset;
+		buf4.offset = faceAlphasOffset;
+		buf5.offset = faceSkinsOffset;
+		for (int i = 0; i < faceCount; i++)
+		{
+			def.faceColors[i] = (short) buf1.readUnsignedShort();
+			if (hasFaceTextureFlags == 1)
+			{
+				int flags = buf2.readUnsignedByte();
+				if ((flags & 1) == 1)
+				{
+					def.faceRenderTypes[i] = 1;
+					usesFaceRenderTypes = true;
+				}
+				else
+				{
+					def.faceRenderTypes[i] = 0;
+				}
+
+				if ((flags & 2) == 2)
+				{
+					def.textureCoords[i] = (byte) (flags >> 2);
+					def.faceTextures[i] = def.faceColors[i];
+					def.faceColors[i] = 127;
+					if (def.faceTextures[i] != -1)
+					{
+						usesFaceTextures = true;
+					}
+				}
+				else
+				{
+					def.textureCoords[i] = -1;
+					def.faceTextures[i] = -1;
+				}
+			}
+			if (modelPriority == 255)
+			{
+				def.faceRenderPriorities[i] = buf3.readByte();
+			}
+			if (hasFaceAlpha == 1)
+			{
+				def.faceTransparencies[i] = buf4.readByte();
+			}
+			if (hasFaceSkins == 1)
+			{
+				def.packedTransparencyVertexGroups[i] = buf5.readUnsignedByte();
+			}
+		}
+
+		readFaceIndices(def, buf1, buf2, faceIndicesOffset, faceCompressionTypesOffset);
+
+		buf1.offset = textureIndicesOffset;
+		for (int i = 0; i < textureFaceCount; i++)
+		{
+			def.textureRenderTypes[i] = 0;
+			def.texIndices1[i] = (short) buf1.readUnsignedShort();
+			def.texIndices2[i] = (short) buf1.readUnsignedShort();
+			def.texIndices3[i] = (short) buf1.readUnsignedShort();
+		}
+
+		cleanupTextureReferences(def);
+		if (!usesFaceTextures)
+		{
+			def.faceTextures = null;
+		}
+		if (!usesFaceRenderTypes)
+		{
+			def.faceRenderTypes = null;
+		}
+	}
+
+	private static void allocate(
+		ModelDefinition def,
+		int vertexCount,
+		int faceCount,
+		int textureFaceCount,
+		boolean hasVertexSkins,
+		boolean hasFaceRenderTypes,
+		int modelPriority,
+		boolean hasFaceAlpha,
+		boolean hasFaceSkins,
+		boolean hasFaceTextures,
+		boolean hasAnimayaGroups
+	)
+	{
+		def.vertexCount = vertexCount;
+		def.faceCount = faceCount;
+		def.numTextureFaces = textureFaceCount;
+		def.vertexX = new int[vertexCount];
+		def.vertexY = new int[vertexCount];
+		def.vertexZ = new int[vertexCount];
+		def.faceIndices1 = new int[faceCount];
+		def.faceIndices2 = new int[faceCount];
+		def.faceIndices3 = new int[faceCount];
+		if (hasVertexSkins)
+		{
+			def.packedVertexGroups = new int[vertexCount];
+		}
+		if (hasFaceRenderTypes)
+		{
+			def.faceRenderTypes = new byte[faceCount];
+		}
+		if (modelPriority == 255)
+		{
+			def.faceRenderPriorities = new byte[faceCount];
+		}
+		else
+		{
+			def.priority = (byte) modelPriority;
+		}
+		if (hasFaceAlpha)
+		{
+			def.faceTransparencies = new byte[faceCount];
+		}
+		if (hasFaceSkins)
+		{
+			def.packedTransparencyVertexGroups = new int[faceCount];
+		}
+		if (hasFaceTextures)
+		{
+			def.faceTextures = new short[faceCount];
+		}
+		if (hasFaceTextures && textureFaceCount > 0)
+		{
+			def.textureCoords = new byte[faceCount];
+		}
+		if (hasAnimayaGroups)
+		{
+			def.animayaGroups = new int[vertexCount][];
+			def.animayaScales = new int[vertexCount][];
+		}
+		def.faceColors = new short[faceCount];
+		if (textureFaceCount > 0)
+		{
+			def.textureRenderTypes = def.textureRenderTypes == null ? new byte[textureFaceCount] : def.textureRenderTypes;
+			def.texIndices1 = new short[textureFaceCount];
+			def.texIndices2 = new short[textureFaceCount];
+			def.texIndices3 = new short[textureFaceCount];
+		}
+	}
+
 	private static void readVertices(
 		ModelDefinition def,
 		HdosByteBuffer vertexFlags,
@@ -293,6 +843,21 @@ final class HdosModelLoader
 			if (hasVertexSkins)
 			{
 				def.packedVertexGroups[i] = vertexSkins.readUnsignedByte();
+			}
+		}
+	}
+
+	private static void readAnimayaGroups(ModelDefinition def, HdosByteBuffer buffer)
+	{
+		for (int i = 0; i < def.vertexCount; i++)
+		{
+			int groupCount = buffer.readUnsignedByte();
+			def.animayaGroups[i] = new int[groupCount];
+			def.animayaScales[i] = new int[groupCount];
+			for (int j = 0; j < groupCount; j++)
+			{
+				def.animayaGroups[i][j] = buffer.readUnsignedByte();
+				def.animayaScales[i][j] = buffer.readUnsignedByte();
 			}
 		}
 	}
@@ -507,6 +1072,16 @@ final class HdosModelLoader
 					def.textureCoords[i] = -1;
 					continue;
 				}
+				if ((def.textureRenderTypes[coord] & 0xFF) != 0)
+				{
+					def.textureCoords[i] = -1;
+					continue;
+				}
+				if (!validTextureMapping(def, coord))
+				{
+					def.textureCoords[i] = -1;
+					continue;
+				}
 				if (def.faceIndices1[i] == (def.texIndices1[coord] & 0xFFFF)
 					&& def.faceIndices2[i] == (def.texIndices2[coord] & 0xFFFF)
 					&& def.faceIndices3[i] == (def.texIndices3[coord] & 0xFFFF))
@@ -556,6 +1131,19 @@ final class HdosModelLoader
 				def.faceRenderTypes = null;
 			}
 		}
+	}
+
+	private static boolean validTextureMapping(ModelDefinition def, int coord)
+	{
+		return validTextureVertexIndex(def, def.texIndices1[coord])
+			&& validTextureVertexIndex(def, def.texIndices2[coord])
+			&& validTextureVertexIndex(def, def.texIndices3[coord]);
+	}
+
+	private static boolean validTextureVertexIndex(ModelDefinition def, short vertex)
+	{
+		int index = vertex & 0xFFFF;
+		return index >= 0 && index < def.vertexCount;
 	}
 
 	private static void scaleDown(ModelDefinition def, int amount)

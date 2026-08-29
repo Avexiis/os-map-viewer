@@ -80,6 +80,28 @@ class HdosTerrainRegionLoaderTest
 	}
 
 	@Test
+	void loadsHdosLocationsFromMapsCacheSidecarWhenCacheLocArchiveNeedsKeys() throws Exception
+	{
+		Path cacheDirectory = configuredHdosCache();
+		Assumptions.assumeTrue(Files.isDirectory(cacheDirectory), "HDOS cache not found: " + cacheDirectory);
+
+		HdosMapsCache sidecar = new HdosMapsCache(cacheDirectory);
+		Assumptions.assumeTrue(sidecar.available() && !sidecar.locationPayloads(40, 48).isEmpty(),
+			"HDOS maps-cache sidecar region 40,48 not found");
+		int regionId = TerrainScene.regionId(40, 48);
+		try (Store store = new Store(new DispleeCacheStorage(cacheDirectory)))
+		{
+			store.load();
+			HdosRegionLoader regionLoader = new HdosRegionLoader(store, ignored -> null);
+			Region region = regionLoader.loadRegionFromArchive(regionId);
+
+			assertNotNull(region, "HDOS sidecar-backed region did not load");
+			assertTrue(region.getLocations().size() > 1_000,
+				"HDOS maps-cache sidecar did not provide enough placed locations");
+		}
+	}
+
+	@Test
 	void resolvesHdosRegionArchivesThroughRuneliteStoreFacade() throws Exception
 	{
 		Path cacheDirectory = configuredHdosCache();

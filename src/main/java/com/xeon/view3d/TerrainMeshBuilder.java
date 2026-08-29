@@ -38,6 +38,7 @@ final class TerrainMeshBuilder
 	private static final float NORMAL_SAMPLE_DISTANCE = 1.0f;
 	private static final float NORMAL_Y_SCALE = 2.0f;
 	private static final int INITIAL_TILE_TRIANGLES = 2;
+	private static final int MAX_ARRAY_SIZE = Integer.MAX_VALUE - 8;
 
 	private TerrainMeshBuilder()
 	{
@@ -182,21 +183,35 @@ final class TerrainMeshBuilder
 				hdosCache
 			);
 		}
-		SceneMeshBuffer data = new SceneMeshBuffer(
-			Region.X * Region.Y * INITIAL_TILE_TRIANGLES * 3 * TerrainMesh.FLOATS_PER_VERTEX * Region.Z
-		);
+		long totalDataSize = 0L;
+		for (int plane = 0; plane < Region.Z; plane++)
+		{
+			totalDataSize += planeData[plane].size();
+			totalDataSize += transparentPlaneData[plane].size();
+		}
+		if (totalDataSize > MAX_ARRAY_SIZE)
+		{
+			throw new OutOfMemoryError("3D mesh buffer exceeded maximum Java array size");
+		}
+
+		float[] vertexData = new float[(int) totalDataSize];
+		int dataSize = 0;
 		int[] planeStartVertices = new int[Region.Z];
 		int[] planeVertexCounts = new int[Region.Z];
 		int[] planeTransparentStartVertices = new int[Region.Z];
 		int[] planeTransparentVertexCounts = new int[Region.Z];
 		for (int plane = 0; plane < Region.Z; plane++)
 		{
-			planeStartVertices[plane] = data.size() / TerrainMesh.FLOATS_PER_VERTEX;
+			planeStartVertices[plane] = dataSize / TerrainMesh.FLOATS_PER_VERTEX;
 			planeVertexCounts[plane] = planeData[plane].size() / TerrainMesh.FLOATS_PER_VERTEX;
-			data.addAll(planeData[plane]);
-			planeTransparentStartVertices[plane] = data.size() / TerrainMesh.FLOATS_PER_VERTEX;
+			planeData[plane].copyTo(vertexData, dataSize);
+			dataSize += planeData[plane].size();
+			planeData[plane] = null;
+			planeTransparentStartVertices[plane] = dataSize / TerrainMesh.FLOATS_PER_VERTEX;
 			planeTransparentVertexCounts[plane] = transparentPlaneData[plane].size() / TerrainMesh.FLOATS_PER_VERTEX;
-			data.addAll(transparentPlaneData[plane]);
+			transparentPlaneData[plane].copyTo(vertexData, dataSize);
+			dataSize += transparentPlaneData[plane].size();
+			transparentPlaneData[plane] = null;
 		}
 		List<NpcMesh> npcMeshes = hdosCache ? List.of() : NpcMeshBuilder.build(
 				region,
@@ -218,8 +233,8 @@ final class TerrainMeshBuilder
 			region.getRegionY(),
 			Region.Z - 1,
 			true,
-			data.toArray(),
-			data.size() / TerrainMesh.FLOATS_PER_VERTEX,
+			vertexData,
+			dataSize / TerrainMesh.FLOATS_PER_VERTEX,
 			planeStartVertices,
 			planeVertexCounts,
 			planeTransparentStartVertices,

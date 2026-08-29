@@ -741,7 +741,7 @@ final class ObjectMeshBuilder
 		}
 	}
 
-	private static int[] modelIds(ObjectDefinition definition, int modelType)
+	static int[] modelIds(ObjectDefinition definition, int modelType)
 	{
 		int[] objectModels = definition.getObjectModels();
 		if (objectModels == null)
@@ -755,14 +755,29 @@ final class ObjectMeshBuilder
 			return modelType == TYPE_GAME_OBJECT ? objectModels : null;
 		}
 
+		int count = 0;
 		for (int i = 0; i < objectTypes.length && i < objectModels.length; i++)
 		{
 			if (objectTypes[i] == modelType)
 			{
-				return new int[]{objectModels[i]};
+				count++;
 			}
 		}
-		return null;
+		if (count == 0)
+		{
+			return null;
+		}
+
+		int[] models = new int[count];
+		int modelIndex = 0;
+		for (int i = 0; i < objectTypes.length && i < objectModels.length; i++)
+		{
+			if (objectTypes[i] == modelType)
+			{
+				models[modelIndex++] = objectModels[i];
+			}
+		}
+		return models;
 	}
 
 	private static void appendModel(
@@ -778,7 +793,7 @@ final class ObjectMeshBuilder
 		boolean hdosCache
 	)
 	{
-		if (model.faceTextures != null)
+		if (!hdosCache && model.faceTextures != null)
 		{
 			model.computeTextureUVCoordinates();
 		}
@@ -802,7 +817,7 @@ final class ObjectMeshBuilder
 				c = tmp;
 			}
 
-			TextureFace textureFace = textureFace(model, definition, textureSet, face);
+			TextureFace textureFace = textureFace(model, definition, textureSet, face, hdosCache);
 			Vertex va = transformed.vertex(a);
 			Vertex vb = transformed.vertex(b);
 			Vertex vc = transformed.vertex(c);
@@ -860,9 +875,15 @@ final class ObjectMeshBuilder
 		ModelDefinition model,
 		ObjectDefinition definition,
 		SceneTextureSet textureSet,
-		int face
+		int face,
+		boolean hdosCache
 	)
 	{
+		if (hdosCache)
+		{
+			return TextureFace.NONE;
+		}
+
 		short texture = faceTexture(model, definition, face);
 		int layer = texture < 0 ? 0 : textureSet.layerForTexture(texture);
 		if (layer <= 0)

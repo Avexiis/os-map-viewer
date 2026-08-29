@@ -45,13 +45,15 @@ final class DispleeCacheStorage implements Storage
 	private static final int REGION_LIMIT = 256;
 
 	private final CacheLibrary library;
+	private final Path cacheDirectory;
 	private final Map<Integer, Integer> runeLiteMapNameHashes = new HashMap<>();
 
 	DispleeCacheStorage(Path cacheDirectory) throws IOException
 	{
 		try
 		{
-			library = CacheLibrary.create(cacheDirectory.toAbsolutePath().normalize().toString());
+			this.cacheDirectory = cacheDirectory.toAbsolutePath().normalize();
+			library = CacheLibrary.create(this.cacheDirectory.toString());
 			indexMapArchiveNameHashes();
 		}
 		catch (RuntimeException ex)
@@ -123,6 +125,17 @@ final class DispleeCacheStorage implements Storage
 	{
 		com.displee.cache.index.archive.Archive archive = loadDecodedArchive(indexId, archiveName, xtea);
 		return archive == null ? null : decodedFile(archive, fileId);
+	}
+
+	boolean hasArchive(int indexId, String archiveName)
+	{
+		com.displee.cache.index.Index index = library.index(indexId);
+		return index != null && index.contains(archiveName);
+	}
+
+	Path cacheDirectory()
+	{
+		return cacheDirectory;
 	}
 
 	@Override

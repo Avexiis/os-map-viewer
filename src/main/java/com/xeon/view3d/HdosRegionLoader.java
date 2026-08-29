@@ -27,7 +27,9 @@
 package com.xeon.view3d;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import net.runelite.cache.IndexType;
 import net.runelite.cache.definitions.LocationsDefinition;
@@ -46,6 +48,7 @@ final class HdosRegionLoader
 	private final Index mapsIndex;
 	private final KeyProvider keyProvider;
 	private final Map<Integer, Region> regions = new HashMap<>();
+	private HdosMapsCache mapsCache;
 
 	HdosRegionLoader(Store store, KeyProvider keyProvider)
 	{
@@ -99,8 +102,47 @@ final class HdosRegionLoader
 	{
 		int regionX = regionId >> 8;
 		int regionY = regionId & 0xFF;
-		byte[] data = loadArchive(regionId, "l", 1, true);
-		return data == null ? null : loadLocations(regionX, regionY, data);
+		String archiveName = "l" + regionX + "_" + regionY;
+		String missingXteaReason = null;
+		try
+		{
+			LocationArchiveData archiveData = loadLocationArchive(regionId, archiveName);
+			if (archiveData.data() != null)
+			{
+				try
+				{
+					return loadLocations(regionX, regionY, archiveData.data());
+				}
+				catch (IOException ex)
+				{
+					if (!archiveData.loadedWithoutUsableKeys())
+					{
+						throw ex;
+					}
+					missingXteaReason = "unkeyed location data did not parse: " + ex.getMessage();
+				}
+			}
+			else
+			{
+				missingXteaReason = archiveData.missingReason();
+			}
+		}
+		catch (IOException | RuntimeException ex)
+		{
+			missingXteaReason = ex.getMessage();
+		}
+
+		LocationsDefinition sidecarLocations = loadMapsCacheLocDef(regionId, regionX, regionY);
+		if (sidecarLocations != null)
+		{
+			return sidecarLocations;
+		}
+
+		if (missingXteaReason != null)
+		{
+			logMissingXtea(regionId, regionX, regionY, archiveName, missingXteaReason);
+		}
+		return null;
 	}
 
 	private byte[] loadArchive(int regionId, String prefix, int fileId, boolean xtea) throws IOException
@@ -139,6 +181,143 @@ final class HdosRegionLoader
 		return storage.loadArchiveFile(IndexType.MAPS.getNumber(), regionId, fileId, null);
 	}
 
+	private LocationArchiveData loadLocationArchive(int regionId, String archiveName) throws IOException
+	{
+		if (mapsIndex == null)
+		{
+			return LocationArchiveData.absent();
+		}
+
+		DispleeCacheStorage storage = hdosStorage();
+		if (!mapsIndex.isNamed())
+		{
+			byte[] data = storage.loadArchiveFile(IndexType.MAPS.getNumber(), regionId, 1, null);
+			return new LocationArchiveData(data, true,
+				data == null ? "location archive produced no file data" : null);
+		}
+		if (!storage.hasArchive(IndexType.MAPS.getNumber(), archiveName))
+		{
+			return LocationArchiveData.absent();
+		}
+
+		int regionX = regionId >> 8;
+		int regionY = regionId & 0xFF;
+		int[] keys = keyProvider == null ? null : keyProvider.getKey(regionId);
+		if (hasUsableXteaKeys(keys))
+		{
+			try
+			{
+				byte[] data = storage.loadArchiveFile(IndexType.MAPS.getNumber(), archiveName, 0, keys);
+				if (data == null)
+				{
+					throw new IOException("supplied XTEA keys produced no file data");
+				}
+				return new LocationArchiveData(data, false, null);
+			}
+			catch (IOException | RuntimeException keyedFailure)
+			{
+				try
+				{
+					byte[] data = storage.loadArchiveFile(IndexType.MAPS.getNumber(), archiveName, 0, null);
+					if (data == null)
+					{
+						throw new IOException("unkeyed fallback produced no file data");
+					}
+					else
+					{
+						System.err.println("HDOS XTEA keys failed for region " + regionId
+							+ " (" + regionX + "," + regionY + ") archive " + archiveName
+							+ "; loaded locations without keys instead: " + keyedFailure.getMessage());
+					}
+					return new LocationArchiveData(data, false, null);
+				}
+				catch (IOException | RuntimeException unkeyedFailure)
+				{
+					throw new IOException("Failed to load HDOS locations for region " + regionId
+						+ " (" + regionX + "," + regionY + ") archive " + archiveName
+						+ " with supplied XTEA keys or without keys; keyed failure: "
+						+ keyedFailure.getMessage() + "; unkeyed failure: " + unkeyedFailure.getMessage(),
+						unkeyedFailure);
+				}
+			}
+		}
+
+		try
+		{
+			byte[] data = storage.loadArchiveFile(IndexType.MAPS.getNumber(), archiveName, 0, null);
+			return new LocationArchiveData(data, true,
+				data == null ? "location archive exists but produced no file data without keys" : null);
+		}
+		catch (IOException | RuntimeException ex)
+		{
+			return new LocationArchiveData(null, false,
+				"no non-zero XTEA keys are available and unkeyed load failed: " + ex.getMessage());
+		}
+	}
+
+	private LocationsDefinition loadMapsCacheLocDef(int regionId, int regionX, int regionY) throws IOException
+	{
+		HdosMapsCache sidecar = hdosMapsCache();
+		if (sidecar == null || !sidecar.available())
+		{
+			return null;
+		}
+
+		List<HdosMapsCache.Payload> payloads = sidecar.locationPayloads(regionX, regionY);
+		if (payloads.isEmpty())
+		{
+			return null;
+		}
+
+		IOException lastFailure = null;
+		for (HdosMapsCache.Payload payload : payloads)
+		{
+			if (payload.failure() != null)
+			{
+				lastFailure = payload.failure();
+				continue;
+			}
+
+			try
+			{
+				LocationsDefinition locations = loadLocations(regionX, regionY, payload.data());
+				System.err.println("Loaded HDOS maps-cache locations for region " + regionId
+					+ " (" + regionX + "," + regionY + ") from " + payload.path().getFileName());
+				return locations;
+			}
+			catch (IOException ex)
+			{
+				lastFailure = ex;
+			}
+		}
+
+		Path directory = sidecar.directory();
+		System.err.println("Failed to load HDOS maps-cache locations for region " + regionId
+			+ " (" + regionX + "," + regionY + ") from " + directory
+			+ "; tried " + payloads.size() + " file(s); last failure: "
+			+ (lastFailure == null ? "unknown" : lastFailure.getMessage()));
+		return null;
+	}
+
+	static boolean hasUsableXteaKeys(int[] keys)
+	{
+		return keys != null
+			&& keys.length >= 4
+			&& (keys[0] != 0 || keys[1] != 0 || keys[2] != 0 || keys[3] != 0);
+	}
+
+	private static void logMissingXtea(
+		int regionId,
+		int regionX,
+		int regionY,
+		String archiveName,
+		String reason
+	)
+	{
+		System.err.println("Missing HDOS XTEA keys for region " + regionId
+			+ " (" + regionX + "," + regionY + ") archive " + archiveName + ": " + reason);
+	}
+
 	private DispleeCacheStorage hdosStorage() throws IOException
 	{
 		if (store.getStorage() instanceof DispleeCacheStorage storage)
@@ -146,6 +325,15 @@ final class HdosRegionLoader
 			return storage;
 		}
 		throw new IOException("HDOS region loader requires Displee cache storage.");
+	}
+
+	private HdosMapsCache hdosMapsCache() throws IOException
+	{
+		if (mapsCache == null)
+		{
+			mapsCache = new HdosMapsCache(hdosStorage().cacheDirectory());
+		}
+		return mapsCache;
 	}
 
 	private static MapDefinition loadMap(int regionX, int regionY, byte[] data) throws IOException
@@ -197,7 +385,7 @@ final class HdosRegionLoader
 		return map;
 	}
 
-	private static LocationsDefinition loadLocations(int regionX, int regionY, byte[] data) throws IOException
+	static LocationsDefinition loadLocations(int regionX, int regionY, byte[] data) throws IOException
 	{
 		LocationsDefinition locs = new LocationsDefinition();
 		locs.setRegionX(regionX);
@@ -234,6 +422,14 @@ final class HdosRegionLoader
 			}
 		}
 		return locs;
+	}
+
+	private record LocationArchiveData(byte[] data, boolean loadedWithoutUsableKeys, String missingReason)
+	{
+		private static LocationArchiveData absent()
+		{
+			return new LocationArchiveData(null, false, null);
+		}
 	}
 
 	private static final class CacheInput

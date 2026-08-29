@@ -33,7 +33,6 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import net.runelite.cache.ConfigType;
 import net.runelite.cache.IndexType;
 import net.runelite.cache.ObjectManager;
 import net.runelite.cache.OverlayManager;
@@ -42,7 +41,6 @@ import net.runelite.cache.TextureManager;
 import net.runelite.cache.UnderlayManager;
 import net.runelite.cache.definitions.providers.OverlayProvider;
 import net.runelite.cache.definitions.providers.UnderlayProvider;
-import net.runelite.cache.fs.Index;
 import net.runelite.cache.fs.Store;
 import net.runelite.cache.item.RSTextureProvider;
 import net.runelite.cache.region.Region;
@@ -193,10 +191,10 @@ public final class TerrainRegionLoader
 		return overlays;
 	}
 
-	private static ObjectManager loadObjects(Store store, boolean allowPartial)
+	private static ObjectManager loadObjects(Store store, boolean hdosCache)
 		throws IOException
 	{
-		if (allowPartial)
+		if (hdosCache)
 		{
 			try
 			{
@@ -208,35 +206,13 @@ public final class TerrainRegionLoader
 			{
 				System.err.println("Failed to load HDOS loc/object definitions from index "
 					+ HdosObjectManager.OBJECT_INDEX + ": " + ex.getMessage());
+				return null;
 			}
-		}
-
-		if (allowPartial && !hasConfigArchive(store, ConfigType.OBJECT))
-		{
-			return null;
 		}
 
 		ObjectManager objects = new ObjectManager(store);
-		try
-		{
-			objects.load();
-			return objects;
-		}
-		catch (IOException | RuntimeException ex)
-		{
-			if (!allowPartial)
-			{
-				throw ex;
-			}
-			System.err.println("Failed to load HDOS object definitions for 3D terrain: " + ex.getMessage());
-			return null;
-		}
-	}
-
-	private static boolean hasConfigArchive(Store store, ConfigType configType)
-	{
-		Index index = store.getIndex(IndexType.CONFIGS);
-		return index != null && index.getArchive(configType.getId()) != null;
+		objects.load();
+		return objects;
 	}
 
 	private static TextureResources loadTextureResources(Store store, boolean hdosCache)

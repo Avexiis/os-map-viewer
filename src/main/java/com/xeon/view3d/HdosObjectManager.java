@@ -88,7 +88,7 @@ final class HdosObjectManager extends ObjectManager
 					failures++;
 					if (firstFailure == null)
 					{
-						firstFailure = "object " + objectId + ": " + ex.getMessage();
+						firstFailure = "object " + objectId + ": " + ex.getClass().getSimpleName() + ": " + ex.getMessage();
 					}
 				}
 			}
