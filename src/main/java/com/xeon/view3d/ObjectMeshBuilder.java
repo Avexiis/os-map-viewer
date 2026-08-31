@@ -399,7 +399,7 @@ final class ObjectMeshBuilder
 		Placement placement
 	)
 	{
-		int[] modelIds = modelIds(definition, modelType);
+		int[] modelIds = modelProvider.modelIds(definition, modelType);
 		if (modelIds == null)
 		{
 			return;
@@ -588,7 +588,7 @@ final class ObjectMeshBuilder
 		Placement placement
 	)
 	{
-		int[] modelIds = modelIds(definition, modelType);
+		int[] modelIds = modelProvider.modelIds(definition, modelType);
 		if (modelIds == null)
 		{
 			return;
@@ -708,7 +708,7 @@ final class ObjectMeshBuilder
 		Placement placement
 	)
 	{
-		int[] modelIds = modelIds(definition, modelType);
+		int[] modelIds = modelProvider.modelIds(definition, modelType);
 		if (modelIds == null)
 		{
 			return;
@@ -723,30 +723,6 @@ final class ObjectMeshBuilder
 			}
 			appendModel(data, transparentData, textureProvider, textureSet, definition, model, modelType, orientation, placement);
 		}
-	}
-
-	private static int[] modelIds(ObjectDefinition definition, int modelType)
-	{
-		int[] objectModels = definition.getObjectModels();
-		if (objectModels == null)
-		{
-			return null;
-		}
-
-		int[] objectTypes = definition.getObjectTypes();
-		if (objectTypes == null)
-		{
-			return modelType == TYPE_GAME_OBJECT ? objectModels : null;
-		}
-
-		for (int i = 0; i < objectTypes.length && i < objectModels.length; i++)
-		{
-			if (objectTypes[i] == modelType)
-			{
-				return new int[]{objectModels[i]};
-			}
-		}
-		return null;
 	}
 
 	private static void appendModel(
