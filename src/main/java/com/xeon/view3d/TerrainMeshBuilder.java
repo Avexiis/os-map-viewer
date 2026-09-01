@@ -120,6 +120,11 @@ final class TerrainMeshBuilder
 		List<AnimatedObjectMesh> animatedObjects = List.of();
 		List<AgilityObstacleInstance> agilityObstacles = List.of();
 		List<ObjectOverlayMesh> objectOverlays = new ArrayList<>();
+		int[] planeTerrainVertexCounts = new int[Region.Z];
+		for (int plane = 0; plane < Region.Z; plane++)
+		{
+			planeTerrainVertexCounts[plane] = planeData[plane].size() / TerrainMesh.FLOATS_PER_VERTEX;
+		}
 		if (objectManager != null)
 		{
 			agilityObstacles = AgilityObstacleData.collect(region, objectManager);
@@ -179,6 +184,7 @@ final class TerrainMeshBuilder
 			data.size() / TerrainMesh.FLOATS_PER_VERTEX,
 			planeStartVertices,
 			planeVertexCounts,
+			planeTerrainVertexCounts,
 			planeTransparentStartVertices,
 			planeTransparentVertexCounts,
 			animatedObjects,

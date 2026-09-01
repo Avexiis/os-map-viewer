@@ -49,6 +49,7 @@ public final class TerrainMesh
 	private final int vertexCount;
 	private final int[] planeStartVertices;
 	private final int[] planeVertexCounts;
+	private final int[] planeTerrainVertexCounts;
 	private final int[] planeTransparentStartVertices;
 	private final int[] planeTransparentVertexCounts;
 	private final float minY;
@@ -78,6 +79,7 @@ public final class TerrainMesh
 			new int[Region.Z],
 			new int[Region.Z],
 			new int[Region.Z],
+			new int[Region.Z],
 			List.of(),
 			List.of(),
 			List.of(),
@@ -101,6 +103,7 @@ public final class TerrainMesh
 		int vertexCount,
 		int[] planeStartVertices,
 		int[] planeVertexCounts,
+		int[] planeTerrainVertexCounts,
 		int[] planeTransparentStartVertices,
 		int[] planeTransparentVertexCounts,
 		List<AnimatedObjectMesh> animatedObjects,
@@ -124,6 +127,7 @@ public final class TerrainMesh
 		this.vertexCount = vertexCount;
 		this.planeStartVertices = normalizedPlaneArray(planeStartVertices);
 		this.planeVertexCounts = normalizedPlaneArray(planeVertexCounts);
+		this.planeTerrainVertexCounts = normalizedPlaneArray(planeTerrainVertexCounts);
 		this.planeTransparentStartVertices = normalizedPlaneArray(planeTransparentStartVertices);
 		this.planeTransparentVertexCounts = normalizedPlaneArray(planeTransparentVertexCounts);
 		this.animatedObjects = animatedObjects == null ? List.of() : List.copyOf(animatedObjects);
@@ -273,6 +277,11 @@ public final class TerrainMesh
 	int planeVertexCount(int samplePlane)
 	{
 		return planeVertexCounts[clamp(samplePlane, 0, Region.Z - 1)];
+	}
+
+	int planeTerrainVertexCount(int samplePlane)
+	{
+		return planeTerrainVertexCounts[clamp(samplePlane, 0, Region.Z - 1)];
 	}
 
 	int planeTransparentStartVertex(int samplePlane)

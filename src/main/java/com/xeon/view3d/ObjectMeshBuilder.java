@@ -47,6 +47,7 @@ final class ObjectMeshBuilder
 {
 	private static final int TYPE_WALL_CORNER = 2;
 	private static final int TYPE_WALL_DECORATION = 4;
+	private static final int TYPE_WALL_DECORATION_DIAGONAL_DOUBLE = 8;
 	private static final int TYPE_DIAGONAL_WALL = 9;
 	private static final int TYPE_GAME_OBJECT = 10;
 	private static final int TYPE_GAME_OBJECT_DIAGONAL = 11;
@@ -594,6 +595,7 @@ final class ObjectMeshBuilder
 			return;
 		}
 
+		List<ModelDefinition> models = new ArrayList<>(modelIds.length);
 		for (int modelId : modelIds)
 		{
 			ModelDefinition baseModel = modelProvider.load(modelId);
@@ -606,7 +608,24 @@ final class ObjectMeshBuilder
 			{
 				continue;
 			}
-			appendModel(data, transparentData, textureProvider, textureSet, definition, model, modelType, orientation, placement);
+			models.add(model);
+		}
+
+		boolean materializeDefaultPriorities = ModelDepthBias.materializeDefaultPriorities(models);
+		for (ModelDefinition model : models)
+		{
+			appendModel(
+				data,
+				transparentData,
+				textureProvider,
+				textureSet,
+				definition,
+				model,
+				modelType,
+				orientation,
+				placement,
+				materializeDefaultPriorities
+			);
 		}
 	}
 
@@ -714,6 +733,7 @@ final class ObjectMeshBuilder
 			return;
 		}
 
+		List<ModelDefinition> models = new ArrayList<>(modelIds.length);
 		for (int modelId : modelIds)
 		{
 			ModelDefinition model = modelProvider.load(modelId);
@@ -721,7 +741,24 @@ final class ObjectMeshBuilder
 			{
 				continue;
 			}
-			appendModel(data, transparentData, textureProvider, textureSet, definition, model, modelType, orientation, placement);
+			models.add(model);
+		}
+
+		boolean materializeDefaultPriorities = ModelDepthBias.materializeDefaultPriorities(models);
+		for (ModelDefinition model : models)
+		{
+			appendModel(
+				data,
+				transparentData,
+				textureProvider,
+				textureSet,
+				definition,
+				model,
+				modelType,
+				orientation,
+				placement,
+				materializeDefaultPriorities
+			);
 		}
 	}
 
@@ -734,7 +771,8 @@ final class ObjectMeshBuilder
 		ModelDefinition model,
 		int modelType,
 		int orientation,
-		Placement placement
+		Placement placement,
+		boolean materializeDefaultPriorities
 	)
 	{
 		if (model.faceTextures != null)
@@ -777,7 +815,7 @@ final class ObjectMeshBuilder
 			int rgb = textureFace.textured()
 				? texturedFaceTint(definition, normal)
 				: faceRgb(model, definition, textureProvider, face, normal);
-			float depthBias = faceDepthBias(model, face);
+			float depthBias = faceDepthBias(model, face, modelType, materializeDefaultPriorities);
 			SceneMeshBuffer targetData = alpha < 0.999f && transparentData != null ? transparentData : data;
 			putVertex(targetData, va, normal, rgb, alpha, depthBias, textureFace, uva);
 			putVertex(targetData, vb, normal, rgb, alpha, depthBias, textureFace, uvb);
@@ -957,13 +995,27 @@ final class ObjectMeshBuilder
 		return type;
 	}
 
-	private static float faceDepthBias(ModelDefinition model, int face)
+	private static float faceDepthBias(
+		ModelDefinition model,
+		int face,
+		int modelType,
+		boolean materializeDefaultPriorities
+	)
 	{
-		if (model.faceZOffsets != null && face < model.faceZOffsets.length)
+		return ModelDepthBias.forObjectFace(model, face, scenePriority(modelType), materializeDefaultPriorities);
+	}
+
+	private static int scenePriority(int modelType)
+	{
+		if (modelType == TYPE_FLOOR_DECORATION)
 		{
-			return model.faceZOffsets[face] & 0xFF;
+			return 3;
 		}
-		return 0.0f;
+		if (modelType >= TYPE_WALL_DECORATION && modelType <= TYPE_WALL_DECORATION_DIAGONAL_DOUBLE)
+		{
+			return 10;
+		}
+		return 1;
 	}
 
 	private static int faceRgb(

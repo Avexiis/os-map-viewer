@@ -72,7 +72,8 @@ final class TerrainRenderer
 		layout(location = 8) in float aTextureAnimV;
 		layout(location = 9) in float aTextureAlphaCutoff;
 
-		uniform mat4 uMvp;
+		uniform mat4 uProjection;
+		uniform mat4 uView;
 		uniform mat4 uModelMatrix;
 		uniform vec3 uCameraPosition;
 		uniform vec3 uRegionOffset;
@@ -97,8 +98,9 @@ final class TerrainRenderer
 			vTexCoord = aTexCoord + mod(uTimeSeconds * animation / 2.56, 1.0);
 			vTextureLayer = aTextureLayer;
 			vTextureAlphaCutoff = aTextureAlphaCutoff;
-			gl_Position = uMvp * worldPosition;
-			gl_Position.z -= aDepthBias / 2048.0;
+			vec4 viewPosition = uView * worldPosition;
+			viewPosition.z += aDepthBias * 0.0007;
+			gl_Position = uProjection * viewPosition;
 		}
 		""";
 	private static final String TERRAIN_FRAGMENT_SHADER = """
@@ -267,7 +269,8 @@ final class TerrainRenderer
 	private volatile long retainedDataCompactionDeferredUntilNanos;
 	private HoveredTile hoveredTile;
 	private int terrainProgram;
-	private int terrainMvpLocation;
+	private int terrainProjectionLocation;
+	private int terrainViewLocation;
 	private int terrainModelMatrixLocation;
 	private int terrainCameraLocation;
 	private int terrainRegionOffsetLocation;
@@ -365,7 +368,8 @@ final class TerrainRenderer
 		GL33C.glClearColor(backgroundRed, backgroundGreen, backgroundBlue, 1.0f);
 
 		terrainProgram = createProgram(TERRAIN_VERTEX_SHADER, TERRAIN_FRAGMENT_SHADER);
-		terrainMvpLocation = GL33C.glGetUniformLocation(terrainProgram, "uMvp");
+		terrainProjectionLocation = GL33C.glGetUniformLocation(terrainProgram, "uProjection");
+		terrainViewLocation = GL33C.glGetUniformLocation(terrainProgram, "uView");
 		terrainModelMatrixLocation = GL33C.glGetUniformLocation(terrainProgram, "uModelMatrix");
 		terrainCameraLocation = GL33C.glGetUniformLocation(terrainProgram, "uCameraPosition");
 		terrainRegionOffsetLocation = GL33C.glGetUniformLocation(terrainProgram, "uRegionOffset");
@@ -732,7 +736,8 @@ final class TerrainRenderer
 		try (MemoryStack stack = MemoryStack.stackPush())
 		{
 			FloatBuffer matrixBuffer = stack.mallocFloat(16);
-			GL33C.glUniformMatrix4fv(terrainMvpLocation, false, mvp.get(matrixBuffer));
+			uploadTerrainMatrix(terrainProjectionLocation, projection, matrixBuffer);
+			uploadTerrainMatrix(terrainViewLocation, view, matrixBuffer);
 		}
 		GL33C.glUniform3f(terrainCameraLocation, cameraPosition.x(), cameraPosition.y(), cameraPosition.z());
 		GL33C.glUniform1f(terrainTimeLocation, timeSeconds);
@@ -771,9 +776,10 @@ final class TerrainRenderer
 			if (region.vertexCount() > 0)
 			{
 				GL33C.glBindVertexArray(region.vao());
+				disableBackfaceCulling();
 				for (int plane = 0; plane <= maxVisiblePlane; plane++)
 				{
-					int vertexCount = region.planeVertexCount(plane);
+					int vertexCount = region.planeTerrainVertexCount(plane);
 					if (vertexCount <= 0)
 					{
 						continue;
@@ -782,7 +788,22 @@ final class TerrainRenderer
 					drawCalls++;
 					verticesDrawn += vertexCount;
 				}
+
+				enableModelBackfaceCulling();
+				for (int plane = 0; plane <= maxVisiblePlane; plane++)
+				{
+					int vertexCount = region.planeObjectVertexCount(plane);
+					if (vertexCount <= 0)
+					{
+						continue;
+					}
+					GL33C.glDrawArrays(GL33C.GL_TRIANGLES, region.planeObjectStartVertex(plane), vertexCount);
+					drawCalls++;
+					verticesDrawn += vertexCount;
+				}
 			}
+
+			enableModelBackfaceCulling();
 			for (UploadedAnimatedObject animatedObject : region.animatedObjects())
 			{
 				if (!isPlaneVisible(animatedObject.plane()))
@@ -803,6 +824,7 @@ final class TerrainRenderer
 
 		if (npcsVisible)
 		{
+			enableModelBackfaceCulling();
 			for (UploadedRegion region : visibleRegionList)
 			{
 				GL33C.glUniform3f(terrainRegionOffsetLocation, region.offsetX(), 0.0f, region.offsetZ());
@@ -838,6 +860,7 @@ final class TerrainRenderer
 		GL33C.glDepthMask(false);
 		try
 		{
+			enableModelBackfaceCulling();
 			for (UploadedRegion region : visibleRegionList)
 			{
 				GL33C.glUniform3f(terrainRegionOffsetLocation, region.offsetX(), 0.0f, region.offsetZ());
@@ -879,11 +902,25 @@ final class TerrainRenderer
 		{
 			GL33C.glDepthMask(depthMask);
 		}
+
 		setTerrainIdentityModelMatrix();
+		disableBackfaceCulling();
 		GL33C.glBindVertexArray(0);
 		GL33C.glBindTexture(GL33C.GL_TEXTURE_2D_ARRAY, 0);
 		GL33C.glUseProgram(0);
 		return new RenderCounts(drawCalls, visibleRegions, culledRegions, verticesDrawn);
+	}
+
+	private static void enableModelBackfaceCulling()
+	{
+		GL33C.glEnable(GL33C.GL_CULL_FACE);
+		GL33C.glCullFace(GL33C.GL_BACK);
+		GL33C.glFrontFace(GL33C.GL_CCW);
+	}
+
+	private static void disableBackfaceCulling()
+	{
+		GL33C.glDisable(GL33C.GL_CULL_FACE);
 	}
 
 	private void updateHoveredNpc(float timeSeconds)
@@ -1131,15 +1168,21 @@ final class TerrainRenderer
 
 	private void uploadTerrainModelMatrix(Matrix4f matrix)
 	{
-		if (terrainModelMatrixLocation < 0)
-		{
-			return;
-		}
 		try (MemoryStack stack = MemoryStack.stackPush())
 		{
 			FloatBuffer matrixBuffer = stack.mallocFloat(16);
-			GL33C.glUniformMatrix4fv(terrainModelMatrixLocation, false, matrix.get(matrixBuffer));
+			uploadTerrainMatrix(terrainModelMatrixLocation, matrix, matrixBuffer);
 		}
+	}
+
+	private static void uploadTerrainMatrix(int location, Matrix4f matrix, FloatBuffer matrixBuffer)
+	{
+		if (location < 0)
+		{
+			return;
+		}
+		matrixBuffer.clear();
+		GL33C.glUniformMatrix4fv(location, false, matrix.get(matrixBuffer));
 	}
 
 	private int renderHoveredTile()
@@ -3163,6 +3206,7 @@ final class TerrainRenderer
 			mesh.vertexCount(),
 			planeStartVertices(mesh),
 			planeVertexCounts(mesh),
+			planeTerrainVertexCounts(mesh),
 			planeTransparentStartVertices(mesh),
 			planeTransparentVertexCounts(mesh),
 			offsetX,
@@ -3194,6 +3238,16 @@ final class TerrainRenderer
 		for (int plane = 0; plane < counts.length; plane++)
 		{
 			counts[plane] = mesh.planeVertexCount(plane);
+		}
+		return counts;
+	}
+
+	private static int[] planeTerrainVertexCounts(TerrainMesh mesh)
+	{
+		int[] counts = new int[MAX_VISIBLE_PLANE + 1];
+		for (int plane = 0; plane < counts.length; plane++)
+		{
+			counts[plane] = mesh.planeTerrainVertexCount(plane);
 		}
 		return counts;
 	}
@@ -4036,6 +4090,7 @@ final class TerrainRenderer
 		int vertexCount,
 		int[] planeStartVertices,
 		int[] planeVertexCounts,
+		int[] planeTerrainVertexCounts,
 		int[] planeTransparentStartVertices,
 		int[] planeTransparentVertexCounts,
 		float offsetX,
@@ -4062,6 +4117,7 @@ final class TerrainRenderer
 				new int[MAX_VISIBLE_PLANE + 1],
 				new int[MAX_VISIBLE_PLANE + 1],
 				new int[MAX_VISIBLE_PLANE + 1],
+				new int[MAX_VISIBLE_PLANE + 1],
 				offsetX,
 				offsetZ,
 				0.0f,
@@ -4079,6 +4135,7 @@ final class TerrainRenderer
 		{
 			planeStartVertices = normalizedPlaneArray(planeStartVertices);
 			planeVertexCounts = normalizedPlaneArray(planeVertexCounts);
+			planeTerrainVertexCounts = normalizedPlaneArray(planeTerrainVertexCounts);
 			planeTransparentStartVertices = normalizedPlaneArray(planeTransparentStartVertices);
 			planeTransparentVertexCounts = normalizedPlaneArray(planeTransparentVertexCounts);
 			animatedObjects = animatedObjects == null ? List.of() : List.copyOf(animatedObjects);
@@ -4095,23 +4152,41 @@ final class TerrainRenderer
 			return planeVertexCounts[clamp(plane, 0, MAX_VISIBLE_PLANE)];
 		}
 
+		private int planeTerrainVertexCount(int plane)
+		{
+			return Math.min(
+				planeVertexCount(plane),
+				planeTerrainVertexCounts[clamp(plane, 0, MAX_VISIBLE_PLANE)]
+			);
+		}
+
+		private int planeObjectStartVertex(int plane)
+		{
+			return planeStartVertex(plane) + planeTerrainVertexCount(plane);
+		}
+
+		private int planeObjectVertexCount(int plane)
+		{
+			return Math.max(0, planeVertexCount(plane) - planeTerrainVertexCount(plane));
+		}
+
 		private int planeTransparentStartVertex(int plane)
 		{
 			return planeTransparentStartVertices[clamp(plane, 0, MAX_VISIBLE_PLANE)];
 		}
 
-			private int planeTransparentVertexCount(int plane)
-			{
-				return planeTransparentVertexCounts[clamp(plane, 0, MAX_VISIBLE_PLANE)];
-			}
+		private int planeTransparentVertexCount(int plane)
+		{
+			return planeTransparentVertexCounts[clamp(plane, 0, MAX_VISIBLE_PLANE)];
+		}
 
-			private boolean hasDrawableGeometry()
-			{
-				return vertexCount > 0 || !animatedObjects.isEmpty() || !npcMeshes.isEmpty();
-			}
+		private boolean hasDrawableGeometry()
+		{
+			return vertexCount > 0 || !animatedObjects.isEmpty() || !npcMeshes.isEmpty();
+		}
 
-			private void delete()
-			{
+		private void delete()
+		{
 			if (vbo != 0)
 			{
 				GL33C.glDeleteBuffers(vbo);

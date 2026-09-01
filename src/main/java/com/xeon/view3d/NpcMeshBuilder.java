@@ -1230,6 +1230,7 @@ final class NpcMeshBuilder
 		boolean hasPackedVertexGroups = false;
 		boolean hasPackedTransparencyGroups = false;
 		boolean hasMayaGroups = false;
+		int sharedPriority = -1;
 		int maxVertexGroup = -1;
 		for (ModelDefinition model : models)
 		{
@@ -1237,7 +1238,22 @@ final class NpcMeshBuilder
 			faceCount += model.faceCount;
 			textureFaceCount += model.numTextureFaces;
 			hasFaceTransparencies |= model.faceTransparencies != null;
-			hasFaceRenderPriorities |= model.faceRenderPriorities != null;
+			if (model.faceRenderPriorities != null)
+			{
+				hasFaceRenderPriorities = true;
+			}
+			else
+			{
+				int priority = ModelDepthBias.defaultPriority(model);
+				if (sharedPriority < 0)
+				{
+					sharedPriority = priority;
+				}
+				else if (sharedPriority != priority)
+				{
+					hasFaceRenderPriorities = true;
+				}
+			}
 			hasFaceRenderTypes |= model.faceRenderTypes != null;
 			hasFaceTextures |= model.faceTextures != null;
 			hasFaceZOffsets |= model.faceZOffsets != null;
@@ -1269,6 +1285,7 @@ final class NpcMeshBuilder
 		merged.faceRenderTypes = hasFaceRenderTypes ? new byte[faceCount] : null;
 		merged.faceTextures = hasFaceTextures ? fillShort(faceCount, (short) -1) : null;
 		merged.faceZOffsets = hasFaceZOffsets ? new byte[faceCount] : null;
+		merged.priority = (byte) Math.max(0, sharedPriority);
 		merged.textureCoords = hasTextureCoords ? fillByte(faceCount, (byte) -1) : null;
 		merged.numTextureFaces = textureFaceCount;
 		merged.texIndices1 = textureFaceCount > 0 ? new short[textureFaceCount] : null;
@@ -1332,7 +1349,7 @@ final class NpcMeshBuilder
 					? 0
 					: model.faceColors[face];
 				copyByte(model.faceTransparencies, merged.faceTransparencies, face, out);
-				copyByte(model.faceRenderPriorities, merged.faceRenderPriorities, face, out);
+				copyEffectivePriority(model, merged.faceRenderPriorities, face, out);
 				copyByte(model.faceRenderTypes, merged.faceRenderTypes, face, out);
 				copyShort(model.faceTextures, merged.faceTextures, face, out, (short) -1);
 				copyByte(model.faceZOffsets, merged.faceZOffsets, face, out);
@@ -1631,11 +1648,7 @@ final class NpcMeshBuilder
 
 	private static float faceDepthBias(ModelDefinition model, int face)
 	{
-		if (model.faceZOffsets != null && face < model.faceZOffsets.length)
-		{
-			return model.faceZOffsets[face] & 0xFF;
-		}
-		return 0.0f;
+		return ModelDepthBias.forNpcFace(model, face);
 	}
 
 	private static short faceTexture(ModelDefinition model, int face)
@@ -1855,6 +1868,14 @@ final class NpcMeshBuilder
 		if (source != null && target != null && sourceIndex < source.length)
 		{
 			target[targetIndex] = source[sourceIndex];
+		}
+	}
+
+	private static void copyEffectivePriority(ModelDefinition source, byte[] target, int sourceIndex, int targetIndex)
+	{
+		if (target != null)
+		{
+			target[targetIndex] = ModelDepthBias.effectivePriority(source, sourceIndex);
 		}
 	}
 
