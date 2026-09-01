@@ -240,6 +240,13 @@ final class TerrainRenderer
 	private static final int OVERLAY_TEXT_PADDING_Y = 3;
 	private static final int OVERLAY_TEXT_ATLAS_MAX_WIDTH = 2048;
 	private static final int OVERLAY_TRANSPORT_ICON_RGB = 0xFF2E3D;
+	private static final Color NPC_PATH_LINE_COLOR = new Color(0xDDF2D84A, true);
+	private static final Color NPC_PATH_START_OUTLINE_COLOR = new Color(0xEE3DDC78, true);
+	private static final Color NPC_PATH_START_FILL_COLOR = new Color(0x443DDC78, true);
+	private static final Color NPC_PATH_STEP_OUTLINE_COLOR = new Color(0xEEF2D84A, true);
+	private static final Color NPC_PATH_STEP_FILL_COLOR = new Color(0x44F2D84A, true);
+	private static final Color NPC_PATH_END_OUTLINE_COLOR = new Color(0xEEFF5555, true);
+	private static final Color NPC_PATH_END_FILL_COLOR = new Color(0x44FF5555, true);
 	private static final int MAX_OVERLAY_PATH_INTERVAL_SAMPLES = 384;
 	private static final int MAX_OVERLAY_LINE_VERTICES_PER_BATCH = 120_000;
 	private static final int MAX_VISIBLE_PLANE = 3;
@@ -317,6 +324,7 @@ final class TerrainRenderer
 	private String glVersion = "Unavailable";
 	private TerrainRenderStats renderStats = TerrainRenderStats.unavailable();
 	private Map3DOverlay pluginOverlay = Map3DOverlay.empty();
+	private List<NpcPathOverlay> npcPathOverlays = List.of();
 	private List<OverlayLineDraw> overlayLineDraws = List.of();
 	private List<OverlayLineDraw> overlayObjectOutlineDraws = List.of();
 	private List<OverlayLineDraw> overlayTileDraws = List.of();
@@ -332,6 +340,7 @@ final class TerrainRenderer
 	private long startNanos;
 	private boolean pluginOverlayDirty = true;
 	private boolean pluginOverlayOnTop;
+	private boolean npcPathOverlaysVisible = true;
 	private boolean npcsVisible = true;
 	private boolean npcOutlinesEnabled = true;
 	private boolean npcHoverTextEnabled = true;
@@ -440,6 +449,21 @@ final class TerrainRenderer
 	void setPluginOverlayOnTop(boolean pluginOverlayOnTop)
 	{
 		this.pluginOverlayOnTop = pluginOverlayOnTop;
+	}
+
+	void setNpcPathOverlays(List<NpcPathOverlay> overlays)
+	{
+		npcPathOverlays = overlays == null ? List.of() : List.copyOf(overlays);
+		pluginOverlayDirty = true;
+	}
+
+	void setNpcPathOverlaysVisible(boolean visible)
+	{
+		if (npcPathOverlaysVisible != visible)
+		{
+			npcPathOverlaysVisible = visible;
+			pluginOverlayDirty = true;
+		}
 	}
 
 	void setMaxVisiblePlane(int maxVisiblePlane)
@@ -980,11 +1004,13 @@ final class TerrainRenderer
 				spawn.worldX(),
 				spawn.worldY(),
 				spawn.plane(),
-				spawn.faceDirection(),
-				spawn.walkEnabled(),
-				best.instance().moving(),
-				spawn.source()
-			);
+					spawn.faceDirection(),
+					spawn.walkEnabled(),
+					best.instance().moving(),
+					spawn.source(),
+					spawn.customPathEnabled(),
+					spawn.customPath()
+				);
 	}
 
 	private void updateNpcMapDots(float timeSeconds)
@@ -1958,6 +1984,10 @@ final class TerrainRenderer
 		Map<Integer, OverlayLineBatch> batches = new LinkedHashMap<>();
 		Map<Integer, OverlayLineBatch> tileBatches = new LinkedHashMap<>();
 		Map<Integer, OverlayLineBatch> objectOutlineBatches = new LinkedHashMap<>();
+		if (npcPathOverlaysVisible)
+		{
+			addNpcPathOverlays(batches, tileBatches);
+		}
 		for (Map3DPathSegment segment : pluginOverlay.segments())
 		{
 			if (segment == null || !isTilePlaneVisible(segment.start()) || !isTilePlaneVisible(segment.end()))
@@ -2511,6 +2541,97 @@ final class TerrainRenderer
 			GL33C.glDeleteTextures(overlayTextTexture);
 			overlayTextTexture = 0;
 		}
+	}
+
+	private void addNpcPathOverlays(
+		Map<Integer, OverlayLineBatch> lineBatches,
+		Map<Integer, OverlayLineBatch> tileBatches
+	)
+	{
+		for (NpcPathOverlay overlay : npcPathOverlays)
+		{
+			if (overlay == null || overlay.tiles().isEmpty())
+			{
+				continue;
+			}
+
+			List<Tile> tiles = overlay.tiles();
+			if (tiles.size() >= 2)
+			{
+				OverlayLineBatch lineBatch = overlayBatch(lineBatches, NPC_PATH_LINE_COLOR);
+				for (int i = 0; i < tiles.size() - 1; i++)
+				{
+					Tile start = tiles.get(i);
+					Tile end = tiles.get(i + 1);
+					if (isTilePlaneVisible(start) || isTilePlaneVisible(end))
+					{
+						addNpcPathSegmentLine(lineBatch, start, end);
+					}
+				}
+			}
+
+			for (int i = 0; i < tiles.size(); i++)
+			{
+				Tile tile = tiles.get(i);
+				if (!isTilePlaneVisible(tile))
+				{
+					continue;
+				}
+				addTileFill(tileBatches, tile, npcPathFillColor(overlay, i));
+				addTileHighlightLines(lineBatches, tile, npcPathOutlineColor(overlay, i));
+			}
+		}
+	}
+
+	private void addNpcPathSegmentLine(OverlayLineBatch batch, Tile start, Tile end)
+	{
+		if (start == null || end == null)
+		{
+			return;
+		}
+		double startX = start.x + 0.5;
+		double startY = start.y + 0.5;
+		double deltaX = end.x - start.x;
+		double deltaY = end.y - start.y;
+		if (Math.hypot(deltaX, deltaY) <= 0.0001)
+		{
+			return;
+		}
+		addSolidPathInterval(batch, start, end, startX, startY, deltaX, deltaY, new LineInterval(0.0, 1.0));
+	}
+
+	private static Color npcPathOutlineColor(NpcPathOverlay overlay, int index)
+	{
+		if (overlay.trueLoop())
+		{
+			return NPC_PATH_STEP_OUTLINE_COLOR;
+		}
+		if (index == 0)
+		{
+			return NPC_PATH_START_OUTLINE_COLOR;
+		}
+		if (index == overlay.tiles().size() - 1)
+		{
+			return NPC_PATH_END_OUTLINE_COLOR;
+		}
+		return NPC_PATH_STEP_OUTLINE_COLOR;
+	}
+
+	private static Color npcPathFillColor(NpcPathOverlay overlay, int index)
+	{
+		if (overlay.trueLoop())
+		{
+			return NPC_PATH_STEP_FILL_COLOR;
+		}
+		if (index == 0)
+		{
+			return NPC_PATH_START_FILL_COLOR;
+		}
+		if (index == overlay.tiles().size() - 1)
+		{
+			return NPC_PATH_END_FILL_COLOR;
+		}
+		return NPC_PATH_STEP_FILL_COLOR;
 	}
 
 	private OverlayLineBatch overlayBatch(Map<Integer, OverlayLineBatch> batches, Color color)
@@ -3890,6 +4011,42 @@ final class TerrainRenderer
 	{
 	}
 
+	private static List<Tile> copyTiles(List<Tile> tiles)
+	{
+		if (tiles == null || tiles.isEmpty())
+		{
+			return List.of();
+		}
+		List<Tile> copy = new ArrayList<>(tiles.size());
+		for (Tile tile : tiles)
+		{
+			if (tile != null)
+			{
+				copy.add(new Tile(tile.x, tile.y, Math.max(0, Math.min(MAX_VISIBLE_PLANE, tile.z))));
+			}
+		}
+		return copy.isEmpty() ? List.of() : List.copyOf(copy);
+	}
+
+	private static boolean sameTile(Tile a, Tile b)
+	{
+		return a != null && b != null && a.x == b.x && a.y == b.y && a.z == b.z;
+	}
+
+	record NpcPathOverlay(
+		List<Tile> tiles,
+		boolean trueLoop
+	)
+	{
+		NpcPathOverlay
+		{
+			tiles = copyTiles(tiles);
+			trueLoop = trueLoop
+				&& tiles.size() >= 2
+				&& sameTile(tiles.get(0), tiles.get(tiles.size() - 1));
+		}
+	}
+
 	record NpcHoverInfo(
 		String name,
 		int combatLevel,
@@ -3901,9 +4058,17 @@ final class TerrainRenderer
 		Integer faceDirection,
 		Boolean walkEnabled,
 		boolean currentlyWalkingEnabled,
-		NpcSpawnIndex.SpawnSource source
+		NpcSpawnIndex.SpawnSource source,
+		boolean customPathEnabled,
+		List<NpcCustomPath.Point> customPath
 	)
 	{
+		NpcHoverInfo
+		{
+			customPath = NpcCustomPath.normalize(customPath);
+			customPathEnabled = customPathEnabled && customPath.size() >= 2;
+		}
+
 		boolean hasCombatLevel()
 		{
 			return combatLevel > 0;

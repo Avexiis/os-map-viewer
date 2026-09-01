@@ -162,9 +162,10 @@ final class NpcMeshBuilder
 				)
 			);
 
-			AnimationChoice walkChoice = walkChoice(definition, spawn, animationProvider);
+			boolean customPath = hasCustomPath(spawn);
+			AnimationChoice walkChoice = walkChoice(definition, spawn, animationProvider, customPath);
 			boolean walking = walkChoice.walking()
-				&& canWander(definition, spawn, region, plane, collisionMap, objectManager);
+				&& (customPath || canWander(definition, spawn, region, plane, collisionMap, objectManager));
 			NpcMeshEntry walkEntry = null;
 			if (walking)
 			{
@@ -285,13 +286,23 @@ final class NpcMeshBuilder
 		ObjectAnimationProvider animationProvider
 	)
 	{
+		return walkChoice(definition, spawn, animationProvider, false);
+	}
+
+	private static AnimationChoice walkChoice(
+		NpcDefinition3D definition,
+		NpcSpawnIndex.NpcSpawn spawn,
+		ObjectAnimationProvider animationProvider,
+		boolean forceWalkEnabled
+	)
+	{
 		if (animationProvider == null)
 		{
 			return AnimationChoice.NONE;
 		}
 
 		int walkSequenceId = definition.walkSequenceId();
-		if (canUseWalkSequence(definition, spawn))
+		if (canUseWalkSequence(definition, spawn, forceWalkEnabled))
 		{
 			SequenceDefinition sequence = animationProvider.loadSequence(walkSequenceId);
 			if (animationProvider.effectiveFrameCount(sequence) > 0)
@@ -340,7 +351,16 @@ final class NpcMeshBuilder
 
 	private static boolean canUseWalkSequence(NpcDefinition3D definition, NpcSpawnIndex.NpcSpawn spawn)
 	{
-		if (spawn != null && Boolean.FALSE.equals(spawn.walkEnabled()))
+		return canUseWalkSequence(definition, spawn, false);
+	}
+
+	private static boolean canUseWalkSequence(
+		NpcDefinition3D definition,
+		NpcSpawnIndex.NpcSpawn spawn,
+		boolean forceWalkEnabled
+	)
+	{
+		if (!forceWalkEnabled && spawn != null && Boolean.FALSE.equals(spawn.walkEnabled()))
 		{
 			return false;
 		}
@@ -349,7 +369,7 @@ final class NpcMeshBuilder
 		{
 			return false;
 		}
-		if (spawn != null && Boolean.TRUE.equals(spawn.walkEnabled()))
+		if (forceWalkEnabled || spawn != null && Boolean.TRUE.equals(spawn.walkEnabled()))
 		{
 			return true;
 		}
@@ -538,9 +558,13 @@ final class NpcMeshBuilder
 		float idleYaw = yawRadians(idleRotation);
 		if (!walking)
 		{
-			PathPoint point = pathPoint(region, heightMaps, plane, spawn.worldX(), spawn.worldY(), definition.size());
+			NpcCustomPath.Point customStart = customPathStart(spawn);
+			int pointPlane = customStart == null ? plane : customStart.plane();
+			int pointX = customStart == null ? spawn.worldX() : customStart.worldX();
+			int pointY = customStart == null ? spawn.worldY() : customStart.worldY();
+			PathPoint point = pathPoint(region, heightMaps, pointPlane, pointX, pointY, definition.size());
 			return NpcMesh.Instance.stationary(
-				plane,
+				pointPlane,
 				phaseOffset,
 				point.x(),
 				point.y(),
@@ -548,6 +572,11 @@ final class NpcMeshBuilder
 				idleYaw,
 				spawnMetadata(spawn)
 			);
+		}
+
+		if (hasCustomPath(spawn))
+		{
+			return customPathInstance(region, heightMaps, definition, spawn, totalFrameLength, hash, phaseOffset);
 		}
 
 		List<TilePoint> tiles = wanderTilePath(definition, spawn, region, plane, collisionMap);
@@ -652,6 +681,144 @@ final class NpcMeshBuilder
 			toFloatArray(segmentSeconds),
 			spawnMetadata(spawn)
 		);
+	}
+
+	private static NpcMesh.Instance customPathInstance(
+		Region region,
+		TerrainHeightMap[] heightMaps,
+		NpcDefinition3D definition,
+		NpcSpawnIndex.NpcSpawn spawn,
+		int totalFrameLength,
+		int hash,
+		int phaseOffset
+	)
+	{
+		List<NpcCustomPath.Point> points = spawn.customPath();
+		if (points.size() < 2)
+		{
+			NpcCustomPath.Point start = points.isEmpty()
+				? new NpcCustomPath.Point(spawn.worldX(), spawn.worldY(), spawn.plane())
+				: points.get(0);
+			PathPoint point = pathPoint(region, heightMaps, start.plane(), start.worldX(), start.worldY(), definition.size());
+			return NpcMesh.Instance.stationary(
+				start.plane(),
+				phaseOffset,
+				point.x(),
+				point.y(),
+				point.z(),
+				yawRadians(spawnRotation(definition, spawn)),
+				spawnMetadata(spawn)
+			);
+		}
+
+		boolean trueLoop = NpcCustomPath.trueLoop(points);
+		List<NpcCustomPath.Point> route = trueLoop ? points : pingPongCustomPath(points);
+		NpcCustomPath.Point first = route.get(0);
+		NpcCustomPath.Point second = route.size() > 1 ? route.get(1) : first;
+		float firstYaw = yawForStep(tilePoint(first), tilePoint(second));
+		PathPoint currentPoint = pathPoint(region, heightMaps, first.plane(), first.worldX(), first.worldY(), definition.size());
+
+		List<Float> x = new ArrayList<>();
+		List<Float> y = new ArrayList<>();
+		List<Float> z = new ArrayList<>();
+		List<Float> segmentStartYaw = new ArrayList<>();
+		List<Float> segmentEndYaw = new ArrayList<>();
+		List<Boolean> segmentWalking = new ArrayList<>();
+		List<Float> segmentSeconds = new ArrayList<>();
+		x.add(currentPoint.x());
+		y.add(currentPoint.y());
+		z.add(currentPoint.z());
+
+		if (!trueLoop)
+		{
+			appendSegment(
+				x,
+				y,
+				z,
+				segmentStartYaw,
+				segmentEndYaw,
+				segmentWalking,
+				segmentSeconds,
+				currentPoint,
+				firstYaw,
+				firstYaw,
+				idleSeconds(hash, -1),
+				false
+			);
+		}
+
+		for (int i = 0; i < route.size() - 1; i++)
+		{
+			NpcCustomPath.Point a = route.get(i);
+			NpcCustomPath.Point b = route.get(i + 1);
+			float targetYaw = yawForStep(tilePoint(a), tilePoint(b));
+			PathPoint nextPoint = pathPoint(region, heightMaps, b.plane(), b.worldX(), b.worldY(), definition.size());
+			float distance = (float) Math.hypot(b.worldX() - a.worldX(), b.worldY() - a.worldY());
+			appendSegment(
+				x,
+				y,
+				z,
+				segmentStartYaw,
+				segmentEndYaw,
+				segmentWalking,
+				segmentSeconds,
+				nextPoint,
+				targetYaw,
+				targetYaw,
+				Math.max(0.35f, distance / NPC_WALK_TILES_PER_SECOND),
+				true
+			);
+			currentPoint = nextPoint;
+
+			if (!trueLoop && i == points.size() - 2)
+			{
+				appendSegment(
+					x,
+					y,
+					z,
+					segmentStartYaw,
+					segmentEndYaw,
+					segmentWalking,
+					segmentSeconds,
+					currentPoint,
+					targetYaw,
+					targetYaw,
+					idleSeconds(hash, i),
+					false
+				);
+			}
+		}
+
+		float movementPhaseSeconds = Math.floorMod(hash, 10_000) / 1000.0f;
+		return NpcMesh.Instance.moving(
+			first.plane(),
+			phaseOffset,
+			movementPhaseSeconds,
+			firstYaw,
+			toFloatArray(x),
+			toFloatArray(y),
+			toFloatArray(z),
+			toFloatArray(segmentStartYaw),
+			toFloatArray(segmentEndYaw),
+			toBooleanArray(segmentWalking),
+			toFloatArray(segmentSeconds),
+			spawnMetadata(spawn)
+		);
+	}
+
+	private static List<NpcCustomPath.Point> pingPongCustomPath(List<NpcCustomPath.Point> points)
+	{
+		List<NpcCustomPath.Point> route = new ArrayList<>(points);
+		for (int i = points.size() - 2; i >= 0; i--)
+		{
+			route.add(points.get(i));
+		}
+		return route;
+	}
+
+	private static TilePoint tilePoint(NpcCustomPath.Point point)
+	{
+		return new TilePoint(point.worldX(), point.worldY());
 	}
 
 	private static List<TilePoint> wanderTilePath(
@@ -789,8 +956,20 @@ final class NpcMeshBuilder
 			spawn.plane(),
 			spawn.faceDirection(),
 			spawn.walkEnabled(),
-			spawn.source()
+			spawn.source(),
+			spawn.customPathEnabled(),
+			spawn.customPath()
 		);
+	}
+
+	private static boolean hasCustomPath(NpcSpawnIndex.NpcSpawn spawn)
+	{
+		return spawn != null && spawn.customPathEnabled() && spawn.customPath().size() >= 2;
+	}
+
+	private static NpcCustomPath.Point customPathStart(NpcSpawnIndex.NpcSpawn spawn)
+	{
+		return hasCustomPath(spawn) ? spawn.customPath().get(0) : null;
 	}
 
 	private static boolean shouldHoldPosition(

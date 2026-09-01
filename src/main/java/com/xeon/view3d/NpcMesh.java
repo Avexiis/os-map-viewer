@@ -241,18 +241,32 @@ record NpcMesh(
 		int plane,
 		Integer faceDirection,
 		Boolean walkEnabled,
-		NpcSpawnIndex.SpawnSource source
+		NpcSpawnIndex.SpawnSource source,
+		boolean customPathEnabled,
+		List<NpcCustomPath.Point> customPath
 	)
 	{
 		static SpawnMetadata empty()
 		{
-			return new SpawnMetadata("", Integer.MIN_VALUE, Integer.MIN_VALUE, 0, null, null, NpcSpawnIndex.SpawnSource.JSON);
+			return new SpawnMetadata(
+				"",
+				Integer.MIN_VALUE,
+				Integer.MIN_VALUE,
+				0,
+				null,
+				null,
+				NpcSpawnIndex.SpawnSource.JSON,
+				false,
+				List.of()
+			);
 		}
 
 		SpawnMetadata
 		{
 			name = name == null ? "" : name;
 			source = source == null ? NpcSpawnIndex.SpawnSource.JSON : source;
+			customPath = NpcCustomPath.normalize(customPath);
+			customPathEnabled = customPathEnabled && customPath.size() >= 2;
 			if (faceDirection != null && (faceDirection < 0 || faceDirection > 7))
 			{
 				faceDirection = null;

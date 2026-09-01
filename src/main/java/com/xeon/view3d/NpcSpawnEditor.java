@@ -48,7 +48,7 @@ import java.util.Objects;
 
 final class NpcSpawnEditor
 {
-	private static final String TSV_HEADER = "# id\tname\tx\ty\tlevel\tfaceDirection\twalk";
+	private static final String TSV_HEADER = "# id\tname\tx\ty\tlevel\tfaceDirection\twalk\tcustomPathEnabled\tcustomPath";
 	private static final Gson PRETTY_GSON = new GsonBuilder()
 		.disableHtmlEscaping()
 		.setPrettyPrinting()
@@ -280,7 +280,9 @@ final class NpcSpawnEditor
 			plane,
 			parseNullableInt(values.get("faceDirection")),
 			parseNullableBoolean(values.get("walk")),
-			NpcSpawnIndex.SpawnSource.TSV
+			NpcSpawnIndex.SpawnSource.TSV,
+			NpcCustomPath.parseEnabled(values.get("customPathEnabled")),
+			NpcCustomPath.parse(values.get("customPath"))
 		);
 	}
 
@@ -352,6 +354,10 @@ final class NpcSpawnEditor
 				writer.write(entry.faceDirection() == null ? "" : Integer.toString(entry.faceDirection()));
 				writer.write('\t');
 				writer.write(entry.walkEnabled() == null ? "" : (entry.walkEnabled() ? "enabled" : "disabled"));
+				writer.write('\t');
+				writer.write(entry.customPathEnabled() ? "enabled" : "");
+				writer.write('\t');
+				writer.write(tsv(NpcCustomPath.format(entry.customPath())));
 				writer.write(System.lineSeparator());
 			}
 		}
@@ -388,14 +394,32 @@ final class NpcSpawnEditor
 		int plane,
 		Integer faceDirection,
 		Boolean walkEnabled,
-		NpcSpawnIndex.SpawnSource source
+		NpcSpawnIndex.SpawnSource source,
+		boolean customPathEnabled,
+		List<NpcCustomPath.Point> customPath
 	)
 	{
+		Entry(
+			int id,
+			String name,
+			int worldX,
+			int worldY,
+			int plane,
+			Integer faceDirection,
+			Boolean walkEnabled,
+			NpcSpawnIndex.SpawnSource source
+		)
+		{
+			this(id, name, worldX, worldY, plane, faceDirection, walkEnabled, source, false, List.of());
+		}
+
 		Entry
 		{
 			name = Objects.toString(name, "");
 			plane = Math.max(0, Math.min(3, plane));
 			source = source == null ? NpcSpawnIndex.SpawnSource.JSON : source;
+			customPath = NpcCustomPath.normalize(customPath);
+			customPathEnabled = customPathEnabled && customPath.size() >= 2;
 			if (faceDirection != null && (faceDirection < 0 || faceDirection > 7))
 			{
 				faceDirection = null;
@@ -404,7 +428,34 @@ final class NpcSpawnEditor
 
 		private Entry withSource(NpcSpawnIndex.SpawnSource nextSource)
 		{
-			return new Entry(id, name, worldX, worldY, plane, faceDirection, walkEnabled, nextSource);
+			return new Entry(
+				id,
+				name,
+				worldX,
+				worldY,
+				plane,
+				faceDirection,
+				walkEnabled,
+				nextSource,
+				customPathEnabled,
+				customPath
+			);
+		}
+
+		Entry withCustomPath(boolean enabled, List<NpcCustomPath.Point> points)
+		{
+			return new Entry(
+				id,
+				name,
+				worldX,
+				worldY,
+				plane,
+				faceDirection,
+				walkEnabled,
+				source,
+				enabled,
+				points
+			);
 		}
 
 		private boolean sameSpawn(Entry other)

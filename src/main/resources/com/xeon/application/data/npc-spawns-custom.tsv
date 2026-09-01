@@ -1,22 +1,23 @@
-# id	name	x	y	level	faceDirection	walk
-1634	Banker	3166	3489	0	4	
-3089	Banker	3166	3490	0	4	
-2150	Grand Exchange Clerk	3165	3491	0	1	
-2151	Grand Exchange Clerk	3164	3491	0	1	
-1633	Banker	3163	3489	0	3	
-5451	Relobo Blinyo (logs)	3152	3489	0	4	disabled
-5449	Bob Barter (herbs)	3156	3481	0	2	disabled
-5452	Hofuthand (weapons and armour)	3156	3498	0	7	disabled
-3115	Farid Morrisane (ores and bars)	3173	3498	0	5	disabled
-5450	Murky Matt (runes)	3173	3481	0	0	disabled
-10759	Clerk	3181	3471	0		enabled
-3225	Master smithing tutor	3187	3423	0	3	enabled
-3267	Cecilia	2990	3384	0		disabled
-1307	Make-over mage	2916	3323	0	2	
-15626	Brutus	3263	3297	0	3	enabled
-1613	Banker	3163	3490	0	3	
-2152	Brugsen Bursen	3165	3477	0	1	disabled
-4287	Border Guard	3267	3229	0		disabled
-4288	Border Guard	3268	3229	0		disabled
-4287	Border Guard	3267	3226	0	1	disabled
-4288	Border Guard	3268	3226	0	1	disabled
+# id	name	x	y	level	faceDirection	walk	customPathEnabled	customPath
+1634	Banker	3166	3489	0	4			
+3089	Banker	3166	3490	0	4			
+2150	Grand Exchange Clerk	3165	3491	0	1			
+2151	Grand Exchange Clerk	3164	3491	0	1			
+1633	Banker	3163	3489	0	3			
+5451	Relobo Blinyo (logs)	3152	3489	0	4	disabled		
+5449	Bob Barter (herbs)	3156	3481	0	2	disabled		
+5452	Hofuthand (weapons and armour)	3156	3498	0	7	disabled		
+3115	Farid Morrisane (ores and bars)	3173	3498	0	5	disabled		
+5450	Murky Matt (runes)	3173	3481	0	0	disabled		
+10759	Clerk	3181	3471	0		enabled		
+3225	Master smithing tutor	3187	3423	0	3	enabled		
+3267	Cecilia	2990	3384	0		disabled		
+1307	Make-over mage	2916	3323	0	2			
+15626	Brutus	3263	3297	0	3	enabled		
+1613	Banker	3163	3490	0	3			
+2152	Brugsen Bursen	3165	3477	0	1	disabled		
+4287	Border Guard	3267	3229	0		disabled		
+4288	Border Guard	3268	3229	0		disabled		
+4287	Border Guard	3267	3226	0	1	disabled		
+4288	Border Guard	3268	3226	0	1	disabled		
+3105	Hans	3207	3233	0			enabled	3208,3233,0;3219,3227,0;3222,3222,0;3222,3215,0;3219,3209,0;3214,3206,0;3207,3204,0;3202,3204,0;3203,3233,0;3208,3233,0;3208,3233,0

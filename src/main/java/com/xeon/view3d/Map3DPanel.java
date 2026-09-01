@@ -150,6 +150,9 @@ public final class Map3DPanel extends JPanel
 	private static final Color AGILITY_SHORTCUT_HIGH_LEVEL_COLOR = Color.ORANGE;
 	private static final Color AGILITY_TRAP_COLOR = Color.RED;
 	private static final Color AGILITY_PORTAL_COLOR = Color.MAGENTA;
+	private static final Color NPC_PATH_START_HOVER_COLOR = new Color(0xCC3DDC78, true);
+	private static final Color NPC_PATH_STEP_HOVER_COLOR = new Color(0xCCF2D84A, true);
+	private static final Color NPC_PATH_END_HOVER_COLOR = new Color(0xCCFF5555, true);
 	private static final int DEFAULT_ANTIALIASING_SAMPLES = 4;
 	private static final int MIN_FOV_DEGREES = 35;
 	private static final int MAX_FOV_DEGREES = 100;
@@ -204,12 +207,14 @@ public final class Map3DPanel extends JPanel
 	private final JCheckBox npcOutlinesCheckBox = new JCheckBox("Outlines", true);
 	private final JCheckBox npcHoverTextCheckBox = new JCheckBox("Hover Text", true);
 	private final JCheckBox npcWikiSyncCombatColorsCheckBox = new JCheckBox("WikiSync Level Colors", false);
+	private final JCheckBox npcPathLinesCheckBox = new JCheckBox("Path Lines", true);
 	private final JCheckBox agilityObstaclesCheckBox = new JCheckBox("Obstacles", false);
 	private final JCheckBox agilityLevelLabelsCheckBox = new JCheckBox("Levels", false);
 	private final JCheckBox agilityWikiSyncLevelColorsCheckBox = new JCheckBox("WikiSync", false);
 	private final WikiSyncProfileControls wikiSyncProfileControls = new WikiSyncProfileControls(false);
 	private final JButton npcBrowserButton = new JButton("Browse NPCs");
 	private final Component npcBrowserSpacer = Box.createVerticalStrut(6);
+	private final Component npcPathLinesSpacer = Box.createVerticalStrut(6);
 	private final Component controlsBottomSpacer = Box.createVerticalStrut(CONTROLS_BOTTOM_PADDING);
 	private final JButton npcOutlineColorButton = new JButton("Outline Color");
 	private final JButton tileHoverColorButton = new JButton("Hover Color");
@@ -263,6 +268,7 @@ public final class Map3DPanel extends JPanel
 	private final JPanel controlsPanel;
 	private JPanel controlsRows;
 	private JPanel npcBrowserButtonRow;
+	private JPanel npcPathLinesRow;
 	private final Timer renderTimer;
 	private final Runnable exitAction;
 	private final Consumer<String> failureAction;
@@ -285,6 +291,7 @@ public final class Map3DPanel extends JPanel
 	private boolean npcOutlinesVisible = true;
 	private boolean npcHoverTextVisible = true;
 	private boolean npcWikiSyncCombatColors;
+	private boolean npcPathLinesVisible = true;
 	private boolean agilityObstaclesVisible;
 	private boolean agilityWikiSyncLevelColors;
 	private boolean agilityLevelLabelsVisible;
@@ -314,6 +321,8 @@ public final class Map3DPanel extends JPanel
 	private Viewer3DState lastSavedState;
 	private Map3DWorldMapDock worldMapDock;
 	private boolean pluginPopupHandledDuringPressRelease;
+	private boolean shiftPressed;
+	private NpcPathEditSession npcPathEditSession;
 	private Tile lastPluginOverlayCameraTile;
 	private Set<Integer> lastPluginOverlayRegionIds = Set.of();
 	private volatile boolean pluginOverlayDirty = true;
@@ -499,6 +508,17 @@ public final class Map3DPanel extends JPanel
 		{
 			npcBrowserButtonRow.setVisible(developerModeAvailable);
 		}
+		npcPathLinesCheckBox.setVisible(developerModeAvailable);
+		npcPathLinesSpacer.setVisible(developerModeAvailable);
+		if (npcPathLinesRow != null)
+		{
+			npcPathLinesRow.setVisible(developerModeAvailable);
+		}
+		if (!developerModeAvailable)
+		{
+			cancelNpcPathCreation();
+		}
+		updateNpcPathOverlays();
 		updateControlsRowsSize();
 		if (controlsPanel != null)
 		{
@@ -683,7 +703,9 @@ public final class Map3DPanel extends JPanel
 		styleCheckBox(npcOutlinesCheckBox);
 		styleCheckBox(npcHoverTextCheckBox);
 		styleCheckBox(npcWikiSyncCombatColorsCheckBox);
+		styleCheckBox(npcPathLinesCheckBox);
 		npcWikiSyncCombatColorsCheckBox.setToolTipText("Show combat levels based on the stored WikiSync profile.");
+		npcPathLinesCheckBox.setToolTipText("Show custom NPC path lines and tiles.");
 		styleCheckBox(agilityObstaclesCheckBox);
 		styleCheckBox(agilityLevelLabelsCheckBox);
 		styleCheckBox(agilityWikiSyncLevelColorsCheckBox);
@@ -694,6 +716,7 @@ public final class Map3DPanel extends JPanel
 		npcOutlinesCheckBox.setSelected(npcOutlinesVisible);
 		npcHoverTextCheckBox.setSelected(npcHoverTextVisible);
 		npcWikiSyncCombatColorsCheckBox.setSelected(npcWikiSyncCombatColors);
+		npcPathLinesCheckBox.setSelected(npcPathLinesVisible);
 		agilityObstaclesCheckBox.setSelected(agilityObstaclesVisible);
 		agilityLevelLabelsCheckBox.setSelected(agilityLevelLabelsVisible);
 		agilityWikiSyncLevelColorsCheckBox.setSelected(agilityWikiSyncLevelColors);
@@ -701,6 +724,7 @@ public final class Map3DPanel extends JPanel
 		npcOutlinesCheckBox.addActionListener(e -> applyNpcOverlaySelection());
 		npcHoverTextCheckBox.addActionListener(e -> applyNpcOverlaySelection());
 		npcWikiSyncCombatColorsCheckBox.addActionListener(e -> applyNpcCombatColorSelection());
+		npcPathLinesCheckBox.addActionListener(e -> applyNpcPathOverlaySelection());
 		agilityObstaclesCheckBox.addActionListener(e -> applyAgilityOverlaySelection());
 		agilityLevelLabelsCheckBox.addActionListener(e -> applyAgilityOverlaySelection());
 		agilityWikiSyncLevelColorsCheckBox.addActionListener(e -> applyAgilityColorSelection());
@@ -764,8 +788,13 @@ public final class Map3DPanel extends JPanel
 			Box.createVerticalStrut(6),
 			centeredControlRowFixedWidth(npcWikiSyncCombatColorsCheckBox, CONTROLS_FULL_BUTTON_WIDTH));
 		npcBrowserButtonRow = centeredButtonRow(npcBrowserButton);
+		npcPathLinesRow = centeredControlRowFixedWidth(npcPathLinesCheckBox, CONTROLS_FULL_BUTTON_WIDTH);
 		npcBrowserSpacer.setVisible(developerModeAvailable);
 		npcBrowserButtonRow.setVisible(developerModeAvailable);
+		npcPathLinesSpacer.setVisible(developerModeAvailable);
+		npcPathLinesRow.setVisible(developerModeAvailable);
+		npcCategory.addContent(npcPathLinesSpacer);
+		npcCategory.addContent(npcPathLinesRow);
 		npcCategory.addContent(npcBrowserSpacer);
 		npcCategory.addContent(npcBrowserButtonRow);
 		rows.add(npcCategory);
@@ -1313,6 +1342,12 @@ public final class Map3DPanel extends JPanel
 		scheduleStateSave();
 	}
 
+	private void applyNpcPathOverlaySelection()
+	{
+		npcPathLinesVisible = npcPathLinesCheckBox.isSelected();
+		updateNpcPathOverlays();
+	}
+
 	private void applyAgilityOverlaySelection()
 	{
 		agilityObstaclesVisible = agilityObstaclesCheckBox.isSelected();
@@ -1377,7 +1412,7 @@ public final class Map3DPanel extends JPanel
 	private void applyOverlayColorSettings()
 	{
 		Color outline = npcOutlineColor;
-		Color hover = tileHoverSelectorColor;
+		Color hover = activeTileHoverSelectorColor();
 		invokeRenderLater(() -> {
 			renderer.setNpcOutlineColor(outline);
 			renderer.setTileHoverSelectorColor(hover);
@@ -2182,6 +2217,10 @@ public final class Map3DPanel extends JPanel
 			@Override
 			public void mouseClicked(MouseEvent e)
 			{
+				if (handleNpcPathCreationClick(e))
+				{
+					return;
+				}
 				if (handlePluginClick(e))
 				{
 					return;
@@ -2243,6 +2282,7 @@ public final class Map3DPanel extends JPanel
 				renderer.setHoveredTile(null);
 				renderer.setHoverRay(null, null);
 				npcHoverOverlay.setInfo(null);
+				updateTileHoverSelectorColor();
 				updateTileHud();
 			}
 		});
@@ -2274,7 +2314,12 @@ public final class Map3DPanel extends JPanel
 			case KeyEvent.VK_D -> camera.setRight(pressed);
 			case KeyEvent.VK_PAGE_UP, KeyEvent.VK_SPACE -> camera.setRaise(pressed);
 			case KeyEvent.VK_PAGE_DOWN, KeyEvent.VK_CONTROL -> camera.setLower(pressed);
-			case KeyEvent.VK_SHIFT -> camera.setFast(pressed);
+			case KeyEvent.VK_SHIFT ->
+			{
+				camera.setFast(pressed);
+				shiftPressed = pressed;
+				updateTileHoverSelectorColor();
+			}
 			case KeyEvent.VK_LEFT -> camera.setTurnLeft(pressed);
 			case KeyEvent.VK_RIGHT -> camera.setTurnRight(pressed);
 			case KeyEvent.VK_UP -> camera.setLookUp(pressed);
@@ -2345,21 +2390,33 @@ public final class Map3DPanel extends JPanel
 		updateHoveredTile(event);
 		TerrainRenderer.NpcHoverInfo npc = renderer.pickHoveredNpcInfo();
 		Tile tile = hoveredTile();
-		if (npc == null && tile == null)
+		NpcPathTileSelection pathTile = npcPathTileAt(tile);
+		if (npc == null && tile == null && pathTile == null)
 		{
 			return false;
 		}
 
 		JPopupMenu popup = new JPopupMenu();
-		if (npc != null)
+		if (pathTile != null)
 		{
-			addDeveloperNpcActions(popup, npc, tile);
+			addDeveloperNpcPathActions(popup, pathTile);
 		}
-		else
+		if (pathTile == null || !pathTile.trueLoop())
 		{
-			JMenuItem spawn = new JMenuItem("Spawn NPC...");
-			spawn.addActionListener(e -> promptSpawnNpc(tile));
-			popup.add(spawn);
+			if (npc != null)
+			{
+				if (popup.getComponentCount() > 0)
+				{
+					popup.addSeparator();
+				}
+				addDeveloperNpcActions(popup, npc, tile);
+			}
+			else if (pathTile == null)
+			{
+				JMenuItem spawn = new JMenuItem("Spawn NPC...");
+				spawn.addActionListener(e -> promptSpawnNpc(tile));
+				popup.add(spawn);
+			}
 		}
 		if (popup.getComponentCount() == 0)
 		{
@@ -2393,9 +2450,177 @@ public final class Map3DPanel extends JPanel
 		spawnTile.addActionListener(e -> changeNpcSpawnTile(npc, tile));
 		popup.add(spawnTile);
 
+		JMenuItem customPath = new JMenuItem("Create Custom Path");
+		customPath.addActionListener(e -> startNpcPathCreation(npc));
+		popup.add(customPath);
+
 		JMenuItem walk = new JMenuItem(npc.currentlyWalkingEnabled() ? "Disable Walk" : "Enable Walk");
 		walk.addActionListener(e -> setNpcWalkOverride(npc, !npc.currentlyWalkingEnabled()));
 		popup.add(walk);
+	}
+
+	private void addDeveloperNpcPathActions(JPopupMenu popup, NpcPathTileSelection selection)
+	{
+		if (selection == null)
+		{
+			return;
+		}
+
+		String label;
+		if (selection.trueLoop() || selection.index() == 0 || selection.pathSize() <= 2)
+		{
+			label = "Clear path";
+		}
+		else if (selection.index() == selection.pathSize() - 1)
+		{
+			label = "Delete End Step";
+		}
+		else
+		{
+			label = "Delete Path Step";
+		}
+		JMenuItem item = new JMenuItem(label);
+		item.addActionListener(e -> deleteNpcPathTile(selection));
+		popup.add(item);
+	}
+
+	private boolean handleNpcPathCreationClick(MouseEvent event)
+	{
+		if (npcPathEditSession == null
+			|| !developerModeAvailable
+			|| !SwingUtilities.isLeftMouseButton(event)
+			|| event.getClickCount() != 1)
+		{
+			return false;
+		}
+
+		updateHoveredTile(event);
+		Tile tile = hoveredTile();
+		if (tile == null)
+		{
+			event.consume();
+			return true;
+		}
+
+		shiftPressed = event.isShiftDown();
+		if (!npcPathEditSession.hasStart())
+		{
+			npcPathEditSession.add(tile);
+			detail.setText("NPC path start " + tile.x + "," + tile.y + "," + tile.z);
+			updateTileHoverSelectorColor();
+			updateNpcPathOverlays();
+			event.consume();
+			return true;
+		}
+
+		if (event.isShiftDown())
+		{
+			npcPathEditSession.add(tile);
+			detail.setText("NPC path step " + tile.x + "," + tile.y + "," + tile.z);
+			updateTileHoverSelectorColor();
+			updateNpcPathOverlays();
+			event.consume();
+			return true;
+		}
+
+		List<NpcCustomPath.Point> completedPath = npcPathEditSession.pointsWith(tile);
+		if (saveNpcCustomPath(npcPathEditSession.original(), completedPath, "Created NPC custom path"))
+		{
+			npcPathEditSession = null;
+			updateTileHoverSelectorColor();
+			updateNpcPathOverlays();
+		}
+		event.consume();
+		return true;
+	}
+
+	private void startNpcPathCreation(TerrainRenderer.NpcHoverInfo npc)
+	{
+		if (npc == null)
+		{
+			return;
+		}
+		npcPathEditSession = new NpcPathEditSession(entryFor(npc));
+		detail.setText("Select NPC path start tile");
+		updateTileHoverSelectorColor();
+		updateNpcPathOverlays();
+	}
+
+	private void cancelNpcPathCreation()
+	{
+		if (npcPathEditSession == null)
+		{
+			return;
+		}
+		npcPathEditSession = null;
+		updateTileHoverSelectorColor();
+		updateNpcPathOverlays();
+	}
+
+	private void deleteNpcPathTile(NpcPathTileSelection selection)
+	{
+		if (selection == null)
+		{
+			return;
+		}
+		NpcSpawnEditor.Entry original = selection.ref().entry();
+		if (selection.trueLoop() || selection.index() == 0)
+		{
+			clearNpcCustomPath(original);
+			return;
+		}
+
+		List<NpcCustomPath.Point> nextPath = new ArrayList<>(original.customPath());
+		if (selection.index() < 0 || selection.index() >= nextPath.size())
+		{
+			return;
+		}
+		nextPath.remove(selection.index());
+		if (nextPath.size() <= 1)
+		{
+			clearNpcCustomPath(original);
+			return;
+		}
+		saveNpcCustomPath(original, nextPath, "Deleted NPC path step");
+	}
+
+	private void clearNpcCustomPath(NpcSpawnEditor.Entry original)
+	{
+		if (original == null)
+		{
+			return;
+		}
+		saveNpcCustomPath(original, false, List.of(), "Cleared NPC path");
+	}
+
+	private boolean saveNpcCustomPath(
+		NpcSpawnEditor.Entry original,
+		List<NpcCustomPath.Point> points,
+		String successMessage
+	)
+	{
+		return saveNpcCustomPath(original, true, points, successMessage);
+	}
+
+	private boolean saveNpcCustomPath(
+		NpcSpawnEditor.Entry original,
+		boolean enabled,
+		List<NpcCustomPath.Point> points,
+		String successMessage
+	)
+	{
+		if (original == null)
+		{
+			return false;
+		}
+		NpcSpawnEditor.Entry next = original.withCustomPath(enabled, points);
+		Set<Integer> regions = Set.of(regionIdForWorldTile(original.worldX(), original.worldY()));
+		return performNpcSpawnEdit(
+			NpcSpawnEditor.filesForOverride(original),
+			regions,
+			successMessage,
+			() -> NpcSpawnEditor.saveOverride(original, next)
+		);
 	}
 
 	private boolean handlePluginPopupTrigger(MouseEvent event)
@@ -2500,7 +2725,9 @@ public final class Map3DPanel extends JPanel
 			original.plane(),
 			direction.faceDirection(),
 			original.walkEnabled(),
-			NpcSpawnIndex.SpawnSource.TSV
+			NpcSpawnIndex.SpawnSource.TSV,
+			original.customPathEnabled(),
+			original.customPath()
 		);
 		Set<Integer> regions = Set.of(regionIdForWorldTile(original.worldX(), original.worldY()));
 		performNpcSpawnEdit(
@@ -2527,7 +2754,9 @@ public final class Map3DPanel extends JPanel
 			original.plane(),
 			original.faceDirection(),
 			original.walkEnabled(),
-			NpcSpawnIndex.SpawnSource.TSV
+			NpcSpawnIndex.SpawnSource.TSV,
+			original.customPathEnabled(),
+			original.customPath()
 		);
 		Set<Integer> regions = Set.of(regionIdForWorldTile(original.worldX(), original.worldY()));
 		performNpcSpawnEdit(
@@ -2558,7 +2787,9 @@ public final class Map3DPanel extends JPanel
 			nextTile.z,
 			original.faceDirection(),
 			original.walkEnabled(),
-			NpcSpawnIndex.SpawnSource.TSV
+			NpcSpawnIndex.SpawnSource.TSV,
+			original.customPathEnabled(),
+			original.customPath()
 		);
 		Set<Integer> regions = new LinkedHashSet<>();
 		regions.add(regionIdForWorldTile(original.worldX(), original.worldY()));
@@ -2582,7 +2813,9 @@ public final class Map3DPanel extends JPanel
 			original.plane(),
 			original.faceDirection(),
 			enabled,
-			NpcSpawnIndex.SpawnSource.TSV
+			NpcSpawnIndex.SpawnSource.TSV,
+			original.customPathEnabled(),
+			original.customPath()
 		);
 		Set<Integer> regions = Set.of(regionIdForWorldTile(original.worldX(), original.worldY()));
 		performNpcSpawnEdit(
@@ -2751,7 +2984,7 @@ public final class Map3DPanel extends JPanel
 		return new Tile(worldX, worldY, z);
 	}
 
-	private void performNpcSpawnEdit(
+	private boolean performNpcSpawnEdit(
 		List<Path> changedFiles,
 		Set<Integer> changedRegions,
 		String successMessage,
@@ -2760,17 +2993,19 @@ public final class Map3DPanel extends JPanel
 	{
 		if (!confirmNpcSpawnBackup(changedFiles))
 		{
-			return;
+			return false;
 		}
 		try
 		{
 			task.run();
 			reloadNpcSpawnRegions(changedRegions);
 			detail.setText(successMessage);
+			return true;
 		}
 		catch (IOException | RuntimeException ex)
 		{
 			JOptionPane.showMessageDialog(this, ex.getMessage(), "NPC Spawn Edit Failed", JOptionPane.ERROR_MESSAGE);
+			return false;
 		}
 	}
 
@@ -2892,8 +3127,145 @@ public final class Map3DPanel extends JPanel
 			npc.spawnPlane(),
 			npc.faceDirection(),
 			npc.walkEnabled(),
-			npc.source()
+			npc.source(),
+			npc.customPathEnabled(),
+			npc.customPath()
 		);
+	}
+
+	private static NpcSpawnEditor.Entry entryFor(int npcId, NpcMesh.SpawnMetadata spawn)
+	{
+		return new NpcSpawnEditor.Entry(
+			npcId,
+			spawn.name(),
+			spawn.worldX(),
+			spawn.worldY(),
+			spawn.plane(),
+			spawn.faceDirection(),
+			spawn.walkEnabled(),
+			spawn.source(),
+			spawn.customPathEnabled(),
+			spawn.customPath()
+		);
+	}
+
+	private void updateNpcPathOverlays()
+	{
+		boolean visible = developerModeAvailable && npcPathLinesVisible;
+		List<TerrainRenderer.NpcPathOverlay> overlays = visible ? currentNpcPathOverlays() : List.of();
+		invokeRenderLater(() -> {
+			renderer.setNpcPathOverlaysVisible(visible);
+			renderer.setNpcPathOverlays(overlays);
+		});
+	}
+
+	private List<TerrainRenderer.NpcPathOverlay> currentNpcPathOverlays()
+	{
+		if (!developerModeAvailable)
+		{
+			return List.of();
+		}
+
+		List<TerrainRenderer.NpcPathOverlay> overlays = new ArrayList<>();
+		String editingPathKey = npcPathEditSession == null ? "" : npcPathKey(npcPathEditSession.original());
+		for (NpcPathRef ref : currentNpcPathRefs())
+		{
+			if (npcPathKey(ref.entry()).equals(editingPathKey))
+			{
+				continue;
+			}
+			overlays.add(new TerrainRenderer.NpcPathOverlay(
+				NpcCustomPath.toTiles(ref.entry().customPath()),
+				ref.trueLoop()
+			));
+		}
+		if (npcPathEditSession != null && !npcPathEditSession.points().isEmpty())
+		{
+			List<NpcCustomPath.Point> points = npcPathEditSession.points();
+			overlays.add(new TerrainRenderer.NpcPathOverlay(
+				NpcCustomPath.toTiles(points),
+				NpcCustomPath.trueLoop(points)
+			));
+		}
+		return overlays;
+	}
+
+	private List<NpcPathRef> currentNpcPathRefs()
+	{
+		if (loadedMeshes.isEmpty())
+		{
+			return List.of();
+		}
+
+		List<NpcPathRef> refs = new ArrayList<>();
+		Set<String> seen = new HashSet<>();
+		for (TerrainMesh mesh : loadedMeshes.values())
+		{
+			for (NpcMesh npcMesh : mesh.npcMeshes())
+			{
+				for (NpcMesh.Instance instance : npcMesh.instances())
+				{
+					NpcMesh.SpawnMetadata spawn = instance.spawn();
+					if (spawn == null || !spawn.customPathEnabled() || spawn.customPath().size() < 2)
+					{
+						continue;
+					}
+					NpcSpawnEditor.Entry entry = entryFor(npcMesh.npcId(), spawn);
+					if (seen.add(npcPathKey(entry)))
+					{
+						refs.add(new NpcPathRef(entry));
+					}
+				}
+			}
+		}
+		return refs;
+	}
+
+	private NpcPathTileSelection npcPathTileAt(Tile tile)
+	{
+		if (tile == null)
+		{
+			return null;
+		}
+		for (NpcPathRef ref : currentNpcPathRefs())
+		{
+			List<NpcCustomPath.Point> path = ref.entry().customPath();
+			for (int i = 0; i < path.size(); i++)
+			{
+				if (path.get(i).sameTile(tile))
+				{
+					return new NpcPathTileSelection(ref, i);
+				}
+			}
+		}
+		return null;
+	}
+
+	private static String npcPathKey(NpcSpawnEditor.Entry entry)
+	{
+		return entry.id()
+			+ "\t" + entry.name()
+			+ "\t" + entry.worldX()
+			+ "\t" + entry.worldY()
+			+ "\t" + entry.plane();
+	}
+
+	private Color activeTileHoverSelectorColor()
+	{
+		if (npcPathEditSession == null)
+		{
+			return tileHoverSelectorColor;
+		}
+		if (!npcPathEditSession.hasStart())
+		{
+			return NPC_PATH_START_HOVER_COLOR;
+		}
+		return shiftPressed ? NPC_PATH_STEP_HOVER_COLOR : NPC_PATH_END_HOVER_COLOR;
+	}
+
+	private void updateTileHoverSelectorColor()
+	{
+		renderer.setTileHoverSelectorColor(activeTileHoverSelectorColor());
 	}
 
 	private static int regionIdForWorldTile(int x, int y)
@@ -2929,6 +3301,8 @@ public final class Map3DPanel extends JPanel
 			renderer.setHoveredTile(null);
 			renderer.setHoverRay(null, null);
 			npcHoverOverlay.setInfo(null);
+			shiftPressed = event.isShiftDown();
+			updateTileHoverSelectorColor();
 			updateTileHud();
 			return;
 		}
@@ -2944,18 +3318,22 @@ public final class Map3DPanel extends JPanel
 				renderHeight(),
 				new Vector3f()
 			);
-			renderer.setHoverRay(camera.position(), rayDirection);
-			hoveredTile = currentScene.pickTile(camera.position(), rayDirection, maxVisiblePlane);
-			renderer.setHoveredTile(hoveredTile);
-			updateTileHud();
-		}
-		catch (RuntimeException ex)
+				renderer.setHoverRay(camera.position(), rayDirection);
+				hoveredTile = currentScene.pickTile(camera.position(), rayDirection, maxVisiblePlane);
+				renderer.setHoveredTile(hoveredTile);
+				shiftPressed = event.isShiftDown();
+				updateTileHoverSelectorColor();
+				updateTileHud();
+			}
+			catch (RuntimeException ex)
 		{
 			hoveredTile = null;
-			renderer.setHoveredTile(null);
-			renderer.setHoverRay(null, null);
-			npcHoverOverlay.setInfo(null);
-			updateTileHud();
+				renderer.setHoveredTile(null);
+				renderer.setHoverRay(null, null);
+				npcHoverOverlay.setInfo(null);
+				shiftPressed = event.isShiftDown();
+				updateTileHoverSelectorColor();
+				updateTileHud();
 			if (!hoverPickErrorLogged)
 			{
 				hoverPickErrorLogged = true;
@@ -3257,6 +3635,7 @@ public final class Map3DPanel extends JPanel
 		currentScene = new TerrainScene(originRegionX, originRegionY, loadedMeshes);
 		renderer.setScene(currentScene);
 		requestPluginOverlayRefresh();
+		updateNpcPathOverlays();
 	}
 
 	private void updateStreamedRegions()
@@ -4223,6 +4602,71 @@ public final class Map3DPanel extends JPanel
 		JLabel label = new JLabel(text);
 		label.setForeground(new Color(210, 210, 210));
 		return label;
+	}
+
+	private record NpcPathRef(NpcSpawnEditor.Entry entry)
+	{
+		private boolean trueLoop()
+		{
+			return NpcCustomPath.trueLoop(entry.customPath());
+		}
+	}
+
+	private record NpcPathTileSelection(NpcPathRef ref, int index)
+	{
+		private boolean trueLoop()
+		{
+			return ref.trueLoop();
+		}
+
+		private int pathSize()
+		{
+			return ref.entry().customPath().size();
+		}
+	}
+
+	private static final class NpcPathEditSession
+	{
+		private final NpcSpawnEditor.Entry original;
+		private final List<NpcCustomPath.Point> points = new ArrayList<>();
+
+		private NpcPathEditSession(NpcSpawnEditor.Entry original)
+		{
+			this.original = original;
+		}
+
+		private NpcSpawnEditor.Entry original()
+		{
+			return original;
+		}
+
+		private boolean hasStart()
+		{
+			return !points.isEmpty();
+		}
+
+		private void add(Tile tile)
+		{
+			if (tile != null)
+			{
+				points.add(new NpcCustomPath.Point(tile.x, tile.y, tile.z));
+			}
+		}
+
+		private List<NpcCustomPath.Point> points()
+		{
+			return NpcCustomPath.normalize(points);
+		}
+
+		private List<NpcCustomPath.Point> pointsWith(Tile tile)
+		{
+			List<NpcCustomPath.Point> next = new ArrayList<>(points);
+			if (tile != null)
+			{
+				next.add(new NpcCustomPath.Point(tile.x, tile.y, tile.z));
+			}
+			return NpcCustomPath.normalize(next);
+		}
 	}
 
 	private static final class NpcHoverTextOverlay extends JComponent

@@ -272,7 +272,9 @@ final class NpcSpawnIndex
 			plane,
 			parseFaceDirection(values.get("faceDirection")),
 			parseWalk(values.get("walk")),
-			SpawnSource.TSV
+			SpawnSource.TSV,
+			NpcCustomPath.parseEnabled(values.get("customPathEnabled")),
+			NpcCustomPath.parse(values.get("customPath"))
 		);
 	}
 
@@ -345,18 +347,22 @@ final class NpcSpawnIndex
 		int plane,
 		Integer faceDirection,
 		Boolean walkEnabled,
-		SpawnSource source
+		SpawnSource source,
+		boolean customPathEnabled,
+		List<NpcCustomPath.Point> customPath
 	)
 	{
 		private NpcSpawn(int id, String name, int worldX, int worldY, int plane)
 		{
-			this(id, name, worldX, worldY, plane, null, null, SpawnSource.JSON);
+			this(id, name, worldX, worldY, plane, null, null, SpawnSource.JSON, false, List.of());
 		}
 
 		NpcSpawn
 		{
 			name = Objects.toString(name, "");
 			source = source == null ? SpawnSource.JSON : source;
+			customPath = NpcCustomPath.normalize(customPath);
+			customPathEnabled = customPathEnabled && customPath.size() >= 2;
 			if (faceDirection != null && (faceDirection < 0 || faceDirection > 7))
 			{
 				faceDirection = null;
