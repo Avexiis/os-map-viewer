@@ -63,20 +63,13 @@ final class NpcMeshBuilder
 	private static final float MIN_VISIBLE_ALPHA = 1.0f / 255.0f;
 	private static final int[] SPAWN_DIRECTION_ROTATIONS = new int[]{768, 1024, 1280, 512, 1536, 256, 0, 1792};
 	private static final int ROTATION_UNITS = 2048;
-	private static final int ROTATION_STEP = 256;
-	private static final int MAX_WANDER_STEPS = 8;
+	private static final int MAX_WANDER_ROUTE_STEPS = 12;
 	private static final int LOGIN_SCREEN_RENDER_PROP = 0x1;
 	private static final int LOGIN_SCREEN_WALK_PROP = 0x2;
 	private static final int SERVICE_OBJECT_SEARCH_RADIUS_TILES = 3;
 	private static final int MAX_OBJECT_TRANSFORM_DEPTH = 8;
 	private static final int TYPE_GAME_OBJECT = 10;
 	private static final int TYPE_GAME_OBJECT_DIAGONAL = 11;
-	private static final int[][] FORWARD_TURN_ORDERS = new int[][]{
-		{0, -1, 1},
-		{0, 1, -1},
-		{-1, 0, 1},
-		{1, 0, -1}
-	};
 
 	private NpcMeshBuilder()
 	{
@@ -165,7 +158,9 @@ final class NpcMeshBuilder
 			boolean customPath = hasCustomPath(spawn);
 			AnimationChoice walkChoice = walkChoice(definition, spawn, animationProvider, customPath);
 			boolean walking = walkChoice.walking()
-				&& (customPath || canWander(definition, spawn, region, plane, collisionMap, objectManager));
+				&& (customPath
+					? canUseCustomPath(definition, spawn, collisionMap)
+					: canWander(definition, spawn, region, plane, collisionMap, objectManager));
 			NpcMeshEntry walkEntry = null;
 			if (walking)
 			{
@@ -345,8 +340,17 @@ final class NpcMeshBuilder
 		{
 			return false;
 		}
-		List<TilePoint> path = wanderTilePath(definition, spawn, region, plane, collisionMap);
+		List<NpcRouteFinder.Step> path = wanderTilePath(definition, spawn, region, plane, collisionMap);
 		return path.size() > 1;
+	}
+
+	private static boolean canUseCustomPath(
+		NpcDefinition3D definition,
+		NpcSpawnIndex.NpcSpawn spawn,
+		NpcWanderCollisionMap collisionMap
+	)
+	{
+		return customTilePath(definition, spawn, collisionMap).size() > 1;
 	}
 
 	private static boolean canUseWalkSequence(NpcDefinition3D definition, NpcSpawnIndex.NpcSpawn spawn)
@@ -576,10 +580,10 @@ final class NpcMeshBuilder
 
 		if (hasCustomPath(spawn))
 		{
-			return customPathInstance(region, heightMaps, definition, spawn, totalFrameLength, hash, phaseOffset);
+			return customPathInstance(region, heightMaps, collisionMap, definition, spawn, hash, phaseOffset);
 		}
 
-		List<TilePoint> tiles = wanderTilePath(definition, spawn, region, plane, collisionMap);
+		List<NpcRouteFinder.Step> tiles = wanderTilePath(definition, spawn, region, plane, collisionMap);
 		if (tiles.size() <= 1)
 		{
 			PathPoint point = pathPoint(region, heightMaps, plane, spawn.worldX(), spawn.worldY(), definition.size());
@@ -594,101 +598,27 @@ final class NpcMeshBuilder
 			);
 		}
 
-		List<Float> x = new ArrayList<>();
-		List<Float> y = new ArrayList<>();
-		List<Float> z = new ArrayList<>();
-		List<Float> segmentStartYaw = new ArrayList<>();
-		List<Float> segmentEndYaw = new ArrayList<>();
-		List<Boolean> segmentWalking = new ArrayList<>();
-		List<Float> segmentSeconds = new ArrayList<>();
-		PathPoint currentPoint = pathPoint(region, heightMaps, plane, tiles.get(0).x(), tiles.get(0).y(), definition.size());
-		x.add(currentPoint.x());
-		y.add(currentPoint.y());
-		z.add(currentPoint.z());
-
-		float loopStartYaw = yawForStep(tiles.get(tiles.size() - 2), tiles.get(tiles.size() - 1));
-		float currentYaw = loopStartYaw;
-		appendSegment(
-			x,
-			y,
-			z,
-			segmentStartYaw,
-			segmentEndYaw,
-			segmentWalking,
-			segmentSeconds,
-			currentPoint,
-			loopStartYaw,
-			loopStartYaw,
-			idleSeconds(hash, -1),
-			false
-		);
-		for (int i = 0; i < tiles.size() - 1; i++)
-		{
-			TilePoint a = tiles.get(i);
-			TilePoint b = tiles.get(i + 1);
-			float targetYaw = yawForStep(a, b);
-			float turnSeconds = turnSeconds(definition.rotationSpeed, currentYaw, targetYaw);
-			if (turnSeconds > 0.001f)
-			{
-				appendSegment(
-					x,
-					y,
-					z,
-					segmentStartYaw,
-					segmentEndYaw,
-					segmentWalking,
-					segmentSeconds,
-					currentPoint,
-					currentYaw,
-					targetYaw,
-					turnSeconds,
-					false
-				);
-			}
-
-			PathPoint nextPoint = pathPoint(region, heightMaps, plane, b.x(), b.y(), definition.size());
-			float distance = (float) Math.hypot(b.x() - a.x(), b.y() - a.y());
-			appendSegment(
-				x,
-				y,
-				z,
-				segmentStartYaw,
-				segmentEndYaw,
-				segmentWalking,
-				segmentSeconds,
-				nextPoint,
-				targetYaw,
-				targetYaw,
-				Math.max(0.35f, distance / NPC_WALK_TILES_PER_SECOND),
-				true
-			);
-			currentPoint = nextPoint;
-			currentYaw = targetYaw;
-		}
-
-		float movementPhaseSeconds = Math.floorMod(hash, 10_000) / 1000.0f;
-		return NpcMesh.Instance.moving(
+		return routeInstance(
+			region,
+			heightMaps,
+			definition,
+			spawn,
 			plane,
 			phaseOffset,
-			movementPhaseSeconds,
-			loopStartYaw,
-			toFloatArray(x),
-			toFloatArray(y),
-			toFloatArray(z),
-			toFloatArray(segmentStartYaw),
-			toFloatArray(segmentEndYaw),
-			toBooleanArray(segmentWalking),
-			toFloatArray(segmentSeconds),
-			spawnMetadata(spawn)
+			hash,
+			tiles,
+			false,
+			tiles.size() / 2,
+			List.of()
 		);
 	}
 
 	private static NpcMesh.Instance customPathInstance(
 		Region region,
 		TerrainHeightMap[] heightMaps,
+		NpcWanderCollisionMap collisionMap,
 		NpcDefinition3D definition,
 		NpcSpawnIndex.NpcSpawn spawn,
-		int totalFrameLength,
 		int hash,
 		int phaseOffset
 	)
@@ -712,11 +642,72 @@ final class NpcMeshBuilder
 		}
 
 		boolean trueLoop = NpcCustomPath.trueLoop(points);
-		List<NpcCustomPath.Point> route = trueLoop ? points : pingPongCustomPath(points);
-		NpcCustomPath.Point first = route.get(0);
-		NpcCustomPath.Point second = route.size() > 1 ? route.get(1) : first;
-		float firstYaw = yawForStep(tilePoint(first), tilePoint(second));
-		PathPoint currentPoint = pathPoint(region, heightMaps, first.plane(), first.worldX(), first.worldY(), definition.size());
+		int plane = points.get(0).plane();
+		List<NpcRouteFinder.Step> forwardRoute = customTilePath(definition, spawn, collisionMap);
+		if (forwardRoute.size() <= 1)
+		{
+			NpcCustomPath.Point start = points.get(0);
+			PathPoint point = pathPoint(region, heightMaps, start.plane(), start.worldX(), start.worldY(), definition.size());
+			return NpcMesh.Instance.stationary(
+				start.plane(),
+				phaseOffset,
+				point.x(),
+				point.y(),
+				point.z(),
+				yawRadians(spawnRotation(definition, spawn)),
+				spawnMetadata(spawn)
+			);
+		}
+		List<NpcRouteFinder.Step> route = trueLoop ? forwardRoute : pingPongRoute(forwardRoute);
+		return routeInstance(
+			region,
+			heightMaps,
+			definition,
+			spawn,
+			plane,
+			phaseOffset,
+			hash,
+			route,
+			trueLoop,
+			trueLoop ? -1 : forwardRoute.size() - 1,
+			forwardRoute
+		);
+	}
+
+	private static NpcMesh.Instance routeInstance(
+		Region region,
+		TerrainHeightMap[] heightMaps,
+		NpcDefinition3D definition,
+		NpcSpawnIndex.NpcSpawn spawn,
+		int plane,
+		int phaseOffset,
+		int hash,
+		List<NpcRouteFinder.Step> route,
+		boolean trueLoop,
+		int endpointIndex,
+		List<NpcRouteFinder.Step> metadataRoute
+	)
+	{
+		if (route.size() <= 1)
+		{
+			NpcRouteFinder.Step start = route.isEmpty()
+				? new NpcRouteFinder.Step(spawn.worldX(), spawn.worldY())
+				: route.get(0);
+			PathPoint point = pathPoint(region, heightMaps, plane, start.x(), start.y(), definition.size());
+			return NpcMesh.Instance.stationary(
+				plane,
+				phaseOffset,
+				point.x(),
+				point.y(),
+				point.z(),
+				yawRadians(spawnRotation(definition, spawn)),
+				spawnMetadata(spawn, metadataRoute, plane)
+			);
+		}
+
+		float fallbackYaw = yawRadians(spawnRotation(definition, spawn));
+		float firstYaw = firstStepYaw(route, fallbackYaw);
+		PathPoint currentPoint = pathPoint(region, heightMaps, plane, route.get(0).x(), route.get(0).y(), definition.size());
 
 		List<Float> x = new ArrayList<>();
 		List<Float> y = new ArrayList<>();
@@ -747,13 +738,13 @@ final class NpcMeshBuilder
 			);
 		}
 
+		float currentYaw = firstYaw;
 		for (int i = 0; i < route.size() - 1; i++)
 		{
-			NpcCustomPath.Point a = route.get(i);
-			NpcCustomPath.Point b = route.get(i + 1);
-			float targetYaw = yawForStep(tilePoint(a), tilePoint(b));
-			PathPoint nextPoint = pathPoint(region, heightMaps, b.plane(), b.worldX(), b.worldY(), definition.size());
-			float distance = (float) Math.hypot(b.worldX() - a.worldX(), b.worldY() - a.worldY());
+			NpcRouteFinder.Step a = route.get(i);
+			NpcRouteFinder.Step b = route.get(i + 1);
+			float targetYaw = yawForStep(a, b, currentYaw);
+			PathPoint nextPoint = pathPoint(region, heightMaps, plane, b.x(), b.y(), definition.size());
 			appendSegment(
 				x,
 				y,
@@ -765,12 +756,13 @@ final class NpcMeshBuilder
 				nextPoint,
 				targetYaw,
 				targetYaw,
-				Math.max(0.35f, distance / NPC_WALK_TILES_PER_SECOND),
+				stepSeconds(a, b),
 				true
 			);
 			currentPoint = nextPoint;
+			currentYaw = targetYaw;
 
-			if (!trueLoop && i == points.size() - 2)
+			if (!trueLoop && i == endpointIndex - 1)
 			{
 				appendSegment(
 					x,
@@ -791,7 +783,7 @@ final class NpcMeshBuilder
 
 		float movementPhaseSeconds = Math.floorMod(hash, 10_000) / 1000.0f;
 		return NpcMesh.Instance.moving(
-			first.plane(),
+			plane,
 			phaseOffset,
 			movementPhaseSeconds,
 			firstYaw,
@@ -802,26 +794,78 @@ final class NpcMeshBuilder
 			toFloatArray(segmentEndYaw),
 			toBooleanArray(segmentWalking),
 			toFloatArray(segmentSeconds),
-			spawnMetadata(spawn)
+			spawnMetadata(spawn, metadataRoute, plane)
 		);
 	}
 
-	private static List<NpcCustomPath.Point> pingPongCustomPath(List<NpcCustomPath.Point> points)
+	private static List<NpcRouteFinder.Step> pingPongRoute(List<NpcRouteFinder.Step> points)
 	{
-		List<NpcCustomPath.Point> route = new ArrayList<>(points);
+		List<NpcRouteFinder.Step> route = new ArrayList<>(points);
 		for (int i = points.size() - 2; i >= 0; i--)
 		{
 			route.add(points.get(i));
 		}
-		return route;
+		return List.copyOf(route);
 	}
 
-	private static TilePoint tilePoint(NpcCustomPath.Point point)
+	private static List<NpcRouteFinder.Step> customTilePath(
+		NpcDefinition3D definition,
+		NpcSpawnIndex.NpcSpawn spawn,
+		NpcWanderCollisionMap collisionMap
+	)
 	{
-		return new TilePoint(point.worldX(), point.worldY());
+		List<NpcCustomPath.Point> points = spawn.customPath();
+		if (points.isEmpty())
+		{
+			return List.of();
+		}
+
+		NpcCustomPath.Point start = points.get(0);
+		int plane = start.plane();
+		NpcRouteFinder.Step startStep = new NpcRouteFinder.Step(start.worldX(), start.worldY());
+		if (!canStand(collisionMap, start.worldX(), start.worldY(), plane, definition.size()))
+		{
+			return List.of(startStep);
+		}
+
+		if (points.size() == 2 && points.get(1).equals(start))
+		{
+			return List.of(startStep, startStep);
+		}
+
+		List<NpcRouteFinder.Step> route = new ArrayList<>();
+		route.add(startStep);
+		NpcRouteFinder.Step current = startStep;
+		for (int i = 1; i < points.size(); i++)
+		{
+			NpcCustomPath.Point next = points.get(i);
+			if (next.plane() != plane)
+			{
+				return List.of(startStep);
+			}
+			List<NpcRouteFinder.Step> leg = NpcRouteFinder.findCardinalPath(
+				collisionMap,
+				current.x(),
+				current.y(),
+				next.worldX(),
+				next.worldY(),
+				plane,
+				definition.size()
+			);
+			if (leg.isEmpty())
+			{
+				return List.of(startStep);
+			}
+			for (int step = 1; step < leg.size(); step++)
+			{
+				route.add(leg.get(step));
+			}
+			current = new NpcRouteFinder.Step(next.worldX(), next.worldY());
+		}
+		return route.size() > 1 ? List.copyOf(route) : List.of(startStep);
 	}
 
-	private static List<TilePoint> wanderTilePath(
+	private static List<NpcRouteFinder.Step> wanderTilePath(
 		NpcDefinition3D definition,
 		NpcSpawnIndex.NpcSpawn spawn,
 		Region region,
@@ -836,92 +880,90 @@ final class NpcMeshBuilder
 		int maxY = region.getBaseY() + Region.Y - size;
 		int startX = clamp(spawn.worldX(), minX, maxX);
 		int startY = clamp(spawn.worldY(), minY, maxY);
-		if (collisionMap != null && !collisionMap.canStand(startX, startY, plane, size))
+		NpcRouteFinder.Step start = new NpcRouteFinder.Step(startX, startY);
+		if (!canStand(collisionMap, startX, startY, plane, size))
 		{
-			return List.of(new TilePoint(startX, startY));
+			return List.of(start);
 		}
 
-		List<TilePoint> path = new ArrayList<>();
-		path.add(new TilePoint(startX, startY));
-		int currentX = startX;
-		int currentY = startY;
-		int facingRotation = spawnRotation(definition, spawn);
 		int hash = spawnHash(definition, spawn);
-		for (int step = 0; step < MAX_WANDER_STEPS; step++)
+		NpcRouteFinder.Bounds bounds = new NpcRouteFinder.Bounds(
+			Math.max(minX, startX - WANDER_RADIUS_TILES),
+			Math.max(minY, startY - WANDER_RADIUS_TILES),
+			Math.min(maxX, startX + WANDER_RADIUS_TILES),
+			Math.min(maxY, startY + WANDER_RADIUS_TILES)
+		);
+		List<NpcRouteFinder.Step> fallback = List.of(start);
+		for (NpcRouteFinder.Step target : wanderTargets(startX, startY, plane, size, bounds, hash, collisionMap))
 		{
-			StepChoice next = nextForwardStep(
+			List<NpcRouteFinder.Step> route = NpcRouteFinder.findCardinalPath(
+				collisionMap,
 				startX,
 				startY,
-				currentX,
-				currentY,
-				minX,
-				minY,
-				maxX,
-				maxY,
+				target.x(),
+				target.y(),
 				plane,
 				size,
-				facingRotation,
-				hash,
-				step,
-				collisionMap
+				bounds
 			);
-			if (next == null)
+			if (route.size() <= 1)
 			{
-				break;
+				continue;
 			}
-			path.add(next.point());
-			currentX = next.point().x();
-			currentY = next.point().y();
-			facingRotation = next.rotation();
-		}
-		if (path.size() > 1)
-		{
-			for (int i = path.size() - 2; i >= 0; i--)
+			if (fallback.size() <= 1)
 			{
-				path.add(path.get(i));
+				fallback = route;
+			}
+			if (route.size() - 1 <= MAX_WANDER_ROUTE_STEPS)
+			{
+				return pingPongRoute(route);
 			}
 		}
-		return path;
+		return fallback.size() > 1 ? pingPongRoute(fallback) : fallback;
 	}
 
-	private static StepChoice nextForwardStep(
-		int originX,
-		int originY,
+	private static List<NpcRouteFinder.Step> wanderTargets(
 		int startX,
 		int startY,
-		int minX,
-		int minY,
-		int maxX,
-		int maxY,
 		int plane,
 		int size,
-		int facingRotation,
+		NpcRouteFinder.Bounds bounds,
 		int hash,
-		int step,
 		NpcWanderCollisionMap collisionMap
 	)
 	{
-		int[] turnOrder = FORWARD_TURN_ORDERS[Math.floorMod(hash + step, FORWARD_TURN_ORDERS.length)];
-		for (int turn : turnOrder)
+		List<NpcRouteFinder.Step> targets = new ArrayList<>();
+		for (int x = bounds.minX(); x <= bounds.maxX(); x++)
 		{
-			int rotation = normalizeRotation(facingRotation + turn * ROTATION_STEP);
-			TilePoint direction = directionForRotation(rotation);
-			int targetX = startX + direction.x();
-			int targetY = startY + direction.y();
-			if (targetX < minX || targetY < minY || targetX > maxX || targetY > maxY)
+			for (int y = bounds.minY(); y <= bounds.maxY(); y++)
 			{
-				continue;
-			}
-			if (Math.abs(targetX - originX) > WANDER_RADIUS_TILES || Math.abs(targetY - originY) > WANDER_RADIUS_TILES)
-			{
-				continue;
-			}
-			if (canStep(collisionMap, startX, startY, plane, size, direction.x(), direction.y()))
-			{
-				return new StepChoice(new TilePoint(targetX, targetY), rotation);
+				if (x == startX && y == startY)
+				{
+					continue;
+				}
+				if (canStand(collisionMap, x, y, plane, size))
+				{
+					targets.add(new NpcRouteFinder.Step(x, y));
+				}
 			}
 		}
-		return null;
+		targets.sort((a, b) -> Integer.compare(
+			wanderTargetScore(hash, startX, startY, a),
+			wanderTargetScore(hash, startX, startY, b)
+		));
+		return targets;
+	}
+
+	private static int wanderTargetScore(int hash, int startX, int startY, NpcRouteFinder.Step target)
+	{
+		int value = hash;
+		value ^= target.x() * 0x45d9f3b;
+		value ^= target.y() * 0x119de1f3;
+		value ^= value >>> 16;
+		value *= 0x45d9f3b;
+		value ^= value >>> 16;
+		int distance = Math.abs(target.x() - startX) + Math.abs(target.y() - startY);
+		return (value & 0xFFFF) - distance * 256;
 	}
 
 	private static int stationaryIdleRotation(
@@ -949,6 +991,15 @@ final class NpcMeshBuilder
 
 	private static NpcMesh.SpawnMetadata spawnMetadata(NpcSpawnIndex.NpcSpawn spawn)
 	{
+		return spawnMetadata(spawn, List.of(), spawn.plane());
+	}
+
+	private static NpcMesh.SpawnMetadata spawnMetadata(
+		NpcSpawnIndex.NpcSpawn spawn,
+		List<NpcRouteFinder.Step> routedCustomPath,
+		int routedPlane
+	)
+	{
 		return new NpcMesh.SpawnMetadata(
 			spawn.name(),
 			spawn.worldX(),
@@ -958,8 +1009,26 @@ final class NpcMeshBuilder
 			spawn.walkEnabled(),
 			spawn.source(),
 			spawn.customPathEnabled(),
-			spawn.customPath()
+			spawn.customPath(),
+			routePoints(routedCustomPath, routedPlane)
 		);
+	}
+
+	private static List<NpcCustomPath.Point> routePoints(List<NpcRouteFinder.Step> route, int plane)
+	{
+		if (route == null || route.isEmpty())
+		{
+			return List.of();
+		}
+		List<NpcCustomPath.Point> points = new ArrayList<>(route.size());
+		for (NpcRouteFinder.Step step : route)
+		{
+			if (step != null)
+			{
+				points.add(new NpcCustomPath.Point(step.x(), step.y(), plane));
+			}
+		}
+		return NpcCustomPath.normalize(points);
 	}
 
 	private static boolean hasCustomPath(NpcSpawnIndex.NpcSpawn spawn)
@@ -1239,9 +1308,9 @@ final class NpcMeshBuilder
 		return name == null ? "" : name.toLowerCase(Locale.ROOT);
 	}
 
-	private static boolean canStep(NpcWanderCollisionMap collisionMap, int x, int y, int plane, int size, int dx, int dy)
+	private static boolean canStand(NpcWanderCollisionMap collisionMap, int x, int y, int plane, int size)
 	{
-		return collisionMap == null || collisionMap.canStep(x, y, plane, size, dx, dy);
+		return collisionMap == null || collisionMap.canStand(x, y, plane, size);
 	}
 
 	private static PathPoint pathPoint(
@@ -1313,33 +1382,6 @@ final class NpcMeshBuilder
 	{
 		int value = Math.floorMod(hash * 31 + stopIndex * 1103515245, 1000);
 		return NPC_IDLE_MIN_SECONDS + value / 1000.0f * NPC_IDLE_RANGE_SECONDS;
-	}
-
-	private static float turnSeconds(int rotationSpeed, float startYaw, float endYaw)
-	{
-		float delta = Math.abs(shortestAngleDelta(startYaw, endYaw));
-		if (delta <= 0.001f)
-		{
-			return 0.0f;
-		}
-		int units = Math.max(1, Math.round(delta * ROTATION_UNITS / (float) (Math.PI * 2.0)));
-		int speed = Math.max(1, rotationSpeed);
-		return Math.max(0.04f, units / (float) speed * 0.01f);
-	}
-
-	private static float shortestAngleDelta(float startYaw, float endYaw)
-	{
-		float delta = normalizeRadians(endYaw) - normalizeRadians(startYaw);
-		float twoPi = (float) (Math.PI * 2.0);
-		while (delta > Math.PI)
-		{
-			delta -= twoPi;
-		}
-		while (delta < -Math.PI)
-		{
-			delta += twoPi;
-		}
-		return delta;
 	}
 
 	private static float normalizeRadians(float angle)
@@ -1966,19 +2008,18 @@ final class NpcMeshBuilder
 		return 0;
 	}
 
-	private static TilePoint directionForRotation(int rotation)
+	private static float firstStepYaw(List<NpcRouteFinder.Step> route, float fallbackYaw)
 	{
-		return switch (normalizeRotation(rotation))
+		for (int i = 0; i < route.size() - 1; i++)
 		{
-			case 256 -> new TilePoint(-1, -1);
-			case 512 -> new TilePoint(-1, 0);
-			case 768 -> new TilePoint(-1, 1);
-			case 1024 -> new TilePoint(0, 1);
-			case 1280 -> new TilePoint(1, 1);
-			case 1536 -> new TilePoint(1, 0);
-			case 1792 -> new TilePoint(1, -1);
-			default -> new TilePoint(0, -1);
-		};
+			NpcRouteFinder.Step a = route.get(i);
+			NpcRouteFinder.Step b = route.get(i + 1);
+			if (a.x() != b.x() || a.y() != b.y())
+			{
+				return yawForStep(a, b, fallbackYaw);
+			}
+		}
+		return fallbackYaw;
 	}
 
 	private static int normalizeRotation(int rotation)
@@ -1986,11 +2027,21 @@ final class NpcMeshBuilder
 		return Math.floorMod(rotation, ROTATION_UNITS);
 	}
 
-	private static float yawForStep(TilePoint a, TilePoint b)
+	private static float yawForStep(NpcRouteFinder.Step a, NpcRouteFinder.Step b, float fallbackYaw)
 	{
 		int dx = Integer.compare(b.x(), a.x());
 		int dy = Integer.compare(b.y(), a.y());
+		if (dx == 0 && dy == 0)
+		{
+			return fallbackYaw;
+		}
 		return yawRadians(rotationForDirection(dx, dy));
+	}
+
+	private static float stepSeconds(NpcRouteFinder.Step a, NpcRouteFinder.Step b)
+	{
+		float distance = Math.abs(b.x() - a.x()) + Math.abs(b.y() - a.y());
+		return Math.max(0.35f, distance / NPC_WALK_TILES_PER_SECOND);
 	}
 
 	private static float yawRadians(int rotation)
@@ -2232,14 +2283,6 @@ final class NpcMeshBuilder
 	}
 
 	private record NpcAnimationKey(int npcId, int sequenceId, boolean walkingAnimation)
-	{
-	}
-
-	private record TilePoint(int x, int y)
-	{
-	}
-
-	private record StepChoice(TilePoint point, int rotation)
 	{
 	}
 

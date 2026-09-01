@@ -243,7 +243,8 @@ record NpcMesh(
 		Boolean walkEnabled,
 		NpcSpawnIndex.SpawnSource source,
 		boolean customPathEnabled,
-		List<NpcCustomPath.Point> customPath
+		List<NpcCustomPath.Point> customPath,
+		List<NpcCustomPath.Point> routedCustomPath
 	)
 	{
 		static SpawnMetadata empty()
@@ -257,6 +258,7 @@ record NpcMesh(
 				null,
 				NpcSpawnIndex.SpawnSource.JSON,
 				false,
+				List.of(),
 				List.of()
 			);
 		}
@@ -266,7 +268,12 @@ record NpcMesh(
 			name = name == null ? "" : name;
 			source = source == null ? NpcSpawnIndex.SpawnSource.JSON : source;
 			customPath = NpcCustomPath.normalize(customPath);
+			routedCustomPath = NpcCustomPath.normalize(routedCustomPath);
 			customPathEnabled = customPathEnabled && customPath.size() >= 2;
+			if (!customPathEnabled)
+			{
+				routedCustomPath = List.of();
+			}
 			if (faceDirection != null && (faceDirection < 0 || faceDirection > 7))
 			{
 				faceDirection = null;

@@ -2555,14 +2555,14 @@ final class TerrainRenderer
 				continue;
 			}
 
-			List<Tile> tiles = overlay.tiles();
-			if (tiles.size() >= 2)
+			List<Tile> lineTiles = overlay.lineTiles();
+			if (lineTiles.size() >= 2)
 			{
 				OverlayLineBatch lineBatch = overlayBatch(lineBatches, NPC_PATH_LINE_COLOR);
-				for (int i = 0; i < tiles.size() - 1; i++)
+				for (int i = 0; i < lineTiles.size() - 1; i++)
 				{
-					Tile start = tiles.get(i);
-					Tile end = tiles.get(i + 1);
+					Tile start = lineTiles.get(i);
+					Tile end = lineTiles.get(i + 1);
 					if (isTilePlaneVisible(start) || isTilePlaneVisible(end))
 					{
 						addNpcPathSegmentLine(lineBatch, start, end);
@@ -2570,6 +2570,7 @@ final class TerrainRenderer
 				}
 			}
 
+			List<Tile> tiles = overlay.tiles();
 			for (int i = 0; i < tiles.size(); i++)
 			{
 				Tile tile = tiles.get(i);
@@ -4035,12 +4036,19 @@ final class TerrainRenderer
 
 	record NpcPathOverlay(
 		List<Tile> tiles,
+		List<Tile> lineTiles,
 		boolean trueLoop
 	)
 	{
+		NpcPathOverlay(List<Tile> tiles, boolean trueLoop)
+		{
+			this(tiles, tiles, trueLoop);
+		}
+
 		NpcPathOverlay
 		{
 			tiles = copyTiles(tiles);
+			lineTiles = copyTiles(lineTiles);
 			trueLoop = trueLoop
 				&& tiles.size() >= 2
 				&& sameTile(tiles.get(0), tiles.get(tiles.size() - 1));

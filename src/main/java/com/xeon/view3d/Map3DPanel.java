@@ -3176,6 +3176,7 @@ public final class Map3DPanel extends JPanel
 			}
 			overlays.add(new TerrainRenderer.NpcPathOverlay(
 				NpcCustomPath.toTiles(ref.entry().customPath()),
+				NpcCustomPath.toTiles(ref.routedPath()),
 				ref.trueLoop()
 			));
 		}
@@ -3213,12 +3214,18 @@ public final class Map3DPanel extends JPanel
 					NpcSpawnEditor.Entry entry = entryFor(npcMesh.npcId(), spawn);
 					if (seen.add(npcPathKey(entry)))
 					{
-						refs.add(new NpcPathRef(entry));
+						refs.add(new NpcPathRef(entry, routedPath(spawn)));
 					}
 				}
 			}
 		}
 		return refs;
+	}
+
+	private static List<NpcCustomPath.Point> routedPath(NpcMesh.SpawnMetadata spawn)
+	{
+		List<NpcCustomPath.Point> route = spawn.routedCustomPath();
+		return route.size() >= 2 ? route : spawn.customPath();
 	}
 
 	private NpcPathTileSelection npcPathTileAt(Tile tile)
@@ -4604,8 +4611,13 @@ public final class Map3DPanel extends JPanel
 		return label;
 	}
 
-	private record NpcPathRef(NpcSpawnEditor.Entry entry)
+	private record NpcPathRef(NpcSpawnEditor.Entry entry, List<NpcCustomPath.Point> routedPath)
 	{
+		private NpcPathRef
+		{
+			routedPath = NpcCustomPath.normalize(routedPath);
+		}
+
 		private boolean trueLoop()
 		{
 			return NpcCustomPath.trueLoop(entry.customPath());
