@@ -36,14 +36,14 @@ final class NpcRouteFinder
 	private static final int QUEUE_SIZE = SEARCH_SIZE * SEARCH_SIZE;
 	private static final int UNVISITED = -1;
 	private static final int START = -2;
-	private static final int[] DX = new int[]{-1, 1, 0, 0};
-	private static final int[] DY = new int[]{0, 0, -1, 1};
+	private static final int[] DX = new int[]{-1, 1, 0, 0, -1, -1, 1, 1};
+	private static final int[] DY = new int[]{0, 0, -1, 1, -1, 1, -1, 1};
 
 	private NpcRouteFinder()
 	{
 	}
 
-	static List<Step> findCardinalPath(
+	static List<Step> findPath(
 		NpcWanderCollisionMap collisionMap,
 		int startX,
 		int startY,
@@ -53,10 +53,10 @@ final class NpcRouteFinder
 		int size
 	)
 	{
-		return findCardinalPath(collisionMap, startX, startY, endX, endY, plane, size, Bounds.unbounded());
+		return findPath(collisionMap, startX, startY, endX, endY, plane, size, Bounds.unbounded());
 	}
 
-	static List<Step> findCardinalPath(
+	static List<Step> findPath(
 		NpcWanderCollisionMap collisionMap,
 		int startX,
 		int startY,
@@ -189,24 +189,27 @@ final class NpcRouteFinder
 
 	private static int[] directionOrder(int x, int y, int endX, int endY)
 	{
-		int xDir = Integer.compare(endX, x);
-		int yDir = Integer.compare(endY, y);
-		boolean preferX = Math.abs(endX - x) >= Math.abs(endY - y);
-		int primaryX = xDir < 0 ? 0 : 1;
-		int primaryY = yDir < 0 ? 2 : 3;
-		int secondaryX = xDir < 0 ? 1 : 0;
-		int secondaryY = yDir < 0 ? 3 : 2;
-		if (xDir == 0)
+		int[] order = new int[]{0, 1, 2, 3, 4, 5, 6, 7};
+		for (int i = 1; i < order.length; i++)
 		{
-			return new int[]{primaryY, secondaryX, secondaryY, primaryX};
+			int direction = order[i];
+			int score = directionScore(x, y, endX, endY, direction);
+			int j = i - 1;
+			while (j >= 0 && directionScore(x, y, endX, endY, order[j]) > score)
+			{
+				order[j + 1] = order[j];
+				j--;
+			}
+			order[j + 1] = direction;
 		}
-		if (yDir == 0)
-		{
-			return new int[]{primaryX, secondaryY, secondaryX, primaryY};
-		}
-		return preferX
-			? new int[]{primaryX, primaryY, secondaryY, secondaryX}
-			: new int[]{primaryY, primaryX, secondaryX, secondaryY};
+		return order;
+	}
+
+	private static int directionScore(int x, int y, int endX, int endY, int direction)
+	{
+		int dx = endX - (x + DX[direction]);
+		int dy = endY - (y + DY[direction]);
+		return dx * dx + dy * dy;
 	}
 
 	private static boolean inSearchBounds(int localX, int localY)

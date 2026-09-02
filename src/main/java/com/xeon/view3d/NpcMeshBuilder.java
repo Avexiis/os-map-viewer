@@ -50,6 +50,10 @@ final class NpcMeshBuilder
 	private static final int MAX_NPC_ANIMATION_FRAMES = 24;
 	private static final int WANDER_RADIUS_TILES = 5;
 	private static final float NPC_WALK_TILES_PER_SECOND = 1.45f;
+	private static final float NPC_CLIENT_CYCLE_SECONDS = 0.02f;
+	private static final float NPC_MIN_TURN_SECONDS = 0.06f;
+	private static final float NPC_MAX_TURN_SECONDS = 0.32f;
+	private static final float NPC_MAX_TURN_STEP_FRACTION = 0.45f;
 	private static final float NPC_IDLE_MIN_SECONDS = 2.0f;
 	private static final float NPC_IDLE_RANGE_SECONDS = 3.0f;
 	private static final int DEFAULT_RGB = 0x8A8170;
@@ -707,6 +711,7 @@ final class NpcMeshBuilder
 
 		float fallbackYaw = yawRadians(spawnRotation(definition, spawn));
 		float firstYaw = firstStepYaw(route, fallbackYaw);
+		float cycleStartYaw = routeClosed(route) ? lastStepYaw(route, firstYaw) : firstYaw;
 		PathPoint currentPoint = pathPoint(region, heightMaps, plane, route.get(0).x(), route.get(0).y(), definition.size());
 
 		List<Float> x = new ArrayList<>();
@@ -731,21 +736,21 @@ final class NpcMeshBuilder
 				segmentWalking,
 				segmentSeconds,
 				currentPoint,
-				firstYaw,
-				firstYaw,
+				cycleStartYaw,
+				cycleStartYaw,
 				idleSeconds(hash, -1),
 				false
 			);
 		}
 
-		float currentYaw = firstYaw;
+		float currentYaw = cycleStartYaw;
 		for (int i = 0; i < route.size() - 1; i++)
 		{
 			NpcRouteFinder.Step a = route.get(i);
 			NpcRouteFinder.Step b = route.get(i + 1);
 			float targetYaw = yawForStep(a, b, currentYaw);
 			PathPoint nextPoint = pathPoint(region, heightMaps, plane, b.x(), b.y(), definition.size());
-			appendSegment(
+			appendWalkingStep(
 				x,
 				y,
 				z,
@@ -753,11 +758,12 @@ final class NpcMeshBuilder
 				segmentEndYaw,
 				segmentWalking,
 				segmentSeconds,
+				currentPoint,
 				nextPoint,
-				targetYaw,
+				currentYaw,
 				targetYaw,
 				stepSeconds(a, b),
-				true
+				definition.rotationSpeed
 			);
 			currentPoint = nextPoint;
 			currentYaw = targetYaw;
@@ -786,7 +792,7 @@ final class NpcMeshBuilder
 			plane,
 			phaseOffset,
 			movementPhaseSeconds,
-			firstYaw,
+			cycleStartYaw,
 			toFloatArray(x),
 			toFloatArray(y),
 			toFloatArray(z),
@@ -843,7 +849,7 @@ final class NpcMeshBuilder
 			{
 				return List.of(startStep);
 			}
-			List<NpcRouteFinder.Step> leg = NpcRouteFinder.findCardinalPath(
+			List<NpcRouteFinder.Step> leg = NpcRouteFinder.findPath(
 				collisionMap,
 				current.x(),
 				current.y(),
@@ -896,7 +902,7 @@ final class NpcMeshBuilder
 		List<NpcRouteFinder.Step> fallback = List.of(start);
 		for (NpcRouteFinder.Step target : wanderTargets(startX, startY, plane, size, bounds, hash, collisionMap))
 		{
-			List<NpcRouteFinder.Step> route = NpcRouteFinder.findCardinalPath(
+			List<NpcRouteFinder.Step> route = NpcRouteFinder.findPath(
 				collisionMap,
 				startX,
 				startY,
@@ -1378,6 +1384,74 @@ final class NpcMeshBuilder
 		segmentSeconds.add(Math.max(0.001f, seconds));
 	}
 
+	private static void appendWalkingStep(
+		List<Float> x,
+		List<Float> y,
+		List<Float> z,
+		List<Float> segmentStartYaw,
+		List<Float> segmentEndYaw,
+		List<Boolean> segmentWalking,
+		List<Float> segmentSeconds,
+		PathPoint start,
+		PathPoint target,
+		float startYaw,
+		float targetYaw,
+		float seconds,
+		int rotationSpeed
+	)
+	{
+		float totalSeconds = Math.max(0.001f, seconds);
+		float turnSeconds = walkTurnSeconds(rotationSpeed, startYaw, targetYaw, totalSeconds);
+		if (turnSeconds <= 0.001f || turnSeconds >= totalSeconds - 0.001f)
+		{
+			appendSegment(
+				x,
+				y,
+				z,
+				segmentStartYaw,
+				segmentEndYaw,
+				segmentWalking,
+				segmentSeconds,
+				target,
+				startYaw,
+				targetYaw,
+				totalSeconds,
+				true
+			);
+			return;
+		}
+
+		PathPoint turnPoint = lerp(start, target, turnSeconds / totalSeconds);
+		appendSegment(
+			x,
+			y,
+			z,
+			segmentStartYaw,
+			segmentEndYaw,
+			segmentWalking,
+			segmentSeconds,
+			turnPoint,
+			startYaw,
+			targetYaw,
+			turnSeconds,
+			true
+		);
+		appendSegment(
+			x,
+			y,
+			z,
+			segmentStartYaw,
+			segmentEndYaw,
+			segmentWalking,
+			segmentSeconds,
+			target,
+			targetYaw,
+			targetYaw,
+			totalSeconds - turnSeconds,
+			true
+		);
+	}
+
 	private static float idleSeconds(int hash, int stopIndex)
 	{
 		int value = Math.floorMod(hash * 31 + stopIndex * 1103515245, 1000);
@@ -1389,6 +1463,30 @@ final class NpcMeshBuilder
 		float twoPi = (float) (Math.PI * 2.0);
 		float normalized = angle % twoPi;
 		return normalized < 0.0f ? normalized + twoPi : normalized;
+	}
+
+	private static float shortestAngleDelta(float start, float end)
+	{
+		float delta = normalizeRadians(end) - normalizeRadians(start);
+		float twoPi = (float) (Math.PI * 2.0);
+		while (delta > Math.PI)
+		{
+			delta -= twoPi;
+		}
+		while (delta < -Math.PI)
+		{
+			delta += twoPi;
+		}
+		return delta;
+	}
+
+	private static PathPoint lerp(PathPoint a, PathPoint b, float t)
+	{
+		return new PathPoint(
+			a.x() + (b.x() - a.x()) * t,
+			a.y() + (b.y() - a.y()) * t,
+			a.z() + (b.z() - a.z()) * t
+		);
 	}
 
 	private static float[] toFloatArray(List<Float> values)
@@ -2022,6 +2120,31 @@ final class NpcMeshBuilder
 		return fallbackYaw;
 	}
 
+	private static float lastStepYaw(List<NpcRouteFinder.Step> route, float fallbackYaw)
+	{
+		for (int i = route.size() - 1; i > 0; i--)
+		{
+			NpcRouteFinder.Step a = route.get(i - 1);
+			NpcRouteFinder.Step b = route.get(i);
+			if (a.x() != b.x() || a.y() != b.y())
+			{
+				return yawForStep(a, b, fallbackYaw);
+			}
+		}
+		return fallbackYaw;
+	}
+
+	private static boolean routeClosed(List<NpcRouteFinder.Step> route)
+	{
+		if (route.size() <= 1)
+		{
+			return false;
+		}
+		NpcRouteFinder.Step first = route.get(0);
+		NpcRouteFinder.Step last = route.get(route.size() - 1);
+		return first.x() == last.x() && first.y() == last.y();
+	}
+
 	private static int normalizeRotation(int rotation)
 	{
 		return Math.floorMod(rotation, ROTATION_UNITS);
@@ -2040,8 +2163,27 @@ final class NpcMeshBuilder
 
 	private static float stepSeconds(NpcRouteFinder.Step a, NpcRouteFinder.Step b)
 	{
-		float distance = Math.abs(b.x() - a.x()) + Math.abs(b.y() - a.y());
+		float distance = Math.max(Math.abs(b.x() - a.x()), Math.abs(b.y() - a.y()));
 		return Math.max(0.35f, distance / NPC_WALK_TILES_PER_SECOND);
+	}
+
+	private static float walkTurnSeconds(int rotationSpeed, float startYaw, float endYaw, float stepSeconds)
+	{
+		float delta = Math.abs(shortestAngleDelta(startYaw, endYaw));
+		if (delta <= 0.001f)
+		{
+			return 0.0f;
+		}
+
+		int units = Math.max(1, Math.round(delta * ROTATION_UNITS / (float) (Math.PI * 2.0)));
+		int speed = rotationSpeed <= 0 ? 32 : rotationSpeed;
+		float cycleSeconds = (float) Math.ceil(units / (float) speed) * NPC_CLIENT_CYCLE_SECONDS;
+		float maxSeconds = Math.min(NPC_MAX_TURN_SECONDS, stepSeconds * NPC_MAX_TURN_STEP_FRACTION);
+		if (maxSeconds <= NPC_MIN_TURN_SECONDS)
+		{
+			return Math.max(0.001f, maxSeconds);
+		}
+		return clamp(cycleSeconds, NPC_MIN_TURN_SECONDS, maxSeconds);
 	}
 
 	private static float yawRadians(int rotation)
@@ -2166,6 +2308,11 @@ final class NpcMeshBuilder
 	}
 
 	private static int clamp(int value, int min, int max)
+	{
+		return Math.max(min, Math.min(max, value));
+	}
+
+	private static float clamp(float value, float min, float max)
 	{
 		return Math.max(min, Math.min(max, value));
 	}

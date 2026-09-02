@@ -153,10 +153,6 @@ final class NpcWanderCollisionMap
 		{
 			return true;
 		}
-		if (dx != 0 && dy != 0)
-		{
-			return false;
-		}
 		if (!available)
 		{
 			return true;
