@@ -77,7 +77,7 @@ public class MapViewerController
 	private static final Color RAIL_BACKGROUND = new Color(0x1B1D22);
 	private static final Color WARNING_ORANGE = new Color(0xD98C20);
 	private static final int DEFAULT_3D_REGION_ID = 12850;
-	private static final boolean DEVELOPER_MODE_BUILD_ENABLED = true;
+	private static final boolean DEVELOPER_MODE_BUILD_ENABLED = false;
 	private static final String GITHUB_URL = "https://github.com/Avexiis/os-map-viewer";
 	private static final String RELEASE_URL = "https://github.com/Avexiis/os-map-viewer/releases/tag/Release";
 	private static final String DISCORD_URL = "https://discord.gg/W59sFN7auq";
