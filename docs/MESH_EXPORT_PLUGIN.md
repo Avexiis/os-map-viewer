@@ -14,9 +14,7 @@ The sidebar loads the static model, builds a compacted version, and then attempt
 
 The `RuneProfile Player` field starts with the shared WikiSync username when one is saved. Click `Fetch Player` or press Enter to load that player's uploaded model. The field is independent of WikiSync, so another RuneProfile username can be entered without changing the saved WikiSync profile. `Use WikiSync` restores the currently saved WikiSync username.
 
-Player models are fetched as model bytes from RuneProfile's API. The plugin does not read or parse profile web pages. Current GLB uploads and legacy binary PLY models are supported. A model is available only after its owner has uploaded one with RuneProfile's `Update Player Model` action.
-
-Fetching, parsing, and compaction run away from the Swing event thread. The request is limited to 25 MB and can be canceled from the sidebar.
+Player models are fetched from RuneProfile's API. A model is available only after its owner has uploaded one with RuneProfile's `Update Player Model` action.
 
 ## Connected Structures
 
@@ -26,9 +24,9 @@ Shift-click a selected object again to remove it. Removal is blocked when it wou
 
 ## Compaction And Export
 
-Compaction preserves the visible shape without smoothing. It removes duplicate and enclosed internal shells, unions overlapping shells when that does not increase the face count, and retriangulates coplanar regions with fewer faces. Compaction never produces more faces than the original mesh.
+Compaction preserves the visible shape without smoothing. It removes duplicate and enclosed internal shells, joins overlapping shells when it does not increase the face count, and recalculates coplanar regions with fewer faces. Compaction never produces more faces than the original mesh.
 
-Manifold repair runs separately after compaction. It repairs winding, welds split edges, closes openings, removes excess faces around non-manifold edges, and gives disconnected open details a minimal thickness when needed for printing. This stage may add faces when bridging visible gaps. A successful repair appears as its own preview and is used for export.
+Manifold repair runs separately after compaction. It repairs winding, joins split edges, closes openings, removes excess faces around non-manifold edges, and gives disconnected open details a minimal thickness when needed for printing. This stage may add faces when bridging visible gaps. A successful repair appears as its own preview and is used for export.
 
 If automatic repair cannot make the mesh watertight, the unchanged compacted mesh remains exportable. The sidebar identifies it as non-watertight, and exporting requires confirmation because another modeling or slicing application may need to repair it before printing.
 
