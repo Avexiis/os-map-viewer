@@ -7,6 +7,9 @@
 - Never use fully qualified paths inline unless there are conflict errors such as `java.awt.timer` and `javax.swing.timer` used in one class. Prefer imports.
 - Follow RuneLite's code convention, described here `https://github.com/runelite/runelite/wiki/Code-Conventions`.
 - Remove old unit tests after use. Do not remove `AtlasInspectorApp`, `ShortestPathDataCheck`, or `MapAreaLabelsDump` in any circumstance.
+- Never write developer focused wording into user facing docs. This includes method/class/variable names, as well as API endpoints or anything else targeted at developers.
+- Only write developer focused wording into `docs/DEVELOPER_NOTES.md` and `docs/PLUGIN_API.md`
+- Use US English - not UK English - for both code naming schema and docs.
 
 ### Config
 - Use the shared config manager for persistent settings.
