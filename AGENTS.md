@@ -1,10 +1,11 @@
 ## OS Map Viewer Agent Guidelines
 
 ### General
-- Never leave comments or javadocs in code. .java files are for code only, comments and explanations should be placed in `docs/agent-notes`. Generate this folder if not present.
+- Never leave comments or Javadocs in code. .java files are for code only, comments, notes, and explanations should be placed in `docs/agent-notes`. Generate this folder if not present.
 - Never mix plugin code and core code. Changes should be made to the API module to permit actions between plugins and the core viewer.
-- Never use bulk imports (ie `java.awt.*`) and instead use single class imports. Only apply this to new files.
-- Follow RuneLite's code convention, described here `https://github.com/runelite/runelite/wiki/Code-Conventions`. Only apply this to new files.
+- Never use wildcard imports (ie `java.awt.*`) and instead use single class imports.
+- Never use fully qualified paths inline unless there are conflict errors such as `java.awt.timer` and `javax.swing.timer` used in one class. Prefer imports.
+- Follow RuneLite's code convention, described here `https://github.com/runelite/runelite/wiki/Code-Conventions`.
 - Remove old unit tests after use. Do not remove `AtlasInspectorApp`, `ShortestPathDataCheck`, or `MapAreaLabelsDump` in any circumstance.
 
 ### Config
@@ -18,11 +19,10 @@
 ### Testing
 You cannot verify runtime visual behavior or GUI layout yourself, even if you have screen-capture or computer use tools available. 
 After completing a task, do not declare it done. Instead:
-- Offer to launch the program with `run` or `runNvidiaPrime`
 - Tell the user what to test, including changed behavior, edge cases, etc.
 - Wait for the user to confirm the changes are functional before marking the task complete. A clean launch is not a passing test.
 
-### Disallowed Java Usage
+### Java Usage
 - All code must be Java 17 compatible.
 - No use of reflection besides what may already be present. Do not remove existing reflective access calls, but do not add more.
 - No executing external processes.
