@@ -104,6 +104,13 @@ sourceSets {
 
 dependencies {
     implementation(project(":api"))
+    implementation("com.breiler.jcsg:jcsg-core:0.0.3") {
+        exclude(group = "com.google.code.gson", module = "gson")
+    }
+    implementation("org.locationtech.jts:jts-core:1.20.0")
+    testImplementation(platform("org.junit:junit-bom:5.11.4"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     implementation("com.formdev:flatlaf:2.6")
     implementation(platform("org.lwjgl:lwjgl-bom:$lwjglVersion"))
     implementation("org.joml:joml:$jomlVersion")
@@ -155,6 +162,13 @@ tasks.withType<Jar>().configureEach {
 
 tasks.processResources {
     dependsOn(generateAppVersionProperties)
+}
+
+tasks.test {
+    useJUnitPlatform()
+    if (providers.environmentVariable("OSMAPVIEWER_TEST_CACHE").isPresent) {
+        maxHeapSize = "2g"
+    }
 }
 
 tasks.shadowJar {

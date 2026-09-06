@@ -26,24 +26,12 @@
 package com.xeon.view3d;
 
 import java.awt.BorderLayout;
-import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dialog;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
-import java.awt.FontMetrics;
-import java.awt.Graphics;
-import java.awt.Graphics2D;
-import java.awt.Point;
-import java.awt.Polygon;
-import java.awt.RenderingHints;
 import java.awt.Window;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
-import java.awt.event.MouseMotionAdapter;
-import java.awt.event.MouseWheelEvent;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.CancellationException;
@@ -74,8 +62,6 @@ import javax.swing.table.AbstractTableModel;
 final class NpcBrowserDialog extends JDialog
 {
 	private static final int PAGE_SIZE = 50;
-	private static final int PREVIEW_STRIDE = TerrainMesh.FLOATS_PER_VERTEX;
-	private static final int PREVIEW_VERTEX_STRIDE = PREVIEW_STRIDE * 3;
 
 	private final TerrainRegionLoader.Session session;
 	private final boolean selectionMode;
@@ -633,292 +619,60 @@ final class NpcBrowserDialog extends JDialog
 		}
 	}
 
-	private static final class PreviewPanel extends JPanel
+	private static final class PreviewPanel extends MeshPreviewPanel
 	{
 		private NpcPreviewModel model;
-		private String message = "Select an NPC";
-		private double rotationRadians = Math.toRadians(25.0);
-		private double zoom = 1.0;
+		private AnimatedObjectMesh.Frame lastFrame;
 		private boolean walkEnabled;
 		private long animationStartNanos = System.nanoTime();
-		private Point dragStart;
 		private final Timer animationTimer = new Timer(50, e -> {
-			if (walkEnabled && model != null && model.hasWalkAnimation())
-			{
-				repaint();
-			}
+			if (walkEnabled && model != null && model.hasWalkAnimation()) repaint();
 		});
 
-		private PreviewPanel()
-		{
-			setOpaque(true);
-			setBackground(Color.BLACK);
-			setBorder(BorderFactory.createLineBorder(new Color(40, 40, 40)));
-			setPreferredSize(new Dimension(420, 420));
-			animationTimer.start();
-			addMouseListener(new MouseAdapter()
-			{
-				@Override
-				public void mousePressed(MouseEvent e)
-				{
-					dragStart = e.getPoint();
-				}
-			});
-			addMouseMotionListener(new MouseMotionAdapter()
-			{
-				@Override
-				public void mouseDragged(MouseEvent e)
-				{
-					if (dragStart == null)
-					{
-						return;
-					}
-					double delta = e.getX() - dragStart.x;
-					rotationRadians += Math.toRadians(delta * 0.7);
-					dragStart = e.getPoint();
-					repaint();
-				}
-			});
-			addMouseWheelListener(this::applyWheelZoom);
-		}
+		private PreviewPanel() { animationTimer.start(); }
 
 		private void setModel(NpcPreviewModel model)
 		{
 			this.model = model;
-			message = model == null ? "No preview available" : "";
+			lastFrame = null;
 			animationStartNanos = System.nanoTime();
 			repaint();
-		}
-
-		private void setMessage(String message)
-		{
-			this.model = null;
-			this.message = message == null || message.isBlank() ? "No preview available" : message;
-			repaint();
-		}
-
-		private void setRotationDegrees(int degrees)
-		{
-			rotationRadians = Math.toRadians(degrees);
-			repaint();
-		}
-
-		private void setZoomPercent(int percent)
-		{
-			zoom = Math.max(0.1, percent / 100.0);
-			repaint();
-		}
-
-		private void setWalkEnabled(boolean walkEnabled)
-		{
-			this.walkEnabled = walkEnabled;
-			animationStartNanos = System.nanoTime();
-			repaint();
-		}
-
-		private void applyWheelZoom(MouseWheelEvent event)
-		{
-			zoom = Math.max(0.25, Math.min(3.0, zoom - event.getPreciseWheelRotation() * 0.08));
-			repaint();
-		}
-
-		private void stop()
-		{
-			animationTimer.stop();
 		}
 
 		@Override
-		protected void paintComponent(Graphics graphics)
+		public void setMessage(String message)
 		{
-			super.paintComponent(graphics);
-			Graphics2D g = (Graphics2D) graphics.create();
-			try
-			{
-				g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-				g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-				if (model == null)
-				{
-					drawCenteredMessage(g, message);
-					return;
-				}
-				AnimatedObjectMesh.Frame frame = currentFrame();
-				if (frame == null || frame.vertexCount() <= 0)
-				{
-					drawCenteredMessage(g, "No preview available");
-					return;
-				}
-				float[] vertices = frame.rawVertexData();
-				if (vertices == null || vertices.length < PREVIEW_VERTEX_STRIDE)
-				{
-					drawCenteredMessage(g, "No preview available");
-					return;
-				}
-				drawModel(g, vertices);
-			}
-			finally
-			{
-				g.dispose();
-			}
+			model = null;
+			lastFrame = null;
+			super.setMessage(message);
 		}
 
-		private AnimatedObjectMesh.Frame currentFrame()
+		private void setWalkEnabled(boolean enabled)
 		{
+			walkEnabled = enabled;
+			animationStartNanos = System.nanoTime();
+			repaint();
+		}
+
+		private void stop() { animationTimer.stop(); }
+
+		@Override
+		protected Map3DMesh mesh()
+		{
+			if (model == null) return null;
 			boolean useWalk = walkEnabled && model.hasWalkAnimation();
 			AnimatedObjectMesh.Frame[] frames = useWalk ? model.walkFrames() : model.idleFrames();
 			int[] lengths = useWalk ? model.walkFrameLengths() : model.idleFrameLengths();
-			if (frames.length == 0)
-			{
-				return null;
-			}
+			if (frames.length == 0) return null;
 			float seconds = (System.nanoTime() - animationStartNanos) / 1_000_000_000.0f;
-			int frame = AnimatedObjectMesh.frameIndexAt(frames.length, lengths, -1, 0, seconds);
-			return frame < 0 || frame >= frames.length ? frames[0] : frames[frame];
-		}
-
-		private void drawModel(Graphics2D g, float[] vertexData)
-		{
-			NpcMesh.Bounds bounds = model.bounds();
-			float centerX = (bounds.minX() + bounds.maxX()) * 0.5f;
-			float centerY = (bounds.minY() + bounds.maxY()) * 0.5f;
-			float centerZ = (bounds.minZ() + bounds.maxZ()) * 0.5f;
-			double modelWidth = Math.max(0.1, Math.max(bounds.maxX() - bounds.minX(), bounds.maxZ() - bounds.minZ()));
-			double modelHeight = Math.max(0.1, bounds.maxY() - bounds.minY());
-			double fitScale = Math.min(
-				Math.max(32.0, getWidth() - 36.0) / (modelWidth * 1.2),
-				Math.max(32.0, getHeight() - 36.0) / (modelHeight * 1.15)
-			);
-			double scale = Math.max(0.01, fitScale) * zoom;
-			double yawCos = Math.cos(rotationRadians);
-			double yawSin = Math.sin(rotationRadians);
-			double pitch = Math.toRadians(11.0);
-			double pitchCos = Math.cos(pitch);
-			double pitchSin = Math.sin(pitch);
-			int centerScreenX = getWidth() / 2;
-			int centerScreenY = getHeight() / 2;
-
-			List<Triangle> triangles = new ArrayList<>(vertexData.length / PREVIEW_VERTEX_STRIDE);
-			for (int offset = 0; offset + PREVIEW_VERTEX_STRIDE <= vertexData.length; offset += PREVIEW_VERTEX_STRIDE)
+			int index = AnimatedObjectMesh.frameIndexAt(frames.length, lengths, -1, 0, seconds);
+			AnimatedObjectMesh.Frame frame = frames[index < 0 || index >= frames.length ? 0 : index];
+			if (frame != lastFrame)
 			{
-				ProjectedVertex a = projectVertex(
-					vertexData,
-					offset,
-					centerX,
-					centerY,
-					centerZ,
-					scale,
-					yawCos,
-					yawSin,
-					pitchCos,
-					pitchSin,
-					centerScreenX,
-					centerScreenY
-				);
-				ProjectedVertex b = projectVertex(
-					vertexData,
-					offset + PREVIEW_STRIDE,
-					centerX,
-					centerY,
-					centerZ,
-					scale,
-					yawCos,
-					yawSin,
-					pitchCos,
-					pitchSin,
-					centerScreenX,
-					centerScreenY
-				);
-				ProjectedVertex c = projectVertex(
-					vertexData,
-					offset + PREVIEW_STRIDE * 2,
-					centerX,
-					centerY,
-					centerZ,
-					scale,
-					yawCos,
-					yawSin,
-					pitchCos,
-					pitchSin,
-					centerScreenX,
-					centerScreenY
-				);
-				triangles.add(new Triangle(
-					new int[]{a.x(), b.x(), c.x()},
-					new int[]{a.y(), b.y(), c.y()},
-					(float) ((a.depth() + b.depth() + c.depth()) / 3.0),
-					faceColor(vertexData, offset)
-				));
+				lastFrame = frame;
+				setMesh(ModelMeshData.fromFrame(frame));
 			}
-
-			triangles.sort(Comparator.comparingDouble(Triangle::depth));
-			for (Triangle triangle : triangles)
-			{
-				Polygon polygon = new Polygon(triangle.x(), triangle.y(), 3);
-				g.setColor(triangle.color());
-				g.fillPolygon(polygon);
-				g.setColor(new Color(0, 0, 0, 45));
-				g.drawPolygon(polygon);
-			}
+			return super.mesh();
 		}
-
-		private static ProjectedVertex projectVertex(
-			float[] data,
-			int offset,
-			float centerX,
-			float centerY,
-			float centerZ,
-			double scale,
-			double yawCos,
-			double yawSin,
-			double pitchCos,
-			double pitchSin,
-			int centerScreenX,
-			int centerScreenY
-		)
-		{
-			double x = data[offset] - centerX;
-			double y = data[offset + 1] - centerY;
-			double z = data[offset + 2] - centerZ;
-			double rotatedX = x * yawCos + z * yawSin;
-			double rotatedZ = z * yawCos - x * yawSin;
-			double pitchedY = y * pitchCos - rotatedZ * pitchSin;
-			double pitchedZ = y * pitchSin + rotatedZ * pitchCos;
-			return new ProjectedVertex(
-				(int) Math.round(centerScreenX + rotatedX * scale),
-				(int) Math.round(centerScreenY - pitchedY * scale),
-				pitchedZ
-			);
-		}
-
-		private static Color faceColor(float[] data, int offset)
-		{
-			int r = colorChannel(data[offset + 6], data[offset + PREVIEW_STRIDE + 6], data[offset + PREVIEW_STRIDE * 2 + 6]);
-			int g = colorChannel(data[offset + 7], data[offset + PREVIEW_STRIDE + 7], data[offset + PREVIEW_STRIDE * 2 + 7]);
-			int b = colorChannel(data[offset + 8], data[offset + PREVIEW_STRIDE + 8], data[offset + PREVIEW_STRIDE * 2 + 8]);
-			int a = colorChannel(data[offset + 9], data[offset + PREVIEW_STRIDE + 9], data[offset + PREVIEW_STRIDE * 2 + 9]);
-			return new Color(r, g, b, Math.max(25, a));
-		}
-
-		private static int colorChannel(float a, float b, float c)
-		{
-			return Math.max(0, Math.min(255, Math.round((a + b + c) * 255.0f / 3.0f)));
-		}
-
-		private void drawCenteredMessage(Graphics2D g, String text)
-		{
-			String value = text == null || text.isBlank() ? "No preview available" : text;
-			g.setColor(new Color(185, 185, 185));
-			FontMetrics metrics = g.getFontMetrics();
-			int x = Math.max(8, (getWidth() - metrics.stringWidth(value)) / 2);
-			int y = Math.max(metrics.getAscent(), (getHeight() + metrics.getAscent()) / 2);
-			g.drawString(value, x, y);
-		}
-	}
-
-	private record ProjectedVertex(int x, int y, double depth)
-	{
-	}
-
-	private record Triangle(int[] x, int[] y, float depth, Color color)
-	{
 	}
 }

@@ -223,6 +223,17 @@ final class NpcMeshBuilder
 		return meshes;
 	}
 
+	static Map3DMesh staticMesh(int npcId, NpcDefinitionProvider definitions, ObjectModelProvider models,
+	                            RSTextureProvider textures, SceneTextureSet textureSet)
+	{
+		NpcDefinition3D definition = definitions.definition(npcId);
+		if (definition == null || !definition.hasModels()) return null;
+		ModelDefinition base = baseModel(definition, models);
+		if (base == null || base.faceCount == 0) return null;
+		FrameSet frames = frameSet(definition, base, null, null, textures, textureSet, false);
+		return ModelMeshData.fromFrame(frames.frames()[0]);
+	}
+
 	static NpcPreviewModel previewModel(
 		int npcId,
 		NpcDefinitionProvider definitionProvider,

@@ -22,6 +22,11 @@ public interface PluginContext
 
 	PluginConfig config();
 
+	/** Refreshes this plugin's components and expands/selects its right sidebar, on the EDT. */
+	default void showRightSidebar()
+	{
+	}
+
 	default Window owner()
 	{
 		return frame();

@@ -7,7 +7,7 @@
 
 OS Map Viewer is a desktop map viewer for the Old School RuneScape world map.
 
-The app includes a 2D world map, a 3D cache-backed scene viewer, cache-backed NPC spawns, and built-in plugins for RuneLite/HDOS ground markers and shortest-path routing.
+The app includes a 2D world map, a 3D cache-backed scene viewer, cache-backed NPC spawns, and built-in plugins for RuneLite/HDOS ground markers, shortest-path routing, and printable mesh export.
 
 ## 3D Mode
 
@@ -57,6 +57,7 @@ The Options menu includes a map printer that uses the RuneLite cache library to 
 - Save your last viewed region and zoom level.
 - Enable, disable, and load plugins. One plugin can be active at a time.
 - Use ground markers and shortest-path overlays in both 2D and 3D.
+- Export compacted NPC, object, or connected structure meshes as STL or OBJ files.
 
 ## Documentation
 
@@ -66,6 +67,7 @@ The Options menu includes a map printer that uses the RuneLite cache library to 
 - [Plugins](docs/PLUGINS.md)
 - [Built-In Shortest Path Plugin](docs/SHORTEST_PATH_PLUGIN.md)
 - [Built-In Ground Markers Plugin](docs/GROUND_MARKERS_PLUGIN.md)
+- [Built-In Mesh Export Plugin](docs/MESH_EXPORT_PLUGIN.md)
 - [3D Mode](docs/3D_MODE.md)
 - [Saved Settings](docs/SAVED_SETTINGS.md)
 - [Notes For Developers](docs/DEVELOPER_NOTES.md)

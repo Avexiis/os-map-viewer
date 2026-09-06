@@ -387,7 +387,8 @@ final class ObjectMeshBuilder
 		return builder.build(
 			new Tile(position.getX(), position.getY(), displayPlane),
 			rawObjectId,
-			definition.getId()
+			definition.getId(),
+			definition.getName()
 		);
 	}
 
@@ -1217,14 +1218,14 @@ final class ObjectMeshBuilder
 			triangles.add(c);
 		}
 
-		private ObjectOverlayMesh build(Tile tile, int objectId, int renderedObjectId)
+		private ObjectOverlayMesh build(Tile tile, int objectId, int renderedObjectId, String name)
 		{
 			if (triangles.vertexCount() == 0)
 			{
 				return null;
 			}
 
-			return new ObjectOverlayMesh(tile, objectId, renderedObjectId, triangles.array());
+			return new ObjectOverlayMesh(tile, objectId, renderedObjectId, name, triangles.array());
 		}
 	}
 

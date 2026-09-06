@@ -39,6 +39,7 @@ import com.xeon.plugin.MapViewerPlugin;
 import com.xeon.plugin.PluginContext;
 import com.xeon.plugin.PluginRegistry;
 import com.xeon.plugins.groundmarkers.GroundMarkerPlugin;
+import com.xeon.plugins.meshexport.MeshExportPlugin;
 import com.xeon.plugins.shortestpath.ShortestPathPlugin;
 import com.xeon.util.Images;
 import com.xeon.util.Ui;
@@ -146,7 +147,10 @@ public class MapViewerController
 	public MapViewerController()
 	{
 		wikiSyncManager.refreshStoredProfileAsync();
-		for (MapViewerPlugin plugin : PluginRegistry.load(new GroundMarkerPlugin(), new ShortestPathPlugin()))
+		for (MapViewerPlugin plugin : PluginRegistry.load(
+			new GroundMarkerPlugin(),
+			new ShortestPathPlugin(),
+			new MeshExportPlugin()))
 		{
 			plugins.add(new PluginHandle(plugin, false));
 		}
@@ -2233,6 +2237,20 @@ public class MapViewerController
 		public void setStatus(String message)
 		{
 			MapViewerController.this.setStatus(message);
+		}
+
+		@Override
+		public void showRightSidebar()
+		{
+			refreshPluginHosts();
+			PluginHandle handle = findPlugin(pluginConfig.namespace());
+			if (handle != null && handle.installed && handle.plugin.rightComponent() != null)
+			{
+				rightTabs.setSelectedComponent(handle.plugin.rightComponent());
+				rightSidebar.collapsed = false;
+				rightSidebar.refreshLayout();
+				frame.revalidate();
+			}
 		}
 
 		@Override

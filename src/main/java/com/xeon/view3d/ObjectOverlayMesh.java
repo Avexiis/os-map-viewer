@@ -34,6 +34,8 @@ final class ObjectOverlayMesh
 	private final Tile tile;
 	private final int objectId;
 	private final int renderedObjectId;
+	private final String name;
+	private final float[] pickBounds;
 	private final float centerX;
 	private final float centerZ;
 	private final float maxY;
@@ -45,13 +47,16 @@ final class ObjectOverlayMesh
 		Tile tile,
 		int objectId,
 		int renderedObjectId,
+		String name,
 		float[] vertexData
 	)
 	{
 		this.tile = tile == null ? null : new Tile(tile.x, tile.y, tile.z);
 		this.objectId = objectId;
 		this.renderedObjectId = renderedObjectId;
+		this.name = name == null ? "" : name;
 		this.vertexData = normalizeVertexData(vertexData);
+		this.pickBounds = MeshRayIntersection.bounds(this.vertexData);
 		this.vertexCount = this.vertexData.length / POSITION_FLOATS;
 		Bounds bounds = bounds(this.vertexData);
 		centerX = bounds.centerX();
@@ -62,6 +67,15 @@ final class ObjectOverlayMesh
 	Tile tile()
 	{
 		return tile == null ? null : new Tile(tile.x, tile.y, tile.z);
+	}
+
+	int objectId() { return objectId; }
+	String name() { return name; }
+
+	float intersectionDistance(org.joml.Vector3fc origin, org.joml.Vector3fc direction)
+	{
+		if (!MeshRayIntersection.hitsBounds(pickBounds, origin, direction)) return Float.POSITIVE_INFINITY;
+		return MeshRayIntersection.distance(rawVertexData(), origin, direction);
 	}
 
 	boolean matches(Map3DObjectOverlay overlay)

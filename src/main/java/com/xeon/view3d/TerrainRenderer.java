@@ -333,6 +333,9 @@ final class TerrainRenderer
 	private HoverRay hoverRay;
 	private HoveredNpcDraw hoveredNpcDraw;
 	private NpcHoverInfo hoveredNpcInfo;
+	private boolean entityPickingEnabled;
+	private Color objectHoverOutlineColor;
+	private MatchedObjectOverlay hoveredObject;
 	private boolean initialized;
 	private int antialiasingSamples = 4;
 	private int viewDistanceRegions = 3;
@@ -502,6 +505,86 @@ final class TerrainRenderer
 		return hoveredNpcInfo;
 	}
 
+	void setEntityPicking(boolean enabled, Color outlineColor)
+	{
+		entityPickingEnabled = enabled;
+		objectHoverOutlineColor = outlineColor;
+		hoveredObject = null;
+	}
+
+	Map3DEntity pickEntity(java.util.function.IntFunction<Map3DEntity.MeshSource> npcMeshSource)
+	{
+		updateHoveredNpc(animationTimeSeconds());
+		updateHoveredObject();
+		if (hoveredObject != null)
+		{
+			ObjectOverlayMesh object = hoveredObject.mesh();
+			Map3DMesh snapshot = worldObjectMesh(hoveredObject);
+			return new Map3DEntity(Map3DEntity.Kind.OBJECT, object.objectId(), object.name(), object.tile(), () -> snapshot);
+		}
+		if (hoveredNpcInfo == null) return null;
+		NpcHoverInfo npc = hoveredNpcInfo;
+		return new Map3DEntity(Map3DEntity.Kind.NPC, npc.npcId(), npc.name(),
+			new Tile(npc.spawnWorldX(), npc.spawnWorldY(), npc.spawnPlane()), npcMeshSource.apply(npc.npcId()));
+	}
+
+	boolean isEntityHovered()
+	{
+		updateHoveredNpc(animationTimeSeconds());
+		updateHoveredObject();
+		return hoveredObject != null || hoveredNpcInfo != null;
+	}
+
+	private static Map3DMesh worldObjectMesh(MatchedObjectOverlay match)
+	{
+		return worldObjectMesh(match.mesh().rawVertexData(), match.region().regionId());
+	}
+
+	static Map3DMesh worldObjectMesh(float[] source, int regionId)
+	{
+		double[] positions = new double[source.length];
+		int[] triangles = new int[source.length / 3];
+		double offsetX = TerrainScene.regionX(regionId) * (double) TerrainScene.REGION_SIZE
+			+ SceneScale.REGION_CENTER_TILES;
+		double offsetZ = -TerrainScene.regionY(regionId) * (double) TerrainScene.REGION_SIZE
+			- SceneScale.REGION_CENTER_TILES;
+		for (int vertex = 0; vertex < triangles.length; vertex++)
+		{
+			positions[vertex * 3] = source[vertex * 3] + offsetX;
+			positions[vertex * 3 + 1] = source[vertex * 3 + 1];
+			positions[vertex * 3 + 2] = source[vertex * 3 + 2] + offsetZ;
+			triangles[vertex] = vertex;
+		}
+		return new Map3DMesh(positions, triangles);
+	}
+
+	private void updateHoveredObject()
+	{
+		hoveredObject = null;
+		if (!entityPickingEnabled || hoverRay == null) return;
+		float best = hoveredNpcDraw == null ? Float.POSITIVE_INFINITY : hoveredNpcDraw.distance();
+		for (UploadedRegion region : uploadedRegions.values())
+		{
+			if (!isVisible(region)) continue;
+			Vector3f localOrigin = new Vector3f(hoverRay.origin()).sub(region.offsetX(), 0, region.offsetZ());
+			for (ObjectOverlayMesh mesh : region.mesh().objectOverlays())
+			{
+				if (mesh.tile() == null || !isPlaneVisible(mesh.tile().z)) continue;
+				float distance = mesh.intersectionDistance(localOrigin, hoverRay.direction());
+				if (distance < best)
+				{
+					best = distance;
+					hoveredObject = new MatchedObjectOverlay(region, mesh);
+				}
+			}
+		}
+		if (hoveredObject != null)
+		{
+			hoveredNpcDraw = null;
+			hoveredNpcInfo = null;
+		}
+	}
+
 	List<NpcMapDot> npcMapDots()
 	{
 		return npcMapDots;
@@ -627,6 +710,7 @@ final class TerrainRenderer
 			float timeSeconds = animationTimeSeconds();
 			renderCounts = renderTerrain(camera, timeSeconds);
 			updateHoveredNpc(timeSeconds);
+			updateHoveredObject();
 			updateNpcMapDots(timeSeconds);
 			overlayDrawCalls = renderSceneOverlays(camera);
 		}
@@ -984,6 +1068,15 @@ final class TerrainRenderer
 						continue;
 					}
 					float distance = npcIntersectionDistance(region, npcMesh.bounds(), transform, ray);
+					if (entityPickingEnabled && Float.isFinite(distance))
+					{
+						float yaw = -transform.yawRadians();
+						Vector3f origin = new Vector3f(ray.origin())
+							.sub(region.offsetX() + transform.x(), transform.y(), region.offsetZ() + transform.z())
+							.rotateY(yaw);
+						Vector3f direction = new Vector3f(ray.direction()).rotateY(yaw);
+						distance = MeshRayIntersection.distance(frame.outlineGeometry().triangleData(), origin, direction);
+					}
 					if (distance < bestDistance)
 					{
 						bestDistance = distance;
@@ -1283,7 +1376,7 @@ final class TerrainRenderer
 		{
 			int hoverDrawCalls = hoveredTileCoveredByPluginOverlay() ? 0 : renderHoveredTile();
 			int pluginDrawCalls = renderPluginOverlay(camera);
-			return hoverDrawCalls + pluginDrawCalls + renderHoveredNpcOutline(camera);
+			return hoverDrawCalls + pluginDrawCalls + renderHoveredNpcOutline(camera) + renderHoveredObjectOutline();
 		}
 		finally
 		{
@@ -1307,6 +1400,17 @@ final class TerrainRenderer
 		}
 
 		FloatList vertices = npcOutlineLineVertices(hovered);
+		return renderHoverOutline(vertices, npcOutlineColor);
+	}
+
+	private int renderHoveredObjectOutline()
+	{
+		if (hoveredObject == null || objectHoverOutlineColor == null) return 0;
+		return renderHoverOutline(objectOutlineLineVertices(hoveredObject), objectHoverOutlineColor);
+	}
+
+	private int renderHoverOutline(FloatList vertices, Color color)
+	{
 		int vertexCount = vertices.size() / OVERLAY_LINE_POSITION_FLOATS;
 		if (vertexCount <= 0 || vertexCount * OVERLAY_LINE_POSITION_FLOATS != vertices.size())
 		{
@@ -1331,7 +1435,7 @@ final class TerrainRenderer
 				GL33C.glUniform4f(outlineColorLocation, 0.0f, 0.0f, 0.0f, 0.80f);
 				GL33C.glLineWidth(4.0f);
 				GL33C.glDrawArrays(GL33C.GL_LINES, 0, vertexCount);
-				uploadOutlineColor(npcOutlineColor, 0.98f);
+				uploadOutlineColor(color, 0.98f);
 				GL33C.glLineWidth(2.0f);
 				GL33C.glDrawArrays(GL33C.GL_LINES, 0, vertexCount);
 			return 2;

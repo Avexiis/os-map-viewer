@@ -482,6 +482,7 @@ public final class Map3DPanel extends JPanel
 	{
 		activePlugin = plugin;
 		active3DLayer = plugin instanceof Map3DLayer layer ? layer : null;
+		updateEntityPicking();
 		controlsOverlay.setPluginControls(
 			active3DLayer == null || plugin == null ? null : plugin.displayName(),
 			active3DLayer == null ? List.of() : active3DLayer.controlHints()
@@ -500,7 +501,7 @@ public final class Map3DPanel extends JPanel
 	public void setDeveloperModeAvailable(boolean developerModeAvailable)
 	{
 		this.developerModeAvailable = developerModeAvailable;
-		renderer.setNpcPickingEnabled(developerModeAvailable);
+		updateEntityPicking();
 		npcBrowserButton.setVisible(developerModeAvailable);
 		npcBrowserButton.setEnabled(developerModeAvailable);
 		npcBrowserSpacer.setVisible(developerModeAvailable);
@@ -2381,6 +2382,41 @@ public final class Map3DPanel extends JPanel
 		updateHoveredTile(event);
 	}
 
+	private void updateEntityPicking()
+	{
+		boolean enabled = active3DLayer != null && active3DLayer.entityPickingEnabled();
+		renderer.setEntityPicking(enabled, enabled ? active3DLayer.objectHoverOutlineColor() : null);
+		renderer.setNpcPickingEnabled(developerModeAvailable || enabled);
+	}
+
+	private List<Map3DTileAction> entityActions()
+	{
+		if (active3DLayer == null || !active3DLayer.entityPickingEnabled()) return List.of();
+		TerrainRegionLoader.Session session = loaderSession;
+		Map3DEntity entity = renderer.pickEntity(id -> () -> session == null ? null : session.npcStaticMesh(id));
+		if (entity == null) return List.of();
+		List<Map3DTileAction> actions = active3DLayer.entityActions(entity);
+		return actions == null ? List.of() : actions;
+	}
+
+	private Map3DEntity pickedEntity()
+	{
+		if (active3DLayer == null || !active3DLayer.entityPickingEnabled()) return null;
+		TerrainRegionLoader.Session session = loaderSession;
+		return renderer.pickEntity(id -> () -> session == null ? null : session.npcStaticMesh(id));
+	}
+
+	private void appendEntityActions(JPopupMenu popup)
+	{
+		for (Map3DTileAction action : entityActions())
+		{
+			if (action == null || action.label().isBlank()) continue;
+			JMenuItem item = new JMenuItem(action.label());
+			item.addActionListener(e -> action.run());
+			popup.add(item);
+		}
+	}
+
 	private boolean handleDeveloperPopupTrigger(MouseEvent event)
 	{
 		if (!developerModeAvailable || !event.isPopupTrigger() && !SwingUtilities.isRightMouseButton(event))
@@ -2418,6 +2454,7 @@ public final class Map3DPanel extends JPanel
 				popup.add(spawn);
 			}
 		}
+		appendEntityActions(popup);
 		if (popup.getComponentCount() == 0)
 		{
 			return false;
@@ -2631,18 +2668,10 @@ public final class Map3DPanel extends JPanel
 		}
 		updateHoveredTile(event);
 		Tile tile = hoveredTile();
-		if (tile == null)
-		{
-			return false;
-		}
-
-		List<Map3DTileAction> actions = active3DLayer.tileActions(to3DMouseEvent(event, tile, true));
-		if (actions == null || actions.isEmpty())
-		{
-			return false;
-		}
-
 		JPopupMenu popup = new JPopupMenu();
+		appendEntityActions(popup);
+		List<Map3DTileAction> actions = tile == null ? List.of() : active3DLayer.tileActions(to3DMouseEvent(event, tile, true));
+		if (actions == null) actions = List.of();
 		for (Map3DTileAction action : actions)
 		{
 			if (action == null || action.label().isBlank())
@@ -2676,6 +2705,13 @@ public final class Map3DPanel extends JPanel
 			return false;
 		}
 		updateHoveredTile(event);
+		Map3DEntity entity = pickedEntity();
+		if (entity != null && active3DLayer.entityClicked(entity, to3DMouseEvent(event, entity.tile(), false)))
+		{
+			repaintPluginViews();
+			event.consume();
+			return true;
+		}
 		Tile tile = hoveredTile();
 		if (tile == null)
 		{
@@ -3325,22 +3361,27 @@ public final class Map3DPanel extends JPanel
 				renderHeight(),
 				new Vector3f()
 			);
-				renderer.setHoverRay(camera.position(), rayDirection);
-				hoveredTile = currentScene.pickTile(camera.position(), rayDirection, maxVisiblePlane);
-				renderer.setHoveredTile(hoveredTile);
-				shiftPressed = event.isShiftDown();
-				updateTileHoverSelectorColor();
-				updateTileHud();
-			}
-			catch (RuntimeException ex)
+			renderer.setHoverRay(camera.position(), rayDirection);
+			hoveredTile = currentScene.pickTile(camera.position(), rayDirection, maxVisiblePlane);
+			boolean entityHovered = active3DLayer != null
+				&& active3DLayer.entityPickingEnabled()
+				&& renderer.isEntityHovered();
+			boolean showTileHover = active3DLayer == null
+				|| active3DLayer.tileHoverSelectorVisible(entityHovered);
+			renderer.setHoveredTile(showTileHover ? hoveredTile : null);
+			shiftPressed = event.isShiftDown();
+			updateTileHoverSelectorColor();
+			updateTileHud();
+		}
+		catch (RuntimeException ex)
 		{
 			hoveredTile = null;
-				renderer.setHoveredTile(null);
-				renderer.setHoverRay(null, null);
-				npcHoverOverlay.setInfo(null);
-				shiftPressed = event.isShiftDown();
-				updateTileHoverSelectorColor();
-				updateTileHud();
+			renderer.setHoveredTile(null);
+			renderer.setHoverRay(null, null);
+			npcHoverOverlay.setInfo(null);
+			shiftPressed = event.isShiftDown();
+			updateTileHoverSelectorColor();
+			updateTileHud();
 			if (!hoverPickErrorLogged)
 			{
 				hoverPickErrorLogged = true;

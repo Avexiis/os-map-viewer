@@ -1,0 +1,30 @@
+## OS Map Viewer Agent Guidelines
+
+### General
+- Never leave comments or javadocs in code. .java files are for code only, comments and explanations should be placed in `docs/agent-notes`. Generate this folder if not present.
+- Never mix plugin code and core code. Changes should be made to the API module to permit actions between plugins and the core viewer.
+- Never use bulk imports (ie `java.awt.*`) and instead use single class imports. Only apply this to new files.
+- Follow RuneLite's code convention, described here `https://github.com/runelite/runelite/wiki/Code-Conventions`. Only apply this to new files.
+- Remove old unit tests after use. Do not remove `AtlasInspectorApp`, `ShortestPathDataCheck`, or `MapAreaLabelsDump` in any circumstance.
+
+### Config
+- Use the shared config manager for persistent settings.
+- Never change a config key or group without migrating.
+
+### Threading and concurrency
+- Never use `Thread.sleep()`
+- Swing/UI actions should use an `invokeLater` or concurrent queue to act on the render thread.
+
+### Testing
+You cannot verify runtime visual behavior or GUI layout yourself, even if you have screen-capture or computer use tools available. 
+After completing a task, do not declare it done. Instead:
+- Offer to launch the program with `run` or `runNvidiaPrime`
+- Tell the user what to test, including changed behavior, edge cases, etc.
+- Wait for the user to confirm the changes are functional before marking the task complete. A clean launch is not a passing test.
+
+### Disallowed Java Usage
+- All code must be Java 17 compatible.
+- No use of reflection besides what may already be present. Do not remove existing reflective access calls, but do not add more.
+- No executing external processes.
+- No downloading or use of dynamic code loading, including classloading. The core plugin loader is an exception to this rule.
+- No runtime code generation.

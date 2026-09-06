@@ -272,6 +272,15 @@ public final class TerrainRegionLoader
 			return npcDefinitionProvider.catalog();
 		}
 
+		synchronized Map3DMesh npcStaticMesh(int npcId)
+		{
+			try
+			{
+				return NpcMeshBuilder.staticMesh(npcId, npcDefinitionProvider, modelProvider, textureProvider, textureSet);
+			}
+			finally { modelProvider.clearCache(); }
+		}
+
 		synchronized NpcPreviewModel npcPreviewModel(int npcId)
 		{
 			try

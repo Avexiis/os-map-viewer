@@ -164,6 +164,7 @@ Available methods:
 - `focusTile(tile, zoom)` focuses the 2D map or warps the 3D camera, depending on the active mode.
 - `repaintVisible()` repaints 2D plugin layers and refreshes 3D plugin overlays.
 - `invoke3DRenderLater(task)` queues work for the 3D render path when the 3D viewer is active.
+- `showRightSidebar()` refreshes plugin components, expands the right sidebar, and selects the calling plugin's tab. Call it on the Swing event thread.
 - `setStatus(String message)` writes to the status bar.
 - `promptLoadPluginJar()` opens the core plugin loader.
 - `config()` returns persistent settings scoped to this plugin id.
@@ -207,6 +208,11 @@ public final class MyPlugin implements MapViewerPlugin, MapLayer, MapTool, Map3D
 
 `Map3DLayer` methods:
 
+- `entityPickingEnabled()` opts into NPC and object picking.
+- `objectHoverOutlineColor()` returns the object silhouette color used while an object is picked, or `null` to disable that outline.
+- `tileHoverSelectorVisible(entityHovered)` controls the core tile hover overlay. Return `false` when the plugin needs to suppress it; `entityHovered` reports whether an NPC or object is currently under the pointer.
+- `entityActions(entity)` returns right-click context menu actions for a picked NPC or object.
+- `entityClicked(entity, event)` handles a picked entity click and returns whether the plugin consumed it. This runs on the Swing event thread.
 - `overlay(context)` returns immutable data for in-world 3D drawing.
 - `tileActions(event)` returns right-click context menu actions for a 3D tile.
 - `clickWarpTarget(event)` can return a tile for simple left-click 3D warp actions.
@@ -226,6 +232,8 @@ public final class MyPlugin implements MapViewerPlugin, MapLayer, MapTool, Map3D
 - `Map3DObjectOverlay`: filled and outlined object-model overlays, matched by world tile and object id.
 
 `Map3DObjectOverlay` draws against retained object geometry in loaded 3D regions. The `objectId` can be either the raw scene object id or the transformed object id used by the renderer. The fill is drawn on the object model/clickbox geometry, the outline is a projected screen-space silhouette built from the same coverage-mask path used for NPC outlines, and the optional label floats over the matched model without a flag or stem. If no matching object geometry is loaded, the overlay is skipped.
+
+`Map3DEntity` identifies a picked `NPC` or `OBJECT` by id, name, and world tile. Its `meshSource()` must be loaded off the Swing and render threads because NPC models may require cache access. It returns an immutable `Map3DMesh`; object snapshots retain their absolute world placement so multiple object meshes can be combined, while NPC snapshots are centered on their static model origin. `MeshPreviewPanel` is the shared Swing preview component for displaying these meshes.
 
 Keep `overlay(context)` data-only and fast. If a Swing event changes plugin state, call `context.repaintVisible()` or `context.invoke3DRenderLater(...)` so the 3D renderer refreshes safely.
 

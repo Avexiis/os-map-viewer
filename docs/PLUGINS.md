@@ -27,3 +27,9 @@ To load an external plugin:
 3. Choose a compatible plugin JAR file.
 
 The active plugin adds a button to the left rail. Click the plugin button to open its plugin menu.
+
+## Built-In Plugins
+
+- [Ground Markers](GROUND_MARKERS_PLUGIN.md) imports and exports RuneLite/HDOS ground markers.
+- [Shortest Path](SHORTEST_PATH_PLUGIN.md) calculates routes and draws collision overlays.
+- [Mesh Export](MESH_EXPORT_PLUGIN.md) exports static NPCs, objects, and connected structures for CAD, Blender, or 3D printing.

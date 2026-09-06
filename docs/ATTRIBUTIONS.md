@@ -16,6 +16,10 @@
 
 - Map icon tooltips include location data adapted from RuneLite's core world map plugin.
 
+- The Mesh Export plugin uses [JCSG](https://github.com/breiler/jcsg) for constructive solid geometry. JCSG is licensed under the Apache License 2.0.
+
+- The Mesh Export plugin uses [JTS Topology Suite](https://github.com/locationtech/jts) for planar geometry operations and triangulation. JTS is licensed under the Eclipse Distribution License 1.0.
+
 RuneLite and its Shortest Path hub plugin, as well as the source repository for https://osrs.world, are licensed under the BSD 2-Clause License:
 
 ```text
