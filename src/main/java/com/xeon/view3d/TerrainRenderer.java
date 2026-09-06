@@ -3369,13 +3369,11 @@ final class TerrainRenderer
 				}
 				catch (RetainedDataCompactionCancelled ignored)
 				{
-					// Shutdown or an interrupted worker abandoned opportunistic retained-data compaction.
 				}
 			});
 		}
 		catch (RejectedExecutionException ignored)
 		{
-			// Renderer shutdown won the race; the mesh will be released by normal scene disposal.
 		}
 	}
 

@@ -514,7 +514,6 @@ final class ObjectModelProvider
 	{
 		while (offset[0] < data.length && data[offset[0]++] != 0)
 		{
-			// Strings are only needed for offset alignment here.
 		}
 	}
 

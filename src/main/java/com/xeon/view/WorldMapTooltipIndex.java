@@ -186,7 +186,6 @@ final class WorldMapTooltipIndex
 					}
 					catch (NumberFormatException ignored)
 					{
-						// Ignore malformed optional data rows.
 					}
 				}
 			}
@@ -232,7 +231,6 @@ final class WorldMapTooltipIndex
 					}
 					catch (NumberFormatException ignored)
 					{
-						// Ignore malformed optional data rows.
 					}
 				}
 			}

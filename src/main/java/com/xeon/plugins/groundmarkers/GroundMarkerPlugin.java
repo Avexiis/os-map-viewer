@@ -1052,7 +1052,6 @@ public final class GroundMarkerPlugin implements MapViewerPlugin, MapLayer, MapT
 	{
 		if (toolbar != null)
 		{
-			// Toolbar is plugin-scoped; shared map controls are owned by the controller.
 		}
 		if (sidebar != null)
 		{

@@ -56,8 +56,6 @@ record NpcMesh(
 
 	void releaseVertexData()
 	{
-		// NPC animation frames are shared across loaded regions by NpcMeshBuilder.FrameCache.
-		// Region unloads must not clear them out from another visible region.
 	}
 
 	record Instance(

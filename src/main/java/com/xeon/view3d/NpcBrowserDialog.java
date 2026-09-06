@@ -511,7 +511,6 @@ final class NpcBrowserDialog extends JDialog
 				}
 				catch (CancellationException ignored)
 				{
-					// Superseded by a later table selection.
 				}
 				catch (ExecutionException ex)
 				{

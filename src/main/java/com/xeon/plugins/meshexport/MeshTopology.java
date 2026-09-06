@@ -92,7 +92,6 @@ final class MeshTopology
 				candidate.add(vertices.get(face.a), vertices.get(face.b), vertices.get(face.c));
 			}
 		}
-		// Opposite sheets alone must not vanish. Accept cancellation only when it leaves a closed shell.
 		return !candidate.faces.isEmpty() && candidate.diagnostics().closed() ? candidate : this;
 	}
 
@@ -220,7 +219,6 @@ final class MeshTopology
 
 	Map3DMesh toMesh(Vec center, double extent)
 	{
-		// Only referenced vertices are retained, so discarded internal parts cannot affect export bounds.
 		Map<Integer, Integer> used = new LinkedHashMap<>();
 		int[] indices = new int[faces.size() * 3];
 		for (int f = 0; f < faces.size(); f++)

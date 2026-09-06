@@ -67,7 +67,6 @@ final class SkillRequirementParser
 			}
 			catch (NumberFormatException ignored)
 			{
-				// Ignore malformed third-party data rows instead of failing the entire transport load.
 			}
 		}
 		return requirements.isEmpty() ? Map.of() : Map.copyOf(requirements);

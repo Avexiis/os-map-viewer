@@ -115,7 +115,6 @@ final class MeshExportIO
 		double[] positions = new double[mesh.vertexCount() * 3];
 		for (int v = 0; v < mesh.vertexCount(); v++)
 		{
-			// Rotate Y-up to Z-up with positive determinant, center XY, and put the base at Z=0.
 			positions[v * 3] = (mesh.coordinate(v, 0) - (min[0] + max[0]) / 2) * scale;
 			positions[v * 3 + 1] = -(mesh.coordinate(v, 2) - (min[2] + max[2]) / 2) * scale;
 			positions[v * 3 + 2] = (mesh.coordinate(v, 1) - min[1]) * scale;

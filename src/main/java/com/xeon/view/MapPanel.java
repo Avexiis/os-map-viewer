@@ -252,7 +252,6 @@ public class MapPanel extends JComponent implements MapView
 		}
 		try (AtlasStoreReader ignored = AtlasStoreReader.openFile(atlasPath))
 		{
-			// Opening the atlas validates the header, metadata, layer index, and tile index.
 		}
 	}
 

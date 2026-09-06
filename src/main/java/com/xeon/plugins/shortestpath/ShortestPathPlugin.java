@@ -1771,7 +1771,6 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 			}
 			catch (IllegalArgumentException ignored)
 			{
-				// Fall through to the legacy boolean.
 			}
 		}
 		return config.getBoolean(KEY_SHOW_COLLISION_MAP, false)
@@ -1819,7 +1818,6 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 			}
 			catch (IllegalArgumentException ignored)
 			{
-				// Ignore stale names so removed or renamed items do not break plugin loading.
 			}
 		}
 		return enabled;
@@ -1868,7 +1866,6 @@ public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapT
 			}
 			catch (IllegalArgumentException ignored)
 			{
-				// Ignore stale transport type names from older configs.
 			}
 		}
 		return enabled;
