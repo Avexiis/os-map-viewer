@@ -136,6 +136,7 @@ final class ObjectMeshBuilder
 			}
 
 			AnimatedObjectMesh animatedObject = animatedObject(
+				objectOverlay,
 				modelProvider,
 				animationProvider,
 				textureProvider,
@@ -437,6 +438,7 @@ final class ObjectMeshBuilder
 	}
 
 	private static AnimatedObjectMesh animatedObject(
+		ObjectOverlayMesh objectOverlay,
 		ObjectModelProvider modelProvider,
 		ObjectAnimationProvider animationProvider,
 		RSTextureProvider textureProvider,
@@ -496,6 +498,7 @@ final class ObjectMeshBuilder
 		}
 
 		return new AnimatedObjectMesh(
+			objectOverlay,
 			displayPlane,
 			definition.getAnimationID(),
 			animationProvider.frameLengths(sequence),

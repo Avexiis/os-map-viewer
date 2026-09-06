@@ -35,6 +35,7 @@ import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridLayout;
+import java.awt.Rectangle;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -61,7 +62,9 @@ import javax.swing.JSeparator;
 import javax.swing.JSpinner;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
+import javax.swing.JViewport;
 import javax.swing.ScrollPaneConstants;
+import javax.swing.Scrollable;
 import javax.swing.SpinnerNumberModel;
 import javax.swing.SwingWorker;
 import javax.swing.UIManager;
@@ -81,6 +84,7 @@ final class MeshExportPanel extends JPanel
 	private final JTextArea status = new JTextArea(3, 20);
 	private final JRadioButton originalMode = new JRadioButton("Original", true);
 	private final JRadioButton compactMode = new JRadioButton("Compacted");
+	private final JRadioButton repairedMode = new JRadioButton("Repaired");
 	private final JCheckBox wireframe = new JCheckBox("Face edges", true);
 	private final JSpinner size = new JSpinner(new SpinnerNumberModel(100.0, 0.1, 10000.0, 1.0));
 	private final JButton export = new JButton("Export Mesh...");
@@ -103,7 +107,7 @@ final class MeshExportPanel extends JPanel
 		name.putClientProperty("html.disable", true);
 		preview.setMessage("No Mesh Selected");
 		add(preview);
-		JPanel controls = new JPanel();
+		JPanel controls = new ScrollablePanel();
 		controls.setLayout(new BoxLayout(controls, BoxLayout.Y_AXIS));
 		JLabel playerLabel = new JLabel("RuneProfile Player");
 		playerLabel.setLabelFor(playerUsername);
@@ -128,13 +132,16 @@ final class MeshExportPanel extends JPanel
 		ButtonGroup modes = new ButtonGroup();
 		modes.add(originalMode);
 		modes.add(compactMode);
+		modes.add(repairedMode);
 		JPanel modeRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
 		modeRow.add(originalMode);
 		modeRow.add(compactMode);
+		modeRow.add(repairedMode);
 		capHeight(modeRow);
 		controls.add(modeRow);
 		originalMode.addActionListener(e -> showPreview());
 		compactMode.addActionListener(e -> showPreview());
+		repairedMode.addActionListener(e -> showPreview());
 		wireframe.addActionListener(e -> preview.setWireframe(wireframe.isSelected()));
 		controls.add(wireframe);
 		controls.add(counts);
@@ -154,8 +161,9 @@ final class MeshExportPanel extends JPanel
 		status.setFont(UIManager.getFont("Label.font"));
 		JScrollPane statusScroll = new JScrollPane(status);
 		statusScroll.setBorder(BorderFactory.createEmptyBorder(8, 0, 8, 0));
-		statusScroll.setPreferredSize(new Dimension(250, 90));
-		statusScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, 90));
+		statusScroll.setMinimumSize(new Dimension(0, 100));
+		statusScroll.setPreferredSize(new Dimension(250, 140));
+		statusScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
 		controls.add(statusScroll);
 		JPanel commands = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
 		export.setIcon(UIManager.getIcon("FileView.floppyDriveIcon"));
@@ -166,7 +174,6 @@ final class MeshExportPanel extends JPanel
 		clear.addActionListener(e -> this.clearSelection.run());
 		controls.add(Box.createVerticalStrut(6));
 		controls.add(clear);
-		controls.add(Box.createVerticalGlue());
 		for (Component component : controls.getComponents())
 		{
 			if (component instanceof JComponent item)
@@ -194,6 +201,39 @@ final class MeshExportPanel extends JPanel
 	private static void capHeight(JComponent component)
 	{
 		component.setMaximumSize(new Dimension(Integer.MAX_VALUE, component.getPreferredSize().height));
+	}
+
+	private static final class ScrollablePanel extends JPanel implements Scrollable
+	{
+		@Override
+		public Dimension getPreferredScrollableViewportSize()
+		{
+			return getPreferredSize();
+		}
+
+		@Override
+		public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction)
+		{
+			return 12;
+		}
+
+		@Override
+		public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction)
+		{
+			return Math.max(12, visibleRect.height - 12);
+		}
+
+		@Override
+		public boolean getScrollableTracksViewportWidth()
+		{
+			return true;
+		}
+
+		@Override
+		public boolean getScrollableTracksViewportHeight()
+		{
+			return getParent() instanceof JViewport viewport && viewport.getHeight() > getPreferredSize().height;
+		}
 	}
 
 	void select(Map3DEntity selection)
@@ -244,6 +284,7 @@ final class MeshExportPanel extends JPanel
 		originalMode.setSelected(true);
 		originalMode.setEnabled(false);
 		compactMode.setEnabled(false);
+		repairedMode.setEnabled(false);
 		export.setEnabled(false);
 		cancel.setEnabled(true);
 		clear.setEnabled(true);
@@ -307,12 +348,32 @@ final class MeshExportPanel extends JPanel
 				{
 					compacted = get();
 					compactMode.setEnabled(true);
-					compactMode.setSelected(true);
+					repairedMode.setEnabled(compacted.repairApplied());
+					if (compacted.repairApplied())
+					{
+						repairedMode.setSelected(true);
+					}
+					else
+					{
+						compactMode.setSelected(true);
+					}
 					showPreview();
-					counts.setText((original == null ? "" : original.faceCount() + " original / ") + compacted.mesh().faceCount() + " compacted faces");
+					counts.setText(faceCountSummary(compacted));
 					MeshTopology.Diagnostics d = compacted.diagnostics();
-					status.setText(d.closed() ? "Closed surface."
-						: d.boundaryEdges() + " open edges, " + d.nonManifoldEdges() + " non-manifold edges, " + d.inconsistentEdges() + " winding conflicts.");
+					if (compacted.repairApplied())
+					{
+						status.setText("Manifold repair produced a watertight surface.");
+					}
+					else if (compacted.watertight())
+					{
+						status.setText("The compacted mesh is already watertight; manifold repair was not needed.");
+					}
+					else
+					{
+						status.setText("Warning: This mesh is not watertight and will need repair before 3D printing.\n"
+							+ d.boundaryEdges() + " open edges, " + d.nonManifoldEdges()
+							+ " non-manifold edges, " + d.inconsistentEdges() + " winding conflicts.");
+					}
 					for (String note : compacted.notes())
 					{
 						status.append("\n" + note);
@@ -405,6 +466,7 @@ final class MeshExportPanel extends JPanel
 		originalMode.setSelected(true);
 		originalMode.setEnabled(false);
 		compactMode.setEnabled(false);
+		repairedMode.setEnabled(false);
 		wireframe.setEnabled(false);
 		size.setEnabled(false);
 		export.setEnabled(false);
@@ -433,12 +495,40 @@ final class MeshExportPanel extends JPanel
 
 	private void showPreview()
 	{
-		preview.setMesh(compactMode.isSelected() && compacted != null ? compacted.mesh() : original);
+		if (compacted == null || originalMode.isSelected())
+		{
+			preview.setMesh(original);
+		}
+		else if (repairedMode.isSelected())
+		{
+			preview.setMesh(compacted.repairedMesh());
+		}
+		else
+		{
+			preview.setMesh(compacted.compactedMesh());
+		}
+	}
+
+	private String faceCountSummary(MeshCompactor.Result result)
+	{
+		String compactFaces = result.compactedMesh().faceCount() + " compacted faces";
+		String originalFaces = original == null ? compactFaces : original.faceCount() + " original / " + compactFaces;
+		return result.repairApplied()
+			? "<html>" + originalFaces + "<br>" + result.repairedMesh().faceCount() + " faces after manifold repair</html>"
+			: originalFaces;
 	}
 
 	private void exportMesh()
 	{
 		if (compacted == null || worker != null)
+		{
+			return;
+		}
+		if (!compacted.watertight()
+			&& JOptionPane.showConfirmDialog(this,
+				"This mesh is not watertight and will need repair before 3D printing.\n"
+					+ "Your slicer or modeling software may be able to repair it.\n\nExport it anyway?",
+				"Non-Watertight Mesh", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE) != JOptionPane.YES_OPTION)
 		{
 			return;
 		}
@@ -473,7 +563,7 @@ final class MeshExportPanel extends JPanel
 			return;
 		}
 		context.config().setString("directory", target.getParent().toString());
-		Map3DMesh mesh = compacted.mesh();
+		Map3DMesh mesh = compacted.exportMesh();
 		double millimeters = ((Number) size.getValue()).doubleValue();
 		int currentRequest = request;
 		export.setEnabled(false);

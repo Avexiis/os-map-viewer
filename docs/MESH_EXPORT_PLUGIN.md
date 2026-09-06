@@ -6,9 +6,9 @@ The built-in Mesh Export plugin creates STL or OBJ files from static NPC, scene-
 
 Enable `Mesh Export` from `Plugins...`. Its right sidebar opens immediately with `No Mesh Selected`; export controls remain disabled until a model is selected.
 
-In the 3D viewer, point at an NPC or object and right-click `Export Mesh`. Objects receive a silhouette outline while hovered, and the plugin hides the normal tile hover selector over them. NPC hover outlines suppress the selector in the core viewer even when no plugin is enabled. Toggled agility obstacles remain outlined with the tile selector visible on top.
+In the 3D viewer, point at an NPC or object and right-click `Export Mesh`. Objects receive a silhouette outline while hovered, including their current animation frame, and the plugin hides the normal tile hover selector over them. NPC hover outlines suppress the selector in the core viewer even when no plugin is enabled. Toggled agility obstacles remain outlined with the tile selector visible on top.
 
-The sidebar loads the static model and automatically builds a compacted version. Use `Original` and `Compacted` to inspect both versions before saving. `Face edges` makes topology changes easier to inspect.
+The sidebar loads the static model, builds a compacted version, and then attempts manifold repair. Use `Original`, `Compacted`, and, when repair succeeds, `Repaired` to inspect each stage before saving. `Face edges` makes topology changes easier to inspect.
 
 ## Player Models
 
@@ -26,8 +26,10 @@ Shift-click a selected object again to remove it. Removal is blocked when it wou
 
 ## Compaction And Export
 
-Compaction preserves the visible shape without mutilation or smoothing. It removes duplicate and coincident internal faces, unions closed overlapping shells, and retriangulates coplanar regions with fewer faces. Open or non-manifold model parts are retained because treating them as solids could change their shape. The sidebar reports these topology conditions for inspection.
+Compaction preserves the visible shape without smoothing. It removes duplicate and enclosed internal shells, unions overlapping shells when that does not increase the face count, and retriangulates coplanar regions with fewer faces. Compaction never produces more faces than the original mesh.
 
-If a coplanar region cannot be merged safely, its original triangles are retained and a warning is shown instead of failing the export.
+Manifold repair runs separately after compaction. It repairs winding, welds split edges, closes openings, removes excess faces around non-manifold edges, and gives disconnected open details a minimal thickness when needed for printing. This stage may add faces when bridging visible gaps. A successful repair appears as its own preview and is used for export.
+
+If automatic repair cannot make the mesh watertight, the unchanged compacted mesh remains exportable. The sidebar identifies it as non-watertight, and exporting requires confirmation because another modeling or slicing application may need to repair it before printing.
 
 Set `Longest side (mm)`, click `Export Mesh...`, and choose STL or OBJ. The file chooser starts with the NPC or object name, its ID is used when the cache has no name. Connected selections use a structure filename.

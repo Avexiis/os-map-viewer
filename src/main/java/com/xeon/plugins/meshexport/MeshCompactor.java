@@ -27,6 +27,7 @@ package com.xeon.plugins.meshexport;
 
 import static com.xeon.plugins.meshexport.MeshTopology.Component;
 import static com.xeon.plugins.meshexport.MeshTopology.Diagnostics;
+import static com.xeon.plugins.meshexport.MeshTopology.Enclosed;
 import static com.xeon.plugins.meshexport.MeshTopology.Face;
 import static com.xeon.plugins.meshexport.MeshTopology.Vec;
 import static com.xeon.plugins.meshexport.MeshTopology.checkCancelled;
@@ -36,14 +37,25 @@ import eu.mihosoft.vrl.v3d.Polygon;
 import eu.mihosoft.vrl.v3d.Vector3d;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CancellationException;
 import java.util.function.Consumer;
 
 final class MeshCompactor
 {
 	private static final double CSG_SCALE = 1024;
 
-	record Result(Map3DMesh mesh, Diagnostics diagnostics, List<String> notes)
+	record Result(Map3DMesh compactedMesh, Map3DMesh repairedMesh, Diagnostics diagnostics,
+		boolean watertight, List<String> notes)
 	{
+		boolean repairApplied()
+		{
+			return repairedMesh != null;
+		}
+
+		Map3DMesh exportMesh()
+		{
+			return repairedMesh == null ? compactedMesh : repairedMesh;
+		}
 	}
 
 	static Result compact(Map3DMesh input, Consumer<String> progress)
@@ -91,81 +103,171 @@ final class MeshCompactor
 			throw new IllegalArgumentException("The model has no surface area");
 		}
 		source = source.removeCoincidentInternalFaces();
-		List<String> notes = new ArrayList<>();
-		List<Component> components = source.components();
-		List<CSG> solids = new ArrayList<>();
+		progress.accept("Compacting mesh...");
+		Candidate candidate = compactTopology(source, progress);
+		MeshTopology compact = candidate.mesh();
+		if (compact.faces.isEmpty())
+		{
+			throw new IllegalStateException("Compaction produced an empty mesh");
+		}
+		if (compact.faces.size() > input.faceCount())
+		{
+			throw new IllegalStateException("Compaction exceeded the original face count");
+		}
+		List<String> notes = new ArrayList<>(candidate.notes());
+		progress.accept("Repairing mesh manifold...");
+		MeshTopology.Repair repair = compact.repair();
+		boolean watertight = repair.printable();
+		boolean repairApplied = watertight && repair.changed();
+		Diagnostics diagnostics = watertight ? repair.after() : compact.diagnostics();
+		if (watertight)
+		{
+			addRepairNote(notes, repair);
+		}
+		else
+		{
+			Diagnostics remaining = repair.after();
+			notes.add("Automatic manifold repair could not make the mesh watertight ("
+				+ remaining.boundaryEdges() + " open edges, "
+				+ remaining.nonManifoldEdges() + " non-manifold edges, "
+				+ remaining.inconsistentEdges() + " winding conflicts). The compacted mesh was retained unchanged.");
+		}
+		Map3DMesh compactedMesh = compact.toMesh(center, extent);
+		Map3DMesh repairedMesh = repairApplied ? repair.mesh().toMesh(center, extent) : null;
+		return new Result(compactedMesh, repairedMesh, diagnostics, watertight, List.copyOf(notes));
+	}
+
+	private static Candidate compactTopology(MeshTopology source, Consumer<String> progress)
+	{
+		Candidate best = new Candidate(source, List.of());
+		List<String> componentNotes = new ArrayList<>();
+		MeshTopology componentSurface = componentSurface(source, componentNotes, progress);
+		if (!componentSurface.faces.isEmpty() && componentSurface.faces.size() <= best.mesh().faces.size())
+		{
+			best = new Candidate(componentSurface, List.copyOf(componentNotes));
+		}
+		progress.accept("Merging coplanar faces...");
+		List<String> simplifiedNotes = new ArrayList<>(componentNotes);
+		MeshTopology simplified = PlanarMeshSimplifier.simplify(componentSurface, simplifiedNotes);
+		if (!simplified.faces.isEmpty() && simplified.faces.size() <= best.mesh().faces.size())
+		{
+			best = new Candidate(simplified, List.copyOf(simplifiedNotes));
+		}
+		return best;
+	}
+
+	private static MeshTopology componentSurface(MeshTopology source, List<String> notes,
+		Consumer<String> progress)
+	{
 		MeshTopology open = new MeshTopology();
+		MeshTopology closed = new MeshTopology();
+		for (Component component : source.components())
+		{
+			MeshTopology target = component.closed() ? closed : open;
+			for (Face face : component.faces())
+			{
+				addFace(target, source, face);
+			}
+		}
+		MeshTopology compactClosed = closed;
+		if (!closed.faces.isEmpty())
+		{
+			progress.accept("Removing enclosed shells...");
+			Enclosed enclosed = closed.removeEnclosedComponents();
+			compactClosed = enclosed.mesh();
+			if (enclosed.components() > 0)
+			{
+				notes.add("Compaction removed " + enclosed.faces() + " faces from " + enclosed.components()
+					+ " fully enclosed shells.");
+			}
+			List<Component> components = compactClosed.components();
+			if (components.size() > 1)
+			{
+				try
+				{
+					progress.accept("Removing internal surfaces...");
+					compactClosed = unionSurface(compactClosed, components);
+				}
+				catch (CancellationException ex)
+				{
+					throw ex;
+				}
+				catch (RuntimeException | StackOverflowError ex)
+				{
+					checkCancelled();
+					compactClosed = enclosed.mesh();
+					notes.add("Some closed shells could not be combined and were retained unchanged.");
+				}
+			}
+		}
+		MeshTopology result = new MeshTopology();
+		for (Face face : compactClosed.faces)
+		{
+			addFace(result, compactClosed, face);
+		}
+		for (Face face : open.faces)
+		{
+			addFace(result, open, face);
+		}
+		return result;
+	}
+
+	private static MeshTopology unionSurface(MeshTopology source, List<Component> components)
+	{
+		List<CSG> solids = new ArrayList<>();
 		for (Component component : components)
 		{
 			checkCancelled();
-			if (!component.closed())
-			{
-				for (Face face : component.faces())
-				{
-					addFace(open, source, face);
-				}
-				continue;
-			}
 			List<Polygon> polygons = new ArrayList<>();
 			for (Face face : component.faces())
 			{
 				polygons.add(Polygon.fromPoints(
-					vector(source.vertices.get(face.a())), vector(source.vertices.get(face.b())), vector(source.vertices.get(face.c()))));
+					vector(source.vertices.get(face.a())), vector(source.vertices.get(face.b())),
+					vector(source.vertices.get(face.c()))));
 			}
 			solids.add(CSG.fromPolygons(polygons).optimization(CSG.OptType.NONE));
 		}
-		if (!open.faces.isEmpty())
-		{
-			notes.add("Open or non-manifold surfaces were retained; internal removal is limited to closed parts.");
-		}
-		progress.accept("Removing internal surfaces...");
 		while (solids.size() > 1)
 		{
 			List<CSG> next = new ArrayList<>();
 			for (int i = 0; i < solids.size(); i += 2)
 			{
 				checkCancelled();
-				try
-				{
-					next.add(i + 1 < solids.size() ? solids.get(i).union(solids.get(i + 1)) : solids.get(i));
-				}
-				catch (StackOverflowError error)
-				{
-					throw new IllegalStateException("This model is too complex for solid compaction", error);
-				}
+				next.add(i + 1 < solids.size() ? solids.get(i).union(solids.get(i + 1)) : solids.get(i));
 			}
 			solids = next;
 		}
 		MeshTopology surface = new MeshTopology();
-		if (!solids.isEmpty())
+		for (Polygon polygon : solids.get(0).getPolygons())
 		{
-			for (Polygon polygon : solids.get(0).getPolygons())
+			checkCancelled();
+			for (int i = 1; i + 1 < polygon.vertices.size(); i++)
 			{
-				checkCancelled();
-				for (int i = 1; i + 1 < polygon.vertices.size(); i++)
-				{
-					surface.add(
-						point(polygon.vertices.get(0).pos), point(polygon.vertices.get(i).pos), point(polygon.vertices.get(i + 1).pos));
-				}
+				surface.add(point(polygon.vertices.get(0).pos), point(polygon.vertices.get(i).pos),
+					point(polygon.vertices.get(i + 1).pos));
 			}
 		}
-		for (Face face : open.faces)
+		return surface;
+	}
+
+	private static void addRepairNote(List<String> notes, MeshTopology.Repair repair)
+	{
+		if (!repair.changed())
 		{
-			addFace(surface, open, face);
+			return;
 		}
-		progress.accept("Merging coplanar faces...");
-		MeshTopology compact = PlanarMeshSimplifier.simplify(surface, notes);
-		if (compact.faces.isEmpty())
+		String note = "Manifold repair filled " + repair.filledLoops() + " openings with "
+			+ repair.addedFaces() + " faces, removed " + repair.removedFaces()
+			+ " non-manifold faces, and corrected " + repair.before().inconsistentEdges() + " winding conflicts.";
+		if (!notes.contains(note))
 		{
-			throw new IllegalStateException("Compaction produced an empty mesh");
+			notes.add(note);
 		}
-		checkCancelled();
-		Diagnostics diagnostics = compact.diagnostics();
-		if (!diagnostics.closed())
+		if (repair.solidifiedSheets() > 0)
 		{
-			notes.add("Mesh has open edges or non-manifold topology; repair may be needed before printing.");
+			notes.add("Manifold repair gave " + repair.solidifiedSheets()
+				+ " open surface parts a minimal printable thickness.");
 		}
-		return new Result(compact.toMesh(center, extent), diagnostics, List.copyOf(notes));
 	}
 
 	private static void addFace(MeshTopology target, MeshTopology source, Face face)
@@ -181,5 +283,9 @@ final class MeshCompactor
 	private static Vec point(Vector3d v)
 	{
 		return new Vec(v.x / CSG_SCALE, v.y / CSG_SCALE, v.z / CSG_SCALE);
+	}
+
+	private record Candidate(MeshTopology mesh, List<String> notes)
+	{
 	}
 }

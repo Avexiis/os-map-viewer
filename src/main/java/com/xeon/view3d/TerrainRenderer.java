@@ -1510,12 +1510,29 @@ final class TerrainRenderer
 		{
 			return new FloatList();
 		}
-		float[] triangleData = match.mesh().rawVertexData();
+		float[] triangleData = animatedObjectOutlineGeometry(match);
 		if (triangleData.length == 0)
 		{
 			return new FloatList();
 		}
 		return outlineLineVertices(projectedObjectOutline(match, triangleData));
+	}
+
+	private float[] animatedObjectOutlineGeometry(MatchedObjectOverlay match)
+	{
+		for (UploadedAnimatedObject animatedObject : match.region().animatedObjects())
+		{
+			if (animatedObject.objectOverlay() != match.mesh())
+			{
+				continue;
+			}
+			NpcOutlineGeometry geometry = animatedObject.frameAt(animationTimeSeconds()).outlineGeometry();
+			if (!geometry.isEmpty())
+			{
+				return geometry.triangleData();
+			}
+		}
+		return match.mesh().rawVertexData();
 	}
 
 	private FloatList outlineLineVertices(ProjectedOutline outline)
@@ -3159,7 +3176,7 @@ final class TerrainRenderer
 		return Float.isFinite(x) && Float.isFinite(y) && Float.isFinite(z);
 	}
 
-	private static NpcOutlineGeometry buildNpcOutlineGeometry(float[] vertexData, int vertexCount)
+	private static NpcOutlineGeometry buildOutlineGeometry(float[] vertexData, int vertexCount)
 	{
 		if (vertexData == null || vertexData.length == 0 || vertexCount < 3)
 		{
@@ -4794,7 +4811,7 @@ final class TerrainRenderer
 					{
 						return false;
 					}
-					activeFrameTask = new AnimationFrameUploadTask(frame, false, true);
+					activeFrameTask = new AnimationFrameUploadTask(frame, true, true);
 				}
 				if (activeFrameTask.uploadChunk(budget))
 				{
@@ -4812,6 +4829,7 @@ final class TerrainRenderer
 		private UploadedAnimatedObject finish()
 		{
 			return new UploadedAnimatedObject(
+				mesh.objectOverlay(),
 				mesh.plane(),
 				mesh.sequenceId(),
 				mesh.frameLengths(),
@@ -4951,7 +4969,7 @@ final class TerrainRenderer
 			this.vertexData = combinedFrameVertexData(opaqueVertexData, opaqueVertexCount,
 				frame.rawTransparentVertexData(), transparentVertexCount);
 			this.outlineGeometry = buildOutlineEdges
-				? buildNpcOutlineGeometry(opaqueVertexData, opaqueVertexCount)
+				? buildOutlineGeometry(vertexData, opaqueVertexCount + transparentVertexCount)
 				: NpcOutlineGeometry.EMPTY;
 			this.compactAfterUpload = compactAfterUpload;
 		}
@@ -5142,6 +5160,7 @@ final class TerrainRenderer
 	}
 
 	private record UploadedAnimatedObject(
+		ObjectOverlayMesh objectOverlay,
 		int plane,
 		int sequenceId,
 		int[] frameLengths,
