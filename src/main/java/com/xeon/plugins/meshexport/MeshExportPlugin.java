@@ -83,9 +83,9 @@ public final class MeshExportPlugin implements MapViewerPlugin, Map3DLayer
 	}
 
 	@Override
-	public boolean tileHoverSelectorVisible(boolean entityHovered)
+	public boolean tileHoverSelectorVisible(boolean objectHovered)
 	{
-		return !entityHovered;
+		return !objectHovered;
 	}
 
 	@Override

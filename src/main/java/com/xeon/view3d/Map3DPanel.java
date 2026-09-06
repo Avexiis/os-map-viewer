@@ -3378,11 +3378,13 @@ public final class Map3DPanel extends JPanel
 			);
 			renderer.setHoverRay(camera.position(), rayDirection);
 			hoveredTile = currentScene.pickTile(camera.position(), rayDirection, maxVisiblePlane);
-			boolean entityHovered = active3DLayer != null
-				&& active3DLayer.entityPickingEnabled()
-				&& renderer.isEntityHovered();
-			boolean showTileHover = active3DLayer == null
-				|| active3DLayer.tileHoverSelectorVisible(entityHovered);
+			TerrainRenderer.EntityHoverState entityHover = renderer.entityHoverState();
+			boolean agilityObstacleHovered = isHoveredAgilityObstacle(entityHover.object());
+			boolean showTileHover = shouldShowTileHoverSelector(
+				active3DLayer,
+				entityHover.npcOutlineVisible(),
+				entityHover.object() != null,
+				agilityObstacleHovered);
 			renderer.setHoveredTile(showTileHover ? hoveredTile : null);
 			shiftPressed = event.isShiftDown();
 			updateTileHoverSelectorColor();
@@ -3403,6 +3405,67 @@ public final class Map3DPanel extends JPanel
 				System.err.println("Failed to update hovered 3D tile: " + rootMessage(ex));
 			}
 		}
+	}
+
+	static boolean shouldShowTileHoverSelector(
+		Map3DLayer layer,
+		boolean npcOutlineVisible,
+		boolean objectHovered,
+		boolean agilityObstacleHovered)
+	{
+		if (npcOutlineVisible)
+		{
+			return false;
+		}
+		boolean pluginObjectHovered = objectHovered && !agilityObstacleHovered;
+		return layer == null || layer.tileHoverSelectorVisible(pluginObjectHovered);
+	}
+
+	private boolean isHoveredAgilityObstacle(TerrainRenderer.HoveredObjectInfo hovered)
+	{
+		if (!agilityObstaclesVisible || hovered == null)
+		{
+			return false;
+		}
+		for (TerrainMesh mesh : loadedMeshes.values())
+		{
+			for (AgilityObstacleInstance obstacle : mesh.agilityObstacles())
+			{
+				if (matchesAgilityObstacle(hovered, obstacle))
+				{
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	static boolean matchesAgilityObstacle(
+		TerrainRenderer.HoveredObjectInfo hovered,
+		AgilityObstacleInstance obstacle)
+	{
+		if (hovered == null || obstacle == null)
+		{
+			return false;
+		}
+		Tile hoveredTile = hovered.tile();
+		Tile obstacleTile = obstacle.tile();
+		if (hoveredTile == null || obstacleTile == null
+			|| hoveredTile.x != obstacleTile.x
+			|| hoveredTile.y != obstacleTile.y
+			|| hoveredTile.z != obstacleTile.z)
+		{
+			return false;
+		}
+		return sameObjectId(hovered.objectId(), obstacle.objectId())
+			|| sameObjectId(hovered.objectId(), obstacle.renderedObjectId())
+			|| sameObjectId(hovered.renderedObjectId(), obstacle.objectId())
+			|| sameObjectId(hovered.renderedObjectId(), obstacle.renderedObjectId());
+	}
+
+	private static boolean sameObjectId(int first, int second)
+	{
+		return first >= 0 && second >= 0 && first == second;
 	}
 
 	private void updateCompassHud()

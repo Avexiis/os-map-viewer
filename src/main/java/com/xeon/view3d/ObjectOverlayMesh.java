@@ -74,6 +74,11 @@ final class ObjectOverlayMesh
 		return objectId;
 	}
 
+	int renderedObjectId()
+	{
+		return renderedObjectId;
+	}
+
 	String name()
 	{
 		return name;

@@ -1,14 +1,22 @@
 # Mesh Export Plugin
 
-The built-in Mesh Export plugin creates STL or OBJ files from static NPC and scene-object geometry. The output can be opened in Fusion 360 or Blender and prepared for 3D printing.
+The built-in Mesh Export plugin creates STL or OBJ files from static NPC, scene-object, and RuneProfile player geometry. The output can be opened in Fusion 360 or Blender and prepared for 3D printing.
 
 ## Selecting A Mesh
 
 Enable `Mesh Export` from `Plugins...`. Its right sidebar opens immediately with `No Mesh Selected`; export controls remain disabled until a model is selected.
 
-In the 3D viewer, point at an NPC or object and right-click `Export Mesh`. Objects receive a silhouette outline while hovered. The normal tile hover selector is hidden whenever either an object or NPC is under the pointer.
+In the 3D viewer, point at an NPC or object and right-click `Export Mesh`. Objects receive a silhouette outline while hovered, and the plugin hides the normal tile hover selector over them. NPC hover outlines suppress the selector in the core viewer even when no plugin is enabled. Toggled agility obstacles remain outlined with the tile selector visible on top.
 
 The sidebar loads the static model and automatically builds a compacted version. Use `Original` and `Compacted` to inspect both versions before saving. `Face edges` makes topology changes easier to inspect.
+
+## Player Models
+
+The `RuneProfile Player` field starts with the shared WikiSync username when one is saved. Click `Fetch Player` or press Enter to load that player's uploaded model. The field is independent of WikiSync, so another RuneProfile username can be entered without changing the saved WikiSync profile. `Use WikiSync` restores the currently saved WikiSync username.
+
+Player models are fetched as model bytes from RuneProfile's first-party `GET /profiles/models/{username}` API route. The plugin does not read or parse profile web pages. Current GLB uploads and legacy binary PLY models are supported. A model is available only after its owner has uploaded one with RuneProfile's `Update Player Model` action.
+
+Fetching, parsing, and compaction run away from the Swing event thread. The request is limited to 25 MB and can be cancelled from the sidebar.
 
 ## Connected Structures
 

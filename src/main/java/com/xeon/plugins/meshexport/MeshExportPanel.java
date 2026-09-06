@@ -35,8 +35,15 @@ import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridLayout;
+import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.text.ParseException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
+import java.util.function.Consumer;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
@@ -50,22 +57,25 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JRadioButton;
 import javax.swing.JScrollPane;
+import javax.swing.JSeparator;
 import javax.swing.JSpinner;
 import javax.swing.JTextArea;
+import javax.swing.JTextField;
 import javax.swing.ScrollPaneConstants;
 import javax.swing.SpinnerNumberModel;
 import javax.swing.SwingWorker;
 import javax.swing.UIManager;
 import javax.swing.filechooser.FileNameExtensionFilter;
-import java.util.List;
-import java.util.concurrent.CancellationException;
-import java.util.concurrent.ExecutionException;
 
 final class MeshExportPanel extends JPanel
 {
 	private final PluginContext context;
 	private final Runnable clearSelection;
+	private final RuneProfileModelClient runeProfileClient = new RuneProfileModelClient();
 	private final MeshPreviewPanel preview = new MeshPreviewPanel();
+	private final JTextField playerUsername = new JTextField();
+	private final JButton fetchPlayer = new JButton("Fetch Player");
+	private final JButton useWikiSync = new JButton("Use WikiSync");
 	private final JLabel name = new JLabel("Mesh Export");
 	private final JLabel counts = new JLabel(" ");
 	private final JTextArea status = new JTextArea(3, 20);
@@ -95,6 +105,24 @@ final class MeshExportPanel extends JPanel
 		add(preview);
 		JPanel controls = new JPanel();
 		controls.setLayout(new BoxLayout(controls, BoxLayout.Y_AXIS));
+		JLabel playerLabel = new JLabel("RuneProfile Player");
+		playerLabel.setLabelFor(playerUsername);
+		playerLabel.setFont(playerLabel.getFont().deriveFont(Font.BOLD));
+		controls.add(playerLabel);
+		controls.add(Box.createVerticalStrut(4));
+		JPanel playerRow = new JPanel(new BorderLayout(6, 0));
+		playerRow.add(playerUsername, BorderLayout.CENTER);
+		playerRow.add(fetchPlayer, BorderLayout.EAST);
+		capHeight(playerRow);
+		controls.add(playerRow);
+		JPanel wikiSyncRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 4));
+		wikiSyncRow.add(useWikiSync);
+		capHeight(wikiSyncRow);
+		controls.add(wikiSyncRow);
+		JSeparator separator = new JSeparator();
+		separator.setMaximumSize(new Dimension(Integer.MAX_VALUE, separator.getPreferredSize().height));
+		controls.add(separator);
+		controls.add(Box.createVerticalStrut(8));
 		controls.add(name);
 		controls.add(Box.createVerticalStrut(8));
 		ButtonGroup modes = new ButtonGroup();
@@ -151,6 +179,13 @@ final class MeshExportPanel extends JPanel
 		controlsScroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
 		controlsScroll.getVerticalScrollBar().setUnitIncrement(12);
 		add(controlsScroll);
+		String initialUsername = context == null ? "" : cleanUsername(context.wikiSyncUsername());
+		playerUsername.setText(initialUsername);
+		playerUsername.setToolTipText("RuneProfile username; this does not change the saved WikiSync profile");
+		fetchPlayer.addActionListener(e -> fetchPlayerModel());
+		playerUsername.addActionListener(e -> fetchPlayerModel());
+		useWikiSync.addActionListener(e -> restoreWikiSyncUsername());
+		useWikiSync.setEnabled(context != null);
 		export.addActionListener(e -> exportMesh());
 		cancel.addActionListener(e -> cancelWork());
 		setControlsForNoSelection();
@@ -173,21 +208,41 @@ final class MeshExportPanel extends JPanel
 			clear();
 			return;
 		}
-		cancelWorker();
-		original = null;
-		compacted = null;
 		Map3DEntity first = selections.get(0);
 		String firstName = first.name().isBlank() || first.name().equalsIgnoreCase("null")
 			? Integer.toString(first.id()) : first.name();
 		String title = selections.size() == 1 ? firstName : selections.size() + " connected objects";
-		outputFileName = selections.size() == 1
+		String fileName = selections.size() == 1
 			? MeshExportIO.fileName(first.name(), first.id())
 			: MeshExportIO.fileName("Connected structure (" + selections.size() + " objects)", 0);
+		String tooltip = selections.size() == 1 ? first.kind() + " " + first.id() + ": " + title : title;
+		loadMesh(title, tooltip, fileName, "Loading static model...", progress -> {
+			List<Map3DMesh> meshes = new ArrayList<>(selections.size());
+			for (Map3DEntity selection : selections)
+			{
+				Map3DMesh mesh = selection.meshSource().load();
+				if (mesh == null || mesh.faceCount() == 0)
+				{
+					throw new IllegalArgumentException("No static mesh is available");
+				}
+				meshes.add(mesh);
+			}
+			return combine(meshes);
+		});
+	}
+
+	private void loadMesh(String title, String tooltip, String fileName, String initialStatus, MeshLoader loader)
+	{
+		cancelWorker();
+		original = null;
+		compacted = null;
+		outputFileName = fileName;
 		name.setText(title);
-		name.setToolTipText(selections.size() == 1 ? first.kind() + " " + first.id() + ": " + title : title);
+		name.setToolTipText(tooltip);
 		preview.resetView();
 		preview.setMessage("Loading mesh...");
 		originalMode.setSelected(true);
+		originalMode.setEnabled(false);
 		compactMode.setEnabled(false);
 		export.setEnabled(false);
 		cancel.setEnabled(true);
@@ -195,25 +250,22 @@ final class MeshExportPanel extends JPanel
 		wireframe.setEnabled(false);
 		size.setEnabled(false);
 		counts.setText(" ");
-		status.setText("Loading static model...");
+		status.setText(initialStatus);
 		int currentRequest = request;
 		SwingWorker<MeshCompactor.Result, Object> next = new SwingWorker<>()
 		{
+			private boolean meshLoaded;
+
 			@Override
 			protected MeshCompactor.Result doInBackground() throws Exception
 			{
-				List<Map3DMesh> meshes = new java.util.ArrayList<>(selections.size());
-				for (Map3DEntity selection : selections)
+				Map3DMesh mesh = loader.load(message -> publish(message));
+				if (mesh == null || mesh.faceCount() == 0)
 				{
-					Map3DMesh mesh = selection.meshSource().load();
-					if (mesh == null || mesh.faceCount() == 0)
-					{
-						throw new IllegalArgumentException("No static mesh is available");
-					}
-					meshes.add(mesh);
+					throw new IllegalArgumentException("No mesh is available");
 				}
-				Map3DMesh mesh = combine(meshes);
 				MeshTopology.checkCancelled();
+				meshLoaded = true;
 				publish(mesh);
 				return MeshCompactor.compact(mesh, message -> publish(message));
 			}
@@ -280,12 +332,58 @@ final class MeshExportPanel extends JPanel
 				}
 				catch (ExecutionException ex)
 				{
-					showError("Compaction failed", ex.getCause());
+					showError(meshLoaded ? "Compaction failed" : "Mesh load failed", ex.getCause());
 				}
 			}
 		};
 		worker = next;
 		next.execute();
+	}
+
+	private void fetchPlayerModel()
+	{
+		String username = cleanUsername(playerUsername.getText());
+		if (username.isBlank())
+		{
+			showMessage("Enter a RuneProfile username");
+			return;
+		}
+		clearSelection.run();
+		loadMesh(username, "RuneProfile player: " + username, MeshExportIO.fileName(username, 0),
+			"Fetching RuneProfile player model...", progress -> {
+				progress.accept("Fetching RuneProfile player model...");
+				byte[] data = runeProfileClient.fetch(username);
+				MeshTopology.checkCancelled();
+				progress.accept("Reading RuneProfile player model...");
+				return RuneProfileModelParser.parse(data);
+			});
+	}
+
+	private void restoreWikiSyncUsername()
+	{
+		String username = context == null ? "" : cleanUsername(context.wikiSyncUsername());
+		if (username.isBlank())
+		{
+			showMessage("No WikiSync username is saved");
+			return;
+		}
+		playerUsername.setText(username);
+		playerUsername.requestFocusInWindow();
+		playerUsername.selectAll();
+	}
+
+	private void showMessage(String message)
+	{
+		status.setText(message);
+		if (context != null)
+		{
+			context.setStatus(message);
+		}
+	}
+
+	private static String cleanUsername(String username)
+	{
+		return username == null ? "" : username.trim();
 	}
 
 	void clear()
@@ -348,7 +446,7 @@ final class MeshExportPanel extends JPanel
 		{
 			size.commitEdit();
 		}
-		catch (java.text.ParseException ex)
+		catch (ParseException ex)
 		{
 			showError("Invalid size", ex);
 			return;
@@ -361,7 +459,7 @@ final class MeshExportPanel extends JPanel
 		chooser.addChoosableFileFilter(stl);
 		chooser.addChoosableFileFilter(obj);
 		chooser.setFileFilter(stl);
-		chooser.setSelectedFile(new java.io.File(outputFileName + ".stl"));
+		chooser.setSelectedFile(new File(outputFileName + ".stl"));
 		if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION)
 		{
 			return;
@@ -429,7 +527,10 @@ final class MeshExportPanel extends JPanel
 	{
 		String message = error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
 		status.setText(title + ": " + message);
-		context.setStatus(title + ": " + message);
+		if (context != null)
+		{
+			context.setStatus(title + ": " + message);
+		}
 	}
 
 	private void cancelWorker()
@@ -454,5 +555,11 @@ final class MeshExportPanel extends JPanel
 	{
 		disposed = true;
 		cancelWorker();
+	}
+
+	@FunctionalInterface
+	private interface MeshLoader
+	{
+		Map3DMesh load(Consumer<String> progress) throws Exception;
 	}
 }

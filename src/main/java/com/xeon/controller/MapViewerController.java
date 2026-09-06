@@ -2245,6 +2245,12 @@ public class MapViewerController
 		}
 
 		@Override
+		public String wikiSyncUsername()
+		{
+			return wikiSyncManager.username();
+		}
+
+		@Override
 		public Tile centerTile()
 		{
 			return map3DPanel == null ? mapPanel.getCenterTile() : map3DPanel.getCameraTile();

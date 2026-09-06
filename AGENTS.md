@@ -14,13 +14,14 @@
 
 ### Threading and concurrency
 - Never use `Thread.sleep()`
-- Swing/UI actions should use an `invokeLater` or concurrent queue to act on the render thread.
+- Swing/UI actions should use an `invokeLater` or concurrent queue to act on the render thread. Never execute actions from the wrong thread.
 
 ### Testing
 You cannot verify runtime visual behavior or GUI layout yourself, even if you have screen-capture or computer use tools available. 
 After completing a task, do not declare it done. Instead:
 - Tell the user what to test, including changed behavior, edge cases, etc.
 - Wait for the user to confirm the changes are functional before marking the task complete. A clean launch is not a passing test.
+- Remind the user to insert the license into new files. The copyright may differ, so do not insert it yourself.
 
 ### Java Usage
 - All code must be Java 17 compatible.

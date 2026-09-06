@@ -160,6 +160,7 @@ Available methods:
 - `owner()` returns the same window as a generic `Window`.
 - `mapPanel()` gives access to the public `MapView` API for the map viewer.
 - `is3DViewerActive()` reports whether the 3D viewer is currently open.
+- `wikiSyncUsername()` returns the username currently saved in the shared WikiSync profile, or an empty string when none is configured.
 - `centerTile()` returns the 2D map center or the 3D camera tile.
 - `focusTile(tile, zoom)` focuses the 2D map or warps the 3D camera, depending on the active mode.
 - `repaintVisible()` repaints 2D plugin layers and refreshes 3D plugin overlays.
@@ -210,7 +211,7 @@ public final class MyPlugin implements MapViewerPlugin, MapLayer, MapTool, Map3D
 
 - `entityPickingEnabled()` opts into NPC and object picking.
 - `objectHoverOutlineColor()` returns the object silhouette color used while an object is picked, or `null` to disable that outline.
-- `tileHoverSelectorVisible(entityHovered)` controls the core tile hover overlay. Return `false` when the plugin needs to suppress it; `entityHovered` reports whether an NPC or object is currently under the pointer.
+- `tileHoverSelectorVisible(objectHovered)` controls the core tile hover overlay for plugin-picked objects. Return `false` when the plugin needs to suppress it. NPC hover outlines suppress the selector in core, independently of plugins; toggled agility obstacle overlays remain compatible with the tile selector.
 - `entityActions(entity)` returns right-click context menu actions for a picked NPC or object.
 - `entityClicked(entity, event)` handles a picked entity click and returns whether the plugin consumed it. This runs on the Swing event thread.
 - `overlay(context)` returns immutable data for in-world 3D drawing.

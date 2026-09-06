@@ -37,6 +37,11 @@ public interface PluginContext
 		return false;
 	}
 
+	default String wikiSyncUsername()
+	{
+		return "";
+	}
+
 	default Tile centerTile()
 	{
 		MapView map = mapPanel();

@@ -531,11 +531,19 @@ final class TerrainRenderer
 			new Tile(npc.spawnWorldX(), npc.spawnWorldY(), npc.spawnPlane()), npcMeshSource.apply(npc.npcId()));
 	}
 
-	boolean isEntityHovered()
+	EntityHoverState entityHoverState()
 	{
 		updateHoveredNpc(animationTimeSeconds());
 		updateHoveredObject();
-		return hoveredObject != null || hoveredNpcInfo != null;
+		boolean npcOutlineVisible = npcsVisible
+			&& npcOutlinesEnabled
+			&& hoveredNpcDraw != null
+			&& !hoveredNpcDraw.frame().outlineGeometry().isEmpty();
+		HoveredObjectInfo object = hoveredObject == null ? null : new HoveredObjectInfo(
+			hoveredObject.mesh().tile(),
+			hoveredObject.mesh().objectId(),
+			hoveredObject.mesh().renderedObjectId());
+		return new EntityHoverState(npcOutlineVisible, object);
 	}
 
 	private static Map3DMesh worldObjectMesh(MatchedObjectOverlay match)
@@ -4202,6 +4210,24 @@ final class TerrainRenderer
 		boolean customSource()
 		{
 			return source == NpcSpawnIndex.SpawnSource.TSV;
+		}
+	}
+
+	record EntityHoverState(boolean npcOutlineVisible, HoveredObjectInfo object)
+	{
+	}
+
+	record HoveredObjectInfo(Tile tile, int objectId, int renderedObjectId)
+	{
+		HoveredObjectInfo
+		{
+			tile = tile == null ? null : new Tile(tile.x, tile.y, tile.z);
+		}
+
+		@Override
+		public Tile tile()
+		{
+			return tile == null ? null : new Tile(tile.x, tile.y, tile.z);
 		}
 	}
 
