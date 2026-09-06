@@ -1,6 +1,6 @@
 # Mesh Export Plugin
 
-The built-in Mesh Export plugin creates STL or OBJ files from static NPC, scene-object, and RuneProfile player geometry. The output can be opened in Fusion 360 or Blender and prepared for 3D printing.
+The built-in Mesh Export plugin creates STL or OBJ files from static NPC, scene-object, and [RuneProfile](https://www.runeprofile.com/) player models. The output can be opened in Fusion 360 or Blender and be used for 3D printing.
 
 ## Selecting A Mesh
 
@@ -14,9 +14,9 @@ The sidebar loads the static model and automatically builds a compacted version.
 
 The `RuneProfile Player` field starts with the shared WikiSync username when one is saved. Click `Fetch Player` or press Enter to load that player's uploaded model. The field is independent of WikiSync, so another RuneProfile username can be entered without changing the saved WikiSync profile. `Use WikiSync` restores the currently saved WikiSync username.
 
-Player models are fetched as model bytes from RuneProfile's first-party `GET /profiles/models/{username}` API route. The plugin does not read or parse profile web pages. Current GLB uploads and legacy binary PLY models are supported. A model is available only after its owner has uploaded one with RuneProfile's `Update Player Model` action.
+Player models are fetched as model bytes from RuneProfile's API. The plugin does not read or parse profile web pages. Current GLB uploads and legacy binary PLY models are supported. A model is available only after its owner has uploaded one with RuneProfile's `Update Player Model` action.
 
-Fetching, parsing, and compaction run away from the Swing event thread. The request is limited to 25 MB and can be cancelled from the sidebar.
+Fetching, parsing, and compaction run away from the Swing event thread. The request is limited to 25 MB and can be canceled from the sidebar.
 
 ## Connected Structures
 
