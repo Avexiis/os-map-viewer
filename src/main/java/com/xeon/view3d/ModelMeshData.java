@@ -2,7 +2,9 @@ package com.xeon.view3d;
 
 final class ModelMeshData
 {
-	private ModelMeshData() { }
+	private ModelMeshData()
+	{
+	}
 
 	static Map3DMesh fromFrame(AnimatedObjectMesh.Frame frame)
 	{
@@ -14,7 +16,10 @@ final class ModelMeshData
 		int[] colors = new int[count / 3];
 		for (int v = 0; v < count; v++)
 		{
-			for (int axis = 0; axis < 3; axis++) positions[v * 3 + axis] = data[v * stride + axis];
+			for (int axis = 0; axis < 3; axis++)
+			{
+				positions[v * 3 + axis] = data[v * stride + axis];
+			}
 			indices[v] = v;
 		}
 		for (int f = 0; f < colors.length; f++)
@@ -23,7 +28,10 @@ final class ModelMeshData
 			for (int channel = 0; channel < 4; channel++)
 			{
 				float sum = 0;
-				for (int v = 0; v < 3; v++) sum += data[(f * 3 + v) * stride + 6 + channel];
+				for (int v = 0; v < 3; v++)
+				{
+					sum += data[(f * 3 + v) * stride + 6 + channel];
+				}
 				int value = Math.max(channel == 3 ? 25 : 0, Math.min(255, Math.round(sum * 255 / 3)));
 				color |= value << (channel == 3 ? 24 : 16 - channel * 8);
 			}

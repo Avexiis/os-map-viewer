@@ -2391,17 +2391,26 @@ public final class Map3DPanel extends JPanel
 
 	private List<Map3DTileAction> entityActions()
 	{
-		if (active3DLayer == null || !active3DLayer.entityPickingEnabled()) return List.of();
+		if (active3DLayer == null || !active3DLayer.entityPickingEnabled())
+		{
+			return List.of();
+		}
 		TerrainRegionLoader.Session session = loaderSession;
 		Map3DEntity entity = renderer.pickEntity(id -> () -> session == null ? null : session.npcStaticMesh(id));
-		if (entity == null) return List.of();
+		if (entity == null)
+		{
+			return List.of();
+		}
 		List<Map3DTileAction> actions = active3DLayer.entityActions(entity);
 		return actions == null ? List.of() : actions;
 	}
 
 	private Map3DEntity pickedEntity()
 	{
-		if (active3DLayer == null || !active3DLayer.entityPickingEnabled()) return null;
+		if (active3DLayer == null || !active3DLayer.entityPickingEnabled())
+		{
+			return null;
+		}
 		TerrainRegionLoader.Session session = loaderSession;
 		return renderer.pickEntity(id -> () -> session == null ? null : session.npcStaticMesh(id));
 	}
@@ -2410,7 +2419,10 @@ public final class Map3DPanel extends JPanel
 	{
 		for (Map3DTileAction action : entityActions())
 		{
-			if (action == null || action.label().isBlank()) continue;
+			if (action == null || action.label().isBlank())
+			{
+				continue;
+			}
 			JMenuItem item = new JMenuItem(action.label());
 			item.addActionListener(e -> action.run());
 			popup.add(item);
@@ -2671,7 +2683,10 @@ public final class Map3DPanel extends JPanel
 		JPopupMenu popup = new JPopupMenu();
 		appendEntityActions(popup);
 		List<Map3DTileAction> actions = tile == null ? List.of() : active3DLayer.tileActions(to3DMouseEvent(event, tile, true));
-		if (actions == null) actions = List.of();
+		if (actions == null)
+		{
+			actions = List.of();
+		}
 		for (Map3DTileAction action : actions)
 		{
 			if (action == null || action.label().isBlank())

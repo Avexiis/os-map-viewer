@@ -2,14 +2,17 @@ package com.xeon.plugins.meshexport;
 
 import com.xeon.view3d.CachedMeshFixtures;
 import com.xeon.view3d.MeshPreviewPanel;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import javax.imageio.ImageIO;
 import javax.swing.SwingUtilities;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
-import java.nio.file.*;
-import static org.junit.jupiter.api.Assertions.*;
 
 @EnabledIfEnvironmentVariable(named = "OSMAPVIEWER_TEST_CACHE", matches = ".+")
 class MeshCacheSmokeTest

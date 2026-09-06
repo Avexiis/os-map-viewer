@@ -1,9 +1,11 @@
 package com.xeon.plugins.meshexport;
 
 import com.xeon.view3d.Map3DMesh;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.Test;
 import java.util.concurrent.CancellationException;
-import static org.junit.jupiter.api.Assertions.*;
 
 class MeshCompactorTest
 {

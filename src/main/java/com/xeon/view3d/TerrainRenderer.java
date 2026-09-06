@@ -71,21 +71,21 @@ final class TerrainRenderer
 		layout(location = 7) in float aTextureAnimU;
 		layout(location = 8) in float aTextureAnimV;
 		layout(location = 9) in float aTextureAlphaCutoff;
-
+		
 		uniform mat4 uProjection;
 		uniform mat4 uView;
 		uniform mat4 uModelMatrix;
 		uniform vec3 uCameraPosition;
 		uniform vec3 uRegionOffset;
 		uniform float uTimeSeconds;
-
+		
 		out vec3 vColor;
 		out float vAlpha;
 		out float vDistance;
 		out vec2 vTexCoord;
 		flat out float vTextureLayer;
 		flat out float vTextureAlphaCutoff;
-
+		
 		void main()
 		{
 			vec3 modelPosition = (uModelMatrix * vec4(aPosition, 1.0)).xyz;
@@ -116,9 +116,9 @@ final class TerrainRenderer
 		uniform float uFogStart;
 		uniform float uFogEnd;
 		uniform vec3 uFogColor;
-
+		
 		out vec4 fragColor;
-
+		
 		vec3 sceneColor(vec3 color)
 		{
 			float luminance = dot(color, vec3(0.299, 0.587, 0.114));
@@ -126,7 +126,7 @@ final class TerrainRenderer
 			color = mix(vec3(0.5), color, 0.96);
 			return clamp(color, 0.0, 1.0);
 		}
-
+		
 		void main()
 		{
 			vec3 baseColor = vColor;
@@ -153,9 +153,9 @@ final class TerrainRenderer
 	private static final String OUTLINE_VERTEX_SHADER = """
 		#version 330 core
 		layout(location = 0) in vec3 aPosition;
-
+		
 		uniform mat4 uMvp;
-
+		
 		void main()
 		{
 			gl_Position = uMvp * vec4(aPosition, 1.0);
@@ -164,9 +164,9 @@ final class TerrainRenderer
 	private static final String OUTLINE_FRAGMENT_SHADER = """
 		#version 330 core
 		uniform vec4 uColor;
-
+		
 		out vec4 fragColor;
-
+		
 		void main()
 		{
 			fragColor = uColor;
@@ -176,11 +176,11 @@ final class TerrainRenderer
 		#version 330 core
 		layout(location = 0) in vec3 aPosition;
 		layout(location = 1) in vec2 aTexCoord;
-
+		
 		uniform mat4 uMvp;
-
+		
 		out vec2 vTexCoord;
-
+		
 		void main()
 		{
 			vTexCoord = aTexCoord;
@@ -190,11 +190,11 @@ final class TerrainRenderer
 	private static final String TEXT_FRAGMENT_SHADER = """
 		#version 330 core
 		in vec2 vTexCoord;
-
+		
 		uniform sampler2D uText;
-
+		
 		out vec4 fragColor;
-
+		
 		void main()
 		{
 			vec4 color = texture(uText, vTexCoord);
@@ -522,7 +522,10 @@ final class TerrainRenderer
 			Map3DMesh snapshot = worldObjectMesh(hoveredObject);
 			return new Map3DEntity(Map3DEntity.Kind.OBJECT, object.objectId(), object.name(), object.tile(), () -> snapshot);
 		}
-		if (hoveredNpcInfo == null) return null;
+		if (hoveredNpcInfo == null)
+		{
+			return null;
+		}
 		NpcHoverInfo npc = hoveredNpcInfo;
 		return new Map3DEntity(Map3DEntity.Kind.NPC, npc.npcId(), npc.name(),
 			new Tile(npc.spawnWorldX(), npc.spawnWorldY(), npc.spawnPlane()), npcMeshSource.apply(npc.npcId()));
@@ -561,15 +564,24 @@ final class TerrainRenderer
 	private void updateHoveredObject()
 	{
 		hoveredObject = null;
-		if (!entityPickingEnabled || hoverRay == null) return;
+		if (!entityPickingEnabled || hoverRay == null)
+		{
+			return;
+		}
 		float best = hoveredNpcDraw == null ? Float.POSITIVE_INFINITY : hoveredNpcDraw.distance();
 		for (UploadedRegion region : uploadedRegions.values())
 		{
-			if (!isVisible(region)) continue;
+			if (!isVisible(region))
+			{
+				continue;
+			}
 			Vector3f localOrigin = new Vector3f(hoverRay.origin()).sub(region.offsetX(), 0, region.offsetZ());
 			for (ObjectOverlayMesh mesh : region.mesh().objectOverlays())
 			{
-				if (mesh.tile() == null || !isPlaneVisible(mesh.tile().z)) continue;
+				if (mesh.tile() == null || !isPlaneVisible(mesh.tile().z))
+				{
+					continue;
+				}
 				float distance = mesh.intersectionDistance(localOrigin, hoverRay.direction());
 				if (distance < best)
 				{
@@ -1090,20 +1102,20 @@ final class TerrainRenderer
 		hoveredNpcInfo = best == null || (!npcHoverTextEnabled && !npcPickingEnabled)
 			? null
 			: new NpcHoverInfo(
-				best.mesh().name(),
-				best.mesh().combatLevel(),
-				best.mesh().npcId(),
-				spawn.name(),
-				spawn.worldX(),
-				spawn.worldY(),
-				spawn.plane(),
-					spawn.faceDirection(),
-					spawn.walkEnabled(),
-					best.instance().moving(),
-					spawn.source(),
-					spawn.customPathEnabled(),
-					spawn.customPath()
-				);
+			best.mesh().name(),
+			best.mesh().combatLevel(),
+			best.mesh().npcId(),
+			spawn.name(),
+			spawn.worldX(),
+			spawn.worldY(),
+			spawn.plane(),
+			spawn.faceDirection(),
+			spawn.walkEnabled(),
+			best.instance().moving(),
+			spawn.source(),
+			spawn.customPathEnabled(),
+			spawn.customPath()
+		);
 	}
 
 	private void updateNpcMapDots(float timeSeconds)
@@ -1405,7 +1417,10 @@ final class TerrainRenderer
 
 	private int renderHoveredObjectOutline()
 	{
-		if (hoveredObject == null || objectHoverOutlineColor == null) return 0;
+		if (hoveredObject == null || objectHoverOutlineColor == null)
+		{
+			return 0;
+		}
 		return renderHoverOutline(objectOutlineLineVertices(hoveredObject), objectHoverOutlineColor);
 	}
 
@@ -1432,12 +1447,12 @@ final class TerrainRenderer
 			GL33C.glUseProgram(outlineProgram);
 			uploadScreenOutlineMatrix();
 			GL33C.glBindVertexArray(npcOutlineEdgeVao);
-				GL33C.glUniform4f(outlineColorLocation, 0.0f, 0.0f, 0.0f, 0.80f);
-				GL33C.glLineWidth(4.0f);
-				GL33C.glDrawArrays(GL33C.GL_LINES, 0, vertexCount);
-				uploadOutlineColor(color, 0.98f);
-				GL33C.glLineWidth(2.0f);
-				GL33C.glDrawArrays(GL33C.GL_LINES, 0, vertexCount);
+			GL33C.glUniform4f(outlineColorLocation, 0.0f, 0.0f, 0.0f, 0.80f);
+			GL33C.glLineWidth(4.0f);
+			GL33C.glDrawArrays(GL33C.GL_LINES, 0, vertexCount);
+			uploadOutlineColor(color, 0.98f);
+			GL33C.glLineWidth(2.0f);
+			GL33C.glDrawArrays(GL33C.GL_LINES, 0, vertexCount);
 			return 2;
 		}
 		finally
@@ -3218,7 +3233,7 @@ final class TerrainRenderer
 		Set<Integer> regionIds = scene.regionIds();
 		if (activeUploadTask != null
 			&& (!regionIds.contains(activeUploadTask.regionId())
-				|| scene.mesh(activeUploadTask.regionId()) != activeUploadTask.mesh()))
+			|| scene.mesh(activeUploadTask.regionId()) != activeUploadTask.mesh()))
 		{
 			activeUploadTask.cancel(true);
 			activeUploadTask = null;

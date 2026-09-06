@@ -29,8 +29,8 @@ import com.xeon.controller.MapViewerController;
 import com.xeon.util.Ui;
 import com.formdev.flatlaf.FlatDarkLaf;
 
-import javax.swing.*;
-import java.awt.*;
+import java.awt.EventQueue;
+import javax.swing.UIManager;
 
 public class App
 {

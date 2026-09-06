@@ -1,5 +1,32 @@
+/*
+ * Copyright (c) 2026, Xeon <https://github.com/Avexiis>
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice, this
+ *    list of conditions and the following disclaimer.
+
+ * 2. Redistributions in binary form must reproduce the above copyright notice,
+ *    this list of conditions and the following disclaimer in the documentation
+ *    and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 package com.xeon.plugins.meshexport;
 
+import static com.xeon.plugins.meshexport.MeshTopology.Vec;
+import static com.xeon.plugins.meshexport.MeshTopology.checkCancelled;
 import com.xeon.view3d.Map3DMesh;
 import java.io.BufferedOutputStream;
 import java.io.BufferedWriter;
@@ -13,7 +40,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Locale;
-import static com.xeon.plugins.meshexport.MeshTopology.*;
 
 final class MeshExportIO
 {
@@ -22,24 +48,44 @@ final class MeshExportIO
 		STL("stl", "Binary STL (*.stl)"), OBJ("obj", "Wavefront OBJ (*.obj)");
 		final String extension;
 		final String description;
-		Format(String extension, String description) { this.extension = extension; this.description = description; }
+
+		Format(String extension, String description)
+		{
+			this.extension = extension;
+			this.description = description;
+		}
 	}
 
 	static String fileName(String name, int id)
 	{
 		String value = name == null ? "" : name.trim();
-		if (value.isBlank() || value.equalsIgnoreCase("null")) value = Integer.toString(id);
+		if (value.isBlank() || value.equalsIgnoreCase("null"))
+		{
+			value = Integer.toString(id);
+		}
 		value = value.replaceAll("[<>:\"/\\\\|?*\\p{Cntrl}]", "_").replaceAll("^[. ]+|[. ]+$", "");
-		if (value.isBlank()) value = Integer.toString(id);
-		if (value.matches("(?i)(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\\..*)?")) value = "_" + value;
-		if (value.codePointCount(0, value.length()) > 100) value = value.substring(0, value.offsetByCodePoints(0, 100));
+		if (value.isBlank())
+		{
+			value = Integer.toString(id);
+		}
+		if (value.matches("(?i)(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\\..*)?"))
+		{
+			value = "_" + value;
+		}
+		if (value.codePointCount(0, value.length()) > 100)
+		{
+			value = value.substring(0, value.offsetByCodePoints(0, 100));
+		}
 		return value;
 	}
 
 	static Path withExtension(Path path, Format format)
 	{
 		String name = path.getFileName().toString();
-		if (name.toLowerCase(Locale.ROOT).endsWith("." + format.extension)) return path;
+		if (name.toLowerCase(Locale.ROOT).endsWith("." + format.extension))
+		{
+			return path;
+		}
 		name = name.replaceFirst("(?i)\\.(stl|obj)$", "");
 		return path.resolveSibling(name + "." + format.extension);
 	}
@@ -47,16 +93,24 @@ final class MeshExportIO
 	static Map3DMesh forExport(Map3DMesh mesh, double sizeMillimeters)
 	{
 		if (!Double.isFinite(sizeMillimeters) || sizeMillimeters <= 0 || mesh.faceCount() == 0)
+		{
 			throw new IllegalArgumentException("Export size and mesh must be nonzero");
+		}
 		double[] min = {Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY};
 		double[] max = {Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY};
-		for (int v = 0; v < mesh.vertexCount(); v++) for (int axis = 0; axis < 3; axis++)
+		for (int v = 0; v < mesh.vertexCount(); v++)
 		{
-			min[axis] = Math.min(min[axis], mesh.coordinate(v, axis));
-			max[axis] = Math.max(max[axis], mesh.coordinate(v, axis));
+			for (int axis = 0; axis < 3; axis++)
+			{
+				min[axis] = Math.min(min[axis], mesh.coordinate(v, axis));
+				max[axis] = Math.max(max[axis], mesh.coordinate(v, axis));
+			}
 		}
 		double extent = Math.max(max[0] - min[0], Math.max(max[1] - min[1], max[2] - min[2]));
-		if (!(extent > 0)) throw new IllegalArgumentException("Mesh has no size");
+		if (!(extent > 0))
+		{
+			throw new IllegalArgumentException("Mesh has no size");
+		}
 		double scale = sizeMillimeters / extent;
 		double[] positions = new double[mesh.vertexCount() * 3];
 		for (int v = 0; v < mesh.vertexCount(); v++)
@@ -76,17 +130,35 @@ final class MeshExportIO
 		try
 		{
 			Map3DMesh output = forExport(mesh, size);
-			if (format == Format.STL) writeStl(temporary, output);
-			else writeObj(temporary, output);
+			if (format == Format.STL)
+			{
+				writeStl(temporary, output);
+			}
+			else
+			{
+				writeObj(temporary, output);
+			}
 			checkCancelled();
 			if (replace)
 			{
-				try { Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING); }
-				catch (AtomicMoveNotSupportedException ignored) { Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING); }
+				try
+				{
+					Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+				}
+				catch (AtomicMoveNotSupportedException ignored)
+				{
+					Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
+				}
 			}
-			else Files.move(temporary, target);
+			else
+			{
+				Files.move(temporary, target);
+			}
 		}
-		finally { Files.deleteIfExists(temporary); }
+		finally
+		{
+			Files.deleteIfExists(temporary);
+		}
 	}
 
 	private static void writeStl(Path path, Map3DMesh mesh) throws IOException
@@ -106,7 +178,10 @@ final class MeshExportIO
 				Vec cross = b.minus(a).cross(c.minus(a));
 				Vec normal = cross.lengthSquared() == 0 ? new Vec(0, 0, 0) : cross.normalized();
 				triangle.clear();
-				for (Vec point : new Vec[]{normal, a, b, c}) triangle.putFloat((float) point.x()).putFloat((float) point.y()).putFloat((float) point.z());
+				for (Vec point : new Vec[]{normal, a, b, c})
+				{
+					triangle.putFloat((float) point.x()).putFloat((float) point.y()).putFloat((float) point.z());
+				}
 				triangle.putShort((short) 0);
 				output.write(triangle.array());
 			}
@@ -130,6 +205,7 @@ final class MeshExportIO
 			}
 		}
 	}
+
 	private static Vec position(Map3DMesh mesh, int vertex)
 	{
 		return new Vec(mesh.coordinate(vertex, 0), mesh.coordinate(vertex, 1), mesh.coordinate(vertex, 2));

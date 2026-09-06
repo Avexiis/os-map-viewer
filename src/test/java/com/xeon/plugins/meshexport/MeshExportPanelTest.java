@@ -1,13 +1,18 @@
 package com.xeon.plugins.meshexport;
 
+import java.awt.Component;
+import java.awt.Container;
+import java.awt.Graphics2D;
+import javax.swing.JButton;
+import javax.swing.SwingUtilities;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.Test;
-import javax.swing.*;
-import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import javax.imageio.ImageIO;
-import static org.junit.jupiter.api.Assertions.*;
 
 class MeshExportPanelTest
 {

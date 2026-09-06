@@ -25,7 +25,8 @@
  */
 package com.xeon.plugins.shortestpath;
 
-import javax.swing.*;
+import javax.swing.JMenuItem;
+import javax.swing.JPopupMenu;
 
 final class ShortestPathMenu extends JPopupMenu
 {

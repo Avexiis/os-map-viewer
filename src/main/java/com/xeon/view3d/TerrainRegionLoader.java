@@ -278,7 +278,10 @@ public final class TerrainRegionLoader
 			{
 				return NpcMeshBuilder.staticMesh(npcId, npcDefinitionProvider, modelProvider, textureProvider, textureSet);
 			}
-			finally { modelProvider.clearCache(); }
+			finally
+			{
+				modelProvider.clearCache();
+			}
 		}
 
 		synchronized NpcPreviewModel npcPreviewModel(int npcId)

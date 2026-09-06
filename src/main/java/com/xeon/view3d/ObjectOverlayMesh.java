@@ -69,12 +69,22 @@ final class ObjectOverlayMesh
 		return tile == null ? null : new Tile(tile.x, tile.y, tile.z);
 	}
 
-	int objectId() { return objectId; }
-	String name() { return name; }
+	int objectId()
+	{
+		return objectId;
+	}
+
+	String name()
+	{
+		return name;
+	}
 
 	float intersectionDistance(org.joml.Vector3fc origin, org.joml.Vector3fc direction)
 	{
-		if (!MeshRayIntersection.hitsBounds(pickBounds, origin, direction)) return Float.POSITIVE_INFINITY;
+		if (!MeshRayIntersection.hitsBounds(pickBounds, origin, direction))
+		{
+			return Float.POSITIVE_INFINITY;
+		}
 		return MeshRayIntersection.distance(rawVertexData(), origin, direction);
 	}
 

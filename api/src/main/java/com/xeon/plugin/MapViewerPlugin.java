@@ -2,7 +2,9 @@ package com.xeon.plugin;
 
 import com.xeon.model.Tile;
 
-import javax.swing.*;
+import javax.swing.Icon;
+import javax.swing.JComponent;
+import javax.swing.JPopupMenu;
 
 public interface MapViewerPlugin
 {

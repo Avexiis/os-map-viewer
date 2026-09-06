@@ -2,7 +2,8 @@ package com.xeon.view;
 
 import com.xeon.model.Tile;
 
-import java.awt.*;
+import java.awt.Graphics2D;
+import java.awt.Rectangle;
 
 public interface MapLayer
 {

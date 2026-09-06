@@ -62,9 +62,15 @@ import com.xeon.view3d.Map3DPathSegment;
 import com.xeon.view3d.Map3DRenderContext;
 import com.xeon.view3d.Map3DTileAction;
 
+import java.awt.BasicStroke;
+import java.awt.Color;
+import java.awt.Font;
+import java.awt.Graphics2D;
+import java.awt.Rectangle;
+import java.awt.RenderingHints;
+import java.awt.Shape;
+import java.awt.Stroke;
 import java.io.File;
-import javax.swing.*;
-import java.awt.*;
 import java.awt.event.MouseEvent;
 import java.awt.geom.Line2D;
 import java.io.IOException;
@@ -85,6 +91,12 @@ import java.util.StringJoiner;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import javax.swing.JComponent;
+import javax.swing.JFileChooser;
+import javax.swing.JMenuItem;
+import javax.swing.JOptionPane;
+import javax.swing.JPopupMenu;
+import javax.swing.SwingUtilities;
 
 public final class ShortestPathPlugin implements MapViewerPlugin, MapLayer, MapTool, Map3DLayer
 {

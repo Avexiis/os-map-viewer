@@ -4,7 +4,9 @@ import org.joml.Vector3fc;
 
 final class MeshRayIntersection
 {
-	private MeshRayIntersection() { }
+	private MeshRayIntersection()
+	{
+	}
 
 	static float[] bounds(float[] triangles)
 	{
@@ -27,13 +29,19 @@ final class MeshRayIntersection
 			double o = origin.get(axis), d = direction.get(axis);
 			if (Math.abs(d) < 1e-12)
 			{
-				if (o < bounds[axis] || o > bounds[axis + 3]) return false;
+				if (o < bounds[axis] || o > bounds[axis + 3])
+				{
+					return false;
+				}
 				continue;
 			}
 			double a = (bounds[axis] - o) / d, b = (bounds[axis + 3] - o) / d;
 			near = Math.max(near, Math.min(a, b));
 			far = Math.min(far, Math.max(a, b));
-			if (near > far) return false;
+			if (near > far)
+			{
+				return false;
+			}
 		}
 		return true;
 	}
@@ -50,15 +58,27 @@ final class MeshRayIntersection
 			double py = direction.z() * e2x - direction.x() * e2z;
 			double pz = direction.x() * e2y - direction.y() * e2x;
 			double determinant = e1x * px + e1y * py + e1z * pz;
-			if (Math.abs(determinant) < 1e-14) continue;
+			if (Math.abs(determinant) < 1e-14)
+			{
+				continue;
+			}
 			double tx = origin.x() - ax, ty = origin.y() - ay, tz = origin.z() - az;
 			double u = (tx * px + ty * py + tz * pz) / determinant;
-			if (u < -1e-8 || u > 1 + 1e-8) continue;
+			if (u < -1e-8 || u > 1 + 1e-8)
+			{
+				continue;
+			}
 			double qx = ty * e1z - tz * e1y, qy = tz * e1x - tx * e1z, qz = tx * e1y - ty * e1x;
 			double v = (direction.x() * qx + direction.y() * qy + direction.z() * qz) / determinant;
-			if (v < -1e-8 || u + v > 1 + 1e-8) continue;
+			if (v < -1e-8 || u + v > 1 + 1e-8)
+			{
+				continue;
+			}
 			double distance = (e2x * qx + e2y * qy + e2z * qz) / determinant;
-			if (distance >= 0) best = Math.min(best, distance);
+			if (distance >= 0)
+			{
+				best = Math.min(best, distance);
+			}
 		}
 		return (float) best;
 	}

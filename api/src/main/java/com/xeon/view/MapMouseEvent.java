@@ -2,7 +2,7 @@ package com.xeon.view;
 
 import com.xeon.model.Tile;
 
-import java.awt.*;
+import java.awt.Point;
 import java.awt.event.MouseEvent;
 
 public final class MapMouseEvent

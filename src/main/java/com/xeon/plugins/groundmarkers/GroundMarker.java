@@ -28,7 +28,7 @@ package com.xeon.plugins.groundmarkers;
 import com.xeon.io.Paths;
 import com.xeon.model.Tile;
 
-import java.awt.*;
+import java.awt.Color;
 import java.util.Locale;
 import java.util.Objects;
 

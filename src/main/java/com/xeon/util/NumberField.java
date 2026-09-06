@@ -25,9 +25,9 @@
  */
 package com.xeon.util;
 
-import javax.swing.*;
-import javax.swing.text.*;
+import javax.swing.JFormattedTextField;
 import java.text.ParseException;
+import javax.swing.text.DefaultFormatter;
 
 public class NumberField extends JFormattedTextField
 {

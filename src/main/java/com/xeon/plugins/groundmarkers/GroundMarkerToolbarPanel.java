@@ -27,9 +27,11 @@ package com.xeon.plugins.groundmarkers;
 
 import java.util.ArrayList;
 import java.util.List;
-import javax.swing.*;
 import java.awt.event.ActionEvent;
 import java.util.function.Consumer;
+import javax.swing.JMenu;
+import javax.swing.JMenuItem;
+import javax.swing.JPopupMenu;
 
 public final class GroundMarkerToolbarPanel extends JPopupMenu
 {

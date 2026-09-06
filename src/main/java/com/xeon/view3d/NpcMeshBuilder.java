@@ -163,8 +163,8 @@ final class NpcMeshBuilder
 			AnimationChoice walkChoice = walkChoice(definition, spawn, animationProvider, customPath);
 			boolean walking = walkChoice.walking()
 				&& (customPath
-					? canUseCustomPath(definition, spawn, collisionMap)
-					: canWander(definition, spawn, region, plane, collisionMap, objectManager));
+				? canUseCustomPath(definition, spawn, collisionMap)
+				: canWander(definition, spawn, region, plane, collisionMap, objectManager));
 			NpcMeshEntry walkEntry = null;
 			if (walking)
 			{
@@ -227,9 +227,15 @@ final class NpcMeshBuilder
 	                            RSTextureProvider textures, SceneTextureSet textureSet)
 	{
 		NpcDefinition3D definition = definitions.definition(npcId);
-		if (definition == null || !definition.hasModels()) return null;
+		if (definition == null || !definition.hasModels())
+		{
+			return null;
+		}
 		ModelDefinition base = baseModel(definition, models);
-		if (base == null || base.faceCount == 0) return null;
+		if (base == null || base.faceCount == 0)
+		{
+			return null;
+		}
 		FrameSet frames = frameSet(definition, base, null, null, textures, textureSet, false);
 		return ModelMeshData.fromFrame(frames.frames()[0]);
 	}
@@ -415,9 +421,9 @@ final class NpcMeshBuilder
 		FrameSet frameSet = frameCache == null
 			? frameSet(definition, baseModel, sequence, animationProvider, textureProvider, textureSet, walking)
 			: frameCache.computeIfAbsent(
-				key,
-				() -> frameSet(definition, baseModel, sequence, animationProvider, textureProvider, textureSet, walking)
-			);
+			key,
+			() -> frameSet(definition, baseModel, sequence, animationProvider, textureProvider, textureSet, walking)
+		);
 		return new NpcMeshEntry(
 			definition.id,
 			definition.name,

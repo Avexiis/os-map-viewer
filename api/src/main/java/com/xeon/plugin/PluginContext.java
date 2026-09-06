@@ -5,8 +5,8 @@ import com.xeon.config.PluginConfig;
 import com.xeon.model.Tile;
 import com.xeon.view.MapView;
 
-import javax.swing.*;
-import java.awt.*;
+import java.awt.Window;
+import javax.swing.JFrame;
 
 public interface PluginContext
 {

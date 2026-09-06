@@ -952,7 +952,7 @@ public class MapPanel extends JComponent implements MapView
 	{
 		Tile tile = centerTile == null
 			? new Tile((Paths.MIN_RX + Paths.MAX_RX + 1) * REGION_TILES / 2,
-				(Paths.MIN_RY + Paths.MAX_RY + 1) * REGION_TILES / 2, currentPlane)
+			(Paths.MIN_RY + Paths.MAX_RY + 1) * REGION_TILES / 2, currentPlane)
 			: centerTile;
 		paintMapSnapshot(g0, target, tile.x + 0.5, tile.y + 0.5, tile.z,
 			pixelsPerTile, includeIcons, includeLabels);

@@ -626,10 +626,16 @@ final class NpcBrowserDialog extends JDialog
 		private boolean walkEnabled;
 		private long animationStartNanos = System.nanoTime();
 		private final Timer animationTimer = new Timer(50, e -> {
-			if (walkEnabled && model != null && model.hasWalkAnimation()) repaint();
+			if (walkEnabled && model != null && model.hasWalkAnimation())
+			{
+				repaint();
+			}
 		});
 
-		private PreviewPanel() { animationTimer.start(); }
+		private PreviewPanel()
+		{
+			animationTimer.start();
+		}
 
 		private void setModel(NpcPreviewModel model)
 		{
@@ -654,16 +660,25 @@ final class NpcBrowserDialog extends JDialog
 			repaint();
 		}
 
-		private void stop() { animationTimer.stop(); }
+		private void stop()
+		{
+			animationTimer.stop();
+		}
 
 		@Override
 		protected Map3DMesh mesh()
 		{
-			if (model == null) return null;
+			if (model == null)
+			{
+				return null;
+			}
 			boolean useWalk = walkEnabled && model.hasWalkAnimation();
 			AnimatedObjectMesh.Frame[] frames = useWalk ? model.walkFrames() : model.idleFrames();
 			int[] lengths = useWalk ? model.walkFrameLengths() : model.idleFrameLengths();
-			if (frames.length == 0) return null;
+			if (frames.length == 0)
+			{
+				return null;
+			}
 			float seconds = (System.nanoTime() - animationStartNanos) / 1_000_000_000.0f;
 			int index = AnimatedObjectMesh.frameIndexAt(frames.length, lengths, -1, 0, seconds);
 			AnimatedObjectMesh.Frame frame = frames[index < 0 || index >= frames.length ? 0 : index];

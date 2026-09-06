@@ -2,7 +2,8 @@ package com.xeon.view;
 
 import com.xeon.model.Tile;
 
-import java.awt.*;
+import java.awt.Rectangle;
+import java.awt.Shape;
 import java.awt.geom.Area;
 import java.util.Collection;
 import java.util.List;
