@@ -72,6 +72,57 @@ final class ObjectMeshBuilder
 	{
 	}
 
+	static Map3DMesh staticMesh(int objectId, ObjectManager objectManager, ObjectModelProvider modelProvider)
+	{
+		if (objectId < 0 || objectManager == null || modelProvider == null)
+		{
+			return null;
+		}
+		ObjectDefinition definition = completionStateDefinition(objectManager, objectManager.getObject(objectId));
+		if (!hasObjectModels(definition))
+		{
+			return null;
+		}
+		int modelType = staticModelType(definition);
+		Placement placement = new Placement(0, 0, 0, new int[]{0, 0, 0, 0}, 0);
+		ObjectOverlayBuilder builder = new ObjectOverlayBuilder();
+		if (modelType == TYPE_WALL_CORNER)
+		{
+			appendObjectOverlayModel(builder, modelProvider, definition, modelType, 4, placement);
+			appendObjectOverlayModel(builder, modelProvider, definition, modelType, 1, placement);
+		}
+		else
+		{
+			ModelUse modelUse = modelUseFor(modelType, 0);
+			appendObjectOverlayModel(
+				builder,
+				modelProvider,
+				definition,
+				modelUse.modelType(),
+				modelUse.modelOrientation(),
+				placement.withYaw(modelUse.extraYaw())
+			);
+		}
+		return builder.mesh();
+	}
+
+	private static int staticModelType(ObjectDefinition definition)
+	{
+		int[] types = definition.getObjectTypes();
+		if (types == null || types.length == 0)
+		{
+			return TYPE_GAME_OBJECT;
+		}
+		for (int type : types)
+		{
+			if (type == TYPE_GAME_OBJECT)
+			{
+				return type;
+			}
+		}
+		return types[0];
+	}
+
 	static List<AnimatedObjectMesh> append(
 		SceneMeshBuffer[] planeData,
 		SceneMeshBuffer[] transparentPlaneData,
@@ -1229,6 +1280,11 @@ final class ObjectMeshBuilder
 			}
 
 			return new ObjectOverlayMesh(tile, objectId, renderedObjectId, name, triangles.array());
+		}
+
+		private Map3DMesh mesh()
+		{
+			return triangles.vertexCount() == 0 ? null : Map3DMesh.fromTriangles(triangles.array());
 		}
 	}
 

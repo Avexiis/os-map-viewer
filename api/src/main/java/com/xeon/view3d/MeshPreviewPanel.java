@@ -13,6 +13,8 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionAdapter;
 import java.awt.image.BufferedImage;
+import java.awt.image.DataBufferInt;
+import java.util.Arrays;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import javax.swing.BorderFactory;
@@ -316,8 +318,8 @@ public class MeshPreviewPanel extends JPanel
 			return null;
 		}
 		int vertexCount = prepared.positions.length / 3;
-		int[] projectedX = new int[vertexCount];
-		int[] projectedY = new int[vertexCount];
+		double[] projectedX = new double[vertexCount];
+		double[] projectedY = new double[vertexCount];
 		double[] projectedDepth = new double[vertexCount];
 		double scale = Math.max(1, Math.min(request.width, request.height) - 36)
 			/ Math.max(1e-9, prepared.diameter) * request.zoom;
@@ -337,60 +339,102 @@ public class MeshPreviewPanel extends JPanel
 			double z = prepared.positions[offset + 2] - prepared.centerZ;
 			double rotatedX = x * yawCos + z * yawSin;
 			double rotatedZ = z * yawCos - x * yawSin;
-			projectedX[vertex] = (int) Math.round(request.width / 2.0 + rotatedX * scale);
-			projectedY[vertex] = (int) Math.round(request.height / 2.0 - (y * pitchCos - rotatedZ * pitchSin) * scale);
+			projectedX[vertex] = request.width / 2.0 + rotatedX * scale;
+			projectedY[vertex] = request.height / 2.0 - (y * pitchCos - rotatedZ * pitchSin) * scale;
 			projectedDepth[vertex] = y * pitchSin + rotatedZ * pitchCos;
 		}
+		BufferedImage image = new BufferedImage(request.width, request.height, BufferedImage.TYPE_INT_ARGB);
+		int[] pixels = ((DataBufferInt) image.getRaster().getDataBuffer()).getData();
+		double[] depthBuffer = new double[pixels.length];
+		Arrays.fill(depthBuffer, Double.NEGATIVE_INFINITY);
 		int faceCount = prepared.triangles.length / 3;
-		double[] faceDepth = new double[faceCount];
 		for (int face = 0; face < faceCount; face++)
 		{
-			int offset = face * 3;
-			faceDepth[face] = (projectedDepth[prepared.triangles[offset]]
-				+ projectedDepth[prepared.triangles[offset + 1]]
-				+ projectedDepth[prepared.triangles[offset + 2]]) / 3;
-		}
-		int[] faceOrder = sortFaces(faceDepth, request.generation);
-		if (faceOrder == null)
-		{
-			return null;
-		}
-		BufferedImage image = new BufferedImage(request.width, request.height, BufferedImage.TYPE_INT_ARGB);
-		Graphics2D g = image.createGraphics();
-		try
-		{
-			g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-			g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-			int[] xPoints = new int[3];
-			int[] yPoints = new int[3];
-			for (int orderedFace = 0; orderedFace < faceOrder.length; orderedFace++)
+			if ((face & 255) == 0 && !isCurrent(request.generation))
 			{
-				if ((orderedFace & 1023) == 0 && !isCurrent(request.generation))
-				{
-					return null;
-				}
-				int face = faceOrder[orderedFace];
-				int offset = face * 3;
-				for (int corner = 0; corner < 3; corner++)
-				{
-					int vertex = prepared.triangles[offset + corner];
-					xPoints[corner] = projectedX[vertex];
-					yPoints[corner] = projectedY[vertex];
-				}
-				g.setColor(prepared.colors[face]);
-				g.fillPolygon(xPoints, yPoints, 3);
-				if (request.wireframe)
-				{
-					g.setColor(WIREFRAME_COLOR);
-					g.drawPolygon(xPoints, yPoints, 3);
-				}
+				return null;
 			}
-		}
-		finally
-		{
-			g.dispose();
+			int offset = face * 3;
+			int a = prepared.triangles[offset];
+			int b = prepared.triangles[offset + 1];
+			int c = prepared.triangles[offset + 2];
+			rasterizeTriangle(
+				request,
+				projectedX[a], projectedY[a], projectedDepth[a],
+				projectedX[b], projectedY[b], projectedDepth[b],
+				projectedX[c], projectedY[c], projectedDepth[c],
+				prepared.colors[face],
+				pixels,
+				depthBuffer
+			);
 		}
 		return isCurrent(request.generation) ? image : null;
+	}
+
+	private static void rasterizeTriangle(
+		RenderRequest request,
+		double ax, double ay, double az,
+		double bx, double by, double bz,
+		double cx, double cy, double cz,
+		int color,
+		int[] pixels,
+		double[] depthBuffer)
+	{
+		double area = edge(ax, ay, bx, by, cx, cy);
+		if (Math.abs(area) < 1e-9)
+		{
+			return;
+		}
+		double direction = area < 0 ? -1 : 1;
+		area *= direction;
+		int minX = Math.max(0, (int) Math.floor(Math.min(ax, Math.min(bx, cx))));
+		int maxX = Math.min(request.width - 1, (int) Math.ceil(Math.max(ax, Math.max(bx, cx))));
+		int minY = Math.max(0, (int) Math.floor(Math.min(ay, Math.min(by, cy))));
+		int maxY = Math.min(request.height - 1, (int) Math.ceil(Math.max(ay, Math.max(by, cy))));
+		double edgeA = Math.max(1e-9, Math.hypot(cx - bx, cy - by));
+		double edgeB = Math.max(1e-9, Math.hypot(ax - cx, ay - cy));
+		double edgeC = Math.max(1e-9, Math.hypot(bx - ax, by - ay));
+		int edgeColor = request.wireframe ? wireframeColor(color) : color;
+		for (int y = minY; y <= maxY; y++)
+		{
+			double py = y + 0.5;
+			for (int x = minX; x <= maxX; x++)
+			{
+				double px = x + 0.5;
+				double wa = edge(bx, by, cx, cy, px, py) * direction;
+				double wb = edge(cx, cy, ax, ay, px, py) * direction;
+				double wc = edge(ax, ay, bx, by, px, py) * direction;
+				if (wa < 0 || wb < 0 || wc < 0)
+				{
+					continue;
+				}
+				double depth = (wa * az + wb * bz + wc * cz) / area;
+				int pixel = y * request.width + x;
+				if (depth <= depthBuffer[pixel])
+				{
+					continue;
+				}
+				depthBuffer[pixel] = depth;
+				boolean edgePixel = request.wireframe
+					&& Math.min(wa / edgeA, Math.min(wb / edgeB, wc / edgeC)) <= 0.75;
+				pixels[pixel] = edgePixel ? edgeColor : color;
+			}
+		}
+	}
+
+	private static double edge(double ax, double ay, double bx, double by, double px, double py)
+	{
+		return (bx - ax) * (py - ay) - (by - ay) * (px - ax);
+	}
+
+	private static int wireframeColor(int color)
+	{
+		int remaining = 255 - WIREFRAME_COLOR.getAlpha();
+		int alpha = color >>> 24;
+		int red = (color >> 16 & 0xFF) * remaining / 255;
+		int green = (color >> 8 & 0xFF) * remaining / 255;
+		int blue = (color & 0xFF) * remaining / 255;
+		return alpha << 24 | red << 16 | green << 8 | blue;
 	}
 
 	private PreparedMesh preparedMesh(RenderRequest request)
@@ -427,14 +471,14 @@ public class MeshPreviewPanel extends JPanel
 			maxY = Math.max(maxY, positions[offset + 1]);
 			maxZ = Math.max(maxZ, positions[offset + 2]);
 		}
-		Color[] colors = new Color[request.mesh.faceCount()];
+		int[] colors = new int[request.mesh.faceCount()];
 		for (int face = 0; face < colors.length; face++)
 		{
 			if ((face & 1023) == 0 && !isCurrent(request.generation))
 			{
 				return null;
 			}
-			colors[face] = new Color(request.mesh.faceColor(face), true);
+			colors[face] = request.mesh.faceColor(face);
 		}
 		double xSize = maxX - minX;
 		double ySize = maxY - minY;
@@ -453,49 +497,6 @@ public class MeshPreviewPanel extends JPanel
 		return prepared;
 	}
 
-	private int[] sortFaces(double[] depth, long generation)
-	{
-		int[] source = new int[depth.length];
-		int[] target = new int[depth.length];
-		for (int face = 0; face < source.length; face++)
-		{
-			source[face] = face;
-		}
-		for (int width = 1; width < source.length; width *= 2)
-		{
-			if (!isCurrent(generation))
-			{
-				return null;
-			}
-			for (int left = 0; left < source.length; left += width * 2)
-			{
-				int middle = Math.min(left + width, source.length);
-				int right = Math.min(left + width * 2, source.length);
-				int first = left;
-				int second = middle;
-				for (int index = left; index < right; index++)
-				{
-					if (first < middle && (second >= right || depth[source[first]] <= depth[source[second]]))
-					{
-						target[index] = source[first++];
-					}
-					else
-					{
-						target[index] = source[second++];
-					}
-				}
-			}
-			int[] swap = source;
-			source = target;
-			target = swap;
-			if (width > source.length / 2)
-			{
-				break;
-			}
-		}
-		return source;
-	}
-
 	private boolean isCurrent(long generation)
 	{
 		synchronized (renderLock)
@@ -509,7 +510,7 @@ public class MeshPreviewPanel extends JPanel
 	{
 	}
 
-	private record PreparedMesh(Map3DMesh source, double[] positions, int[] triangles, Color[] colors,
+	private record PreparedMesh(Map3DMesh source, double[] positions, int[] triangles, int[] colors,
 			double centerX, double centerY, double centerZ, double diameter)
 	{
 	}

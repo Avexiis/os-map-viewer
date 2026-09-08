@@ -38,6 +38,7 @@ import net.runelite.cache.OverlayManager;
 import net.runelite.cache.SpriteManager;
 import net.runelite.cache.TextureManager;
 import net.runelite.cache.UnderlayManager;
+import net.runelite.cache.definitions.ObjectDefinition;
 import net.runelite.cache.fs.Store;
 import net.runelite.cache.item.RSTextureProvider;
 import net.runelite.cache.region.Region;
@@ -284,6 +285,18 @@ public final class TerrainRegionLoader
 			}
 		}
 
+		synchronized Map3DMesh objectStaticMesh(int objectId)
+		{
+			try
+			{
+				return ObjectMeshBuilder.staticMesh(objectId, objects, modelProvider);
+			}
+			finally
+			{
+				modelProvider.clearCache();
+			}
+		}
+
 		synchronized NpcPreviewModel npcPreviewModel(int npcId)
 		{
 			try
@@ -315,6 +328,20 @@ public final class TerrainRegionLoader
 				return "";
 			}
 			return definition.name;
+		}
+
+		synchronized String objectName(int objectId)
+		{
+			ObjectDefinition definition =
+				ObjectMeshBuilder.completionStateDefinition(objects, objects.getObject(objectId));
+			if (definition == null
+				|| definition.getName() == null
+				|| definition.getName().isBlank()
+				|| "null".equalsIgnoreCase(definition.getName()))
+			{
+				return "";
+			}
+			return definition.getName();
 		}
 
 		private Region loadNeighborRegion(int regionId)

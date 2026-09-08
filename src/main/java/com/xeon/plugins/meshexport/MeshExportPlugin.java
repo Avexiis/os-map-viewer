@@ -34,6 +34,7 @@ import com.xeon.view3d.Map3DMouseEvent;
 import com.xeon.view3d.Map3DObjectOverlay;
 import com.xeon.view3d.Map3DOverlay;
 import com.xeon.view3d.Map3DRenderContext;
+import com.xeon.view3d.Map3DTextSegment;
 import com.xeon.view3d.Map3DTileAction;
 import java.awt.Color;
 import java.awt.event.MouseEvent;
@@ -80,6 +81,17 @@ public final class MeshExportPlugin implements MapViewerPlugin, Map3DLayer
 	public Color objectHoverOutlineColor()
 	{
 		return new Color(0x55D6BE);
+	}
+
+	@Override
+	public List<Map3DTextSegment> entityHoverText(Map3DEntity.Kind kind, int id)
+	{
+		return kind == Map3DEntity.Kind.OBJECT
+			? List.of(
+				new Map3DTextSegment("Object ID - ", Color.WHITE),
+				new Map3DTextSegment(Integer.toString(id), Color.CYAN)
+			)
+			: List.of();
 	}
 
 	@Override

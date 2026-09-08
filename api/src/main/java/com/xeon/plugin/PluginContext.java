@@ -4,6 +4,7 @@ import com.xeon.config.ConfigManager;
 import com.xeon.config.PluginConfig;
 import com.xeon.model.Tile;
 import com.xeon.view.MapView;
+import com.xeon.view3d.Map3DEntity;
 
 import java.awt.Window;
 import javax.swing.JFrame;
@@ -40,6 +41,11 @@ public interface PluginContext
 	default String wikiSyncUsername()
 	{
 		return "";
+	}
+
+	default Map3DEntity load3DEntity(Map3DEntity.Kind kind, int id) throws Exception
+	{
+		return null;
 	}
 
 	default Tile centerTile()

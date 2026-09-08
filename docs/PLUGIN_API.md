@@ -161,6 +161,7 @@ Available methods:
 - `mapPanel()` gives access to the public `MapView` API for the map viewer.
 - `is3DViewerActive()` reports whether the 3D viewer is currently open.
 - `wikiSyncUsername()` returns the username currently saved in the shared WikiSync profile, or an empty string when none is configured.
+- `load3DEntity(kind, id)` loads a static NPC or object mesh and its cache name. Call it off the Swing and render threads because cache model assembly may be expensive.
 - `centerTile()` returns the 2D map center or the 3D camera tile.
 - `focusTile(tile, zoom)` focuses the 2D map or warps the 3D camera, depending on the active mode.
 - `repaintVisible()` repaints 2D plugin layers and refreshes 3D plugin overlays.
@@ -211,6 +212,7 @@ public final class MyPlugin implements MapViewerPlugin, MapLayer, MapTool, Map3D
 
 - `entityPickingEnabled()` opts into NPC and object picking.
 - `objectHoverOutlineColor()` returns the object silhouette color used while an object is picked, or `null` to disable that outline.
+- `entityHoverText(kind, id)` returns colored `Map3DTextSegment` values for the existing top-left hover display. Core continues to own the default NPC hover display.
 - `tileHoverSelectorVisible(objectHovered)` controls the core tile hover overlay for plugin-picked objects. Return `false` when the plugin needs to suppress it. NPC hover outlines suppress the selector in core, independently of plugins; toggled agility obstacle overlays remain compatible with the tile selector.
 - `entityActions(entity)` returns right-click context menu actions for a picked NPC or object.
 - `entityClicked(entity, event)` handles a picked entity click and returns whether the plugin consumed it. This runs on the Swing event thread.
@@ -234,7 +236,7 @@ public final class MyPlugin implements MapViewerPlugin, MapLayer, MapTool, Map3D
 
 `Map3DObjectOverlay` draws against retained object geometry in loaded 3D regions. The `objectId` can be either the raw scene object id or the transformed object id used by the renderer. The fill is drawn on the object model/clickbox geometry, the outline is a projected screen-space silhouette built from the same coverage-mask path used for NPC outlines, and the optional label floats over the matched model without a flag or stem. Outlines for animated objects use the current animation frame. If no matching object geometry is loaded, the overlay is skipped.
 
-`Map3DEntity` identifies a picked `NPC` or `OBJECT` by id, name, and world tile. Its `meshSource()` must be loaded off the Swing and render threads because NPC models may require cache access. It returns an immutable `Map3DMesh`; object snapshots retain their absolute world placement so multiple object meshes can be combined, while NPC snapshots are centered on their static model origin. `MeshPreviewPanel` is the shared Swing preview component for displaying these meshes. It prepares and rasterizes meshes asynchronously, caches completed frames, and coalesces queued view changes so repaints and interactive controls do not run mesh processing on the Swing event thread.
+`Map3DEntity` identifies a picked or directly loaded `NPC` or `OBJECT` by id, name, and optional world tile. Its `meshSource()` must be loaded off the Swing and render threads because models may require cache access. It returns an immutable `Map3DMesh`; picked object snapshots retain their absolute world placement so multiple object meshes can be combined, while directly loaded objects and NPCs are centered on their static model origin. `MeshPreviewPanel` is the shared Swing preview component for displaying these meshes. It prepares and rasterizes meshes asynchronously, caches completed frames, uses per-pixel depth testing, and coalesces queued view changes so repaints and interactive controls do not run mesh processing on the Swing event thread.
 
 Keep `overlay(context)` data-only and fast. If a Swing event changes plugin state, call `context.repaintVisible()` or `context.invoke3DRenderLater(...)` so the 3D renderer refreshes safely.
 

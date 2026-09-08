@@ -79,10 +79,12 @@ final class MeshExportPanel extends JPanel
 	private final JTextField playerUsername = new JTextField();
 	private final JButton fetchPlayer = new JButton("Fetch Player");
 	private final JButton useWikiSync = new JButton("Use WikiSync");
+	private final JButton npcId = new JButton("NPC ID");
+	private final JButton objectId = new JButton("Object ID");
 	private final JLabel name = new JLabel("Mesh Export");
 	private final JLabel counts = new JLabel(" ");
 	private final JTextArea status = new JTextArea(3, 20);
-	private final JRadioButton originalMode = new JRadioButton("Original", true);
+	private final JRadioButton rawMode = new JRadioButton("Raw", true);
 	private final JRadioButton compactMode = new JRadioButton("Compacted");
 	private final JRadioButton repairedMode = new JRadioButton("Repaired");
 	private final JCheckBox wireframe = new JCheckBox("Face edges", true);
@@ -109,6 +111,16 @@ final class MeshExportPanel extends JPanel
 		add(preview);
 		JPanel controls = new ScrollablePanel();
 		controls.setLayout(new BoxLayout(controls, BoxLayout.Y_AXIS));
+		JLabel idLabel = new JLabel("Model By ID");
+		idLabel.setFont(idLabel.getFont().deriveFont(Font.BOLD));
+		controls.add(idLabel);
+		controls.add(Box.createVerticalStrut(4));
+		JPanel idRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+		idRow.add(npcId);
+		idRow.add(objectId);
+		capHeight(idRow);
+		controls.add(idRow);
+		controls.add(Box.createVerticalStrut(8));
 		JLabel playerLabel = new JLabel("RuneProfile Player");
 		playerLabel.setLabelFor(playerUsername);
 		playerLabel.setFont(playerLabel.getFont().deriveFont(Font.BOLD));
@@ -130,16 +142,16 @@ final class MeshExportPanel extends JPanel
 		controls.add(name);
 		controls.add(Box.createVerticalStrut(8));
 		ButtonGroup modes = new ButtonGroup();
-		modes.add(originalMode);
+		modes.add(rawMode);
 		modes.add(compactMode);
 		modes.add(repairedMode);
 		JPanel modeRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-		modeRow.add(originalMode);
+		modeRow.add(rawMode);
 		modeRow.add(compactMode);
 		modeRow.add(repairedMode);
 		capHeight(modeRow);
 		controls.add(modeRow);
-		originalMode.addActionListener(e -> showPreview());
+		rawMode.addActionListener(e -> showPreview());
 		compactMode.addActionListener(e -> showPreview());
 		repairedMode.addActionListener(e -> showPreview());
 		wireframe.addActionListener(e -> preview.setWireframe(wireframe.isSelected()));
@@ -192,6 +204,8 @@ final class MeshExportPanel extends JPanel
 		fetchPlayer.addActionListener(e -> fetchPlayerModel());
 		playerUsername.addActionListener(e -> fetchPlayerModel());
 		useWikiSync.addActionListener(e -> restoreWikiSyncUsername());
+		npcId.addActionListener(e -> promptEntityId(Map3DEntity.Kind.NPC));
+		objectId.addActionListener(e -> promptEntityId(Map3DEntity.Kind.OBJECT));
 		useWikiSync.setEnabled(context != null);
 		export.addActionListener(e -> exportMesh());
 		cancel.addActionListener(e -> cancelWork());
@@ -271,6 +285,53 @@ final class MeshExportPanel extends JPanel
 		});
 	}
 
+	private void promptEntityId(Map3DEntity.Kind kind)
+	{
+		String type = kind == Map3DEntity.Kind.NPC ? "NPC" : "Object";
+		String value = JOptionPane.showInputDialog(this, "Enter " + type + " ID:", type + " ID",
+			JOptionPane.PLAIN_MESSAGE);
+		if (value == null)
+		{
+			return;
+		}
+		int id;
+		try
+		{
+			id = Integer.parseInt(value.trim());
+			if (id < 0)
+			{
+				throw new NumberFormatException();
+			}
+		}
+		catch (NumberFormatException ex)
+		{
+			showMessage("Enter a non-negative numeric " + type + " ID");
+			return;
+		}
+		if (context == null)
+		{
+			showMessage("The 3D model cache is not available");
+			return;
+		}
+		clearSelection.run();
+		String fallbackTitle = type + " " + id;
+		loadMesh(fallbackTitle, fallbackTitle, MeshExportIO.fileName("", id), "Loading static model...", progress -> {
+			Map3DEntity entity = context.load3DEntity(kind, id);
+			if (entity == null)
+			{
+				throw new IllegalArgumentException("No static mesh is available for " + fallbackTitle);
+			}
+			String entityName = entity.name().isBlank() || entity.name().equalsIgnoreCase("null")
+				? fallbackTitle : entity.name();
+			progress.accept(new SelectionDetails(
+				entityName,
+				type + " " + id + ": " + entityName,
+				MeshExportIO.fileName(entity.name(), id)
+			));
+			return entity.meshSource().load();
+		});
+	}
+
 	private void loadMesh(String title, String tooltip, String fileName, String initialStatus, MeshLoader loader)
 	{
 		cancelWorker();
@@ -281,8 +342,8 @@ final class MeshExportPanel extends JPanel
 		name.setToolTipText(tooltip);
 		preview.resetView();
 		preview.setMessage("Loading mesh...");
-		originalMode.setSelected(true);
-		originalMode.setEnabled(false);
+		rawMode.setSelected(true);
+		rawMode.setEnabled(false);
 		compactMode.setEnabled(false);
 		repairedMode.setEnabled(false);
 		export.setEnabled(false);
@@ -320,13 +381,21 @@ final class MeshExportPanel extends JPanel
 				}
 				for (Object chunk : chunks)
 				{
-					if (chunk instanceof Map3DMesh mesh)
+					if (chunk instanceof SelectionDetails details)
+					{
+						name.setText(details.title());
+						name.setToolTipText(details.tooltip());
+						outputFileName = details.fileName();
+					}
+					else if (chunk instanceof Map3DMesh mesh)
 					{
 						original = mesh;
 						preview.setMesh(mesh);
-						counts.setText(mesh.faceCount() + " original faces");
-						originalMode.setEnabled(true);
+						counts.setText(mesh.faceCount() + " raw faces");
+						rawMode.setEnabled(true);
 						wireframe.setEnabled(true);
+						size.setEnabled(true);
+						export.setEnabled(true);
 					}
 					else
 					{
@@ -359,26 +428,6 @@ final class MeshExportPanel extends JPanel
 					}
 					showPreview();
 					counts.setText(faceCountSummary(compacted));
-					MeshTopology.Diagnostics d = compacted.diagnostics();
-					if (compacted.repairApplied())
-					{
-						status.setText("Manifold repair produced a watertight surface.");
-					}
-					else if (compacted.watertight())
-					{
-						status.setText("The compacted mesh is already watertight; manifold repair was not needed.");
-					}
-					else
-					{
-						status.setText("Warning: This mesh is not watertight and will need repair before 3D printing.\n"
-							+ d.boundaryEdges() + " open edges, " + d.nonManifoldEdges()
-							+ " non-manifold edges, " + d.inconsistentEdges() + " winding conflicts.");
-					}
-					for (String note : compacted.notes())
-					{
-						status.append("\n" + note);
-					}
-					status.setCaretPosition(0);
 					export.setEnabled(true);
 					size.setEnabled(true);
 				}
@@ -463,8 +512,8 @@ final class MeshExportPanel extends JPanel
 
 	private void setControlsForNoSelection()
 	{
-		originalMode.setSelected(true);
-		originalMode.setEnabled(false);
+		rawMode.setSelected(true);
+		rawMode.setEnabled(false);
 		compactMode.setEnabled(false);
 		repairedMode.setEnabled(false);
 		wireframe.setEnabled(false);
@@ -495,7 +544,7 @@ final class MeshExportPanel extends JPanel
 
 	private void showPreview()
 	{
-		if (compacted == null || originalMode.isSelected())
+		if (compacted == null || rawMode.isSelected())
 		{
 			preview.setMesh(original);
 		}
@@ -507,12 +556,51 @@ final class MeshExportPanel extends JPanel
 		{
 			preview.setMesh(compacted.compactedMesh());
 		}
+		updateModeStatus();
+	}
+
+	private void updateModeStatus()
+	{
+		if (compacted == null)
+		{
+			return;
+		}
+		if (rawMode.isSelected())
+		{
+			setRawWarning();
+		}
+		else if (repairedMode.isSelected())
+		{
+			status.setText("Manifold repair produced a watertight surface.");
+		}
+		else if (compacted.compactedWatertight())
+		{
+			status.setText("The compacted mesh is watertight; manifold repair was not needed.");
+		}
+		else
+		{
+			status.setText("Warning: The compacted mesh is not watertight and will need repair before 3D printing.");
+		}
+		if (!rawMode.isSelected())
+		{
+			for (String note : compacted.notes())
+			{
+				status.append("\n" + note);
+			}
+		}
+		status.setCaretPosition(0);
+	}
+
+	private void setRawWarning()
+	{
+		status.setText("Warning: Raw meshes almost always contain manifold problems. "
+			+ "Use raw export for external repair or digital uses where watertight geometry is not required.");
 	}
 
 	private String faceCountSummary(MeshCompactor.Result result)
 	{
 		String compactFaces = result.compactedMesh().faceCount() + " compacted faces";
-		String originalFaces = original == null ? compactFaces : original.faceCount() + " original / " + compactFaces;
+		String originalFaces = original == null ? compactFaces : original.faceCount() + " raw / " + compactFaces;
 		return result.repairApplied()
 			? "<html>" + originalFaces + "<br>" + result.repairedMesh().faceCount() + " faces after manifold repair</html>"
 			: originalFaces;
@@ -520,11 +608,21 @@ final class MeshExportPanel extends JPanel
 
 	private void exportMesh()
 	{
-		if (compacted == null || worker != null)
+		boolean rawExport = rawMode.isSelected();
+		if (original == null || !rawExport && (compacted == null || worker != null))
 		{
 			return;
 		}
-		if (!compacted.watertight()
+		Map3DMesh mesh = rawExport ? original : selectedMesh();
+		if (rawExport
+			&& JOptionPane.showConfirmDialog(this,
+				"Raw meshes almost always contain manifold problems and may not be watertight.\n"
+					+ "Use modeling or repair software before 3D printing.\n\nExport the raw mesh anyway?",
+				"Raw Mesh", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE) != JOptionPane.YES_OPTION)
+		{
+			return;
+		}
+		if (!rawExport && !selectedMeshWatertight()
 			&& JOptionPane.showConfirmDialog(this,
 				"This mesh is not watertight and will need repair before 3D printing.\n"
 					+ "Your slicer or modeling software may be able to repair it.\n\nExport it anyway?",
@@ -563,7 +661,10 @@ final class MeshExportPanel extends JPanel
 			return;
 		}
 		context.config().setString("directory", target.getParent().toString());
-		Map3DMesh mesh = compacted.exportMesh();
+		if (rawExport && worker != null)
+		{
+			cancelWorker();
+		}
 		double millimeters = ((Number) size.getValue()).doubleValue();
 		int currentRequest = request;
 		export.setEnabled(false);
@@ -613,6 +714,24 @@ final class MeshExportPanel extends JPanel
 		next.execute();
 	}
 
+	private Map3DMesh selectedMesh()
+	{
+		if (rawMode.isSelected())
+		{
+			return original;
+		}
+		if (repairedMode.isSelected() && compacted.repairedMesh() != null)
+		{
+			return compacted.repairedMesh();
+		}
+		return compacted.compactedMesh();
+	}
+
+	private boolean selectedMeshWatertight()
+	{
+		return repairedMode.isSelected() ? compacted.watertight() : compacted.compactedWatertight();
+	}
+
 	private void showError(String title, Throwable error)
 	{
 		String message = error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
@@ -637,8 +756,21 @@ final class MeshExportPanel extends JPanel
 	{
 		cancelWorker();
 		cancel.setEnabled(false);
-		export.setEnabled(compacted != null);
-		status.setText("Cancelled");
+		export.setEnabled(original != null);
+		size.setEnabled(original != null);
+		if (original == null)
+		{
+			status.setText("Cancelled");
+		}
+		else if (compacted == null)
+		{
+			rawMode.setSelected(true);
+			setRawWarning();
+		}
+		else
+		{
+			updateModeStatus();
+		}
 	}
 
 	void dispose()
@@ -650,6 +782,10 @@ final class MeshExportPanel extends JPanel
 	@FunctionalInterface
 	private interface MeshLoader
 	{
-		Map3DMesh load(Consumer<String> progress) throws Exception;
+		Map3DMesh load(Consumer<Object> progress) throws Exception;
+	}
+
+	private record SelectionDetails(String title, String tooltip, String fileName)
+	{
 	}
 }

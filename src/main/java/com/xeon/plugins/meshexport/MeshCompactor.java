@@ -45,16 +45,11 @@ final class MeshCompactor
 	private static final double CSG_SCALE = 1024;
 
 	record Result(Map3DMesh compactedMesh, Map3DMesh repairedMesh, Diagnostics diagnostics,
-		boolean watertight, List<String> notes)
+		boolean compactedWatertight, boolean watertight, List<String> notes)
 	{
 		boolean repairApplied()
 		{
 			return repairedMesh != null;
-		}
-
-		Map3DMesh exportMesh()
-		{
-			return repairedMesh == null ? compactedMesh : repairedMesh;
 		}
 	}
 
@@ -115,11 +110,14 @@ final class MeshCompactor
 			throw new IllegalStateException("Compaction exceeded the original face count");
 		}
 		List<String> notes = new ArrayList<>(candidate.notes());
+		Diagnostics compactDiagnostics = compact.diagnostics();
+		boolean compactWatertight = compactDiagnostics.closed()
+			&& compact.components().stream().allMatch(Component::closed);
 		progress.accept("Repairing mesh manifold...");
 		MeshTopology.Repair repair = compact.repair();
 		boolean watertight = repair.printable();
 		boolean repairApplied = watertight && repair.changed();
-		Diagnostics diagnostics = watertight ? repair.after() : compact.diagnostics();
+		Diagnostics diagnostics = watertight ? repair.after() : compactDiagnostics;
 		if (watertight)
 		{
 			addRepairNote(notes, repair);
@@ -134,7 +132,7 @@ final class MeshCompactor
 		}
 		Map3DMesh compactedMesh = compact.toMesh(center, extent);
 		Map3DMesh repairedMesh = repairApplied ? repair.mesh().toMesh(center, extent) : null;
-		return new Result(compactedMesh, repairedMesh, diagnostics, watertight, List.copyOf(notes));
+		return new Result(compactedMesh, repairedMesh, diagnostics, compactWatertight, watertight, List.copyOf(notes));
 	}
 
 	private static Candidate compactTopology(MeshTopology source, Consumer<String> progress)

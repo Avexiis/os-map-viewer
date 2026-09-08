@@ -50,6 +50,7 @@ import com.xeon.view.MapLegendDialog;
 import com.xeon.view.MapPanel;
 import com.xeon.view.MapView;
 import com.xeon.view.NpcLocationLayer;
+import com.xeon.view3d.Map3DEntity;
 import com.xeon.view3d.Map3DPanel;
 
 import java.awt.BorderLayout;
@@ -2248,6 +2249,16 @@ public class MapViewerController
 		public String wikiSyncUsername()
 		{
 			return wikiSyncManager.username();
+		}
+
+		@Override
+		public Map3DEntity load3DEntity(Map3DEntity.Kind kind, int id) throws Exception
+		{
+			if (map3DPanel == null)
+			{
+				throw new IllegalStateException("The 3D viewer is not active");
+			}
+			return map3DPanel.load3DEntity(kind, id);
 		}
 
 		@Override

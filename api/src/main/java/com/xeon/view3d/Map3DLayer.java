@@ -2,6 +2,7 @@ package com.xeon.view3d;
 
 import com.xeon.model.Tile;
 
+import java.awt.Color;
 import java.util.List;
 
 public interface Map3DLayer
@@ -11,9 +12,14 @@ public interface Map3DLayer
 		return false;
 	}
 
-	default java.awt.Color objectHoverOutlineColor()
+	default Color objectHoverOutlineColor()
 	{
 		return null;
+	}
+
+	default List<Map3DTextSegment> entityHoverText(Map3DEntity.Kind kind, int id)
+	{
+		return List.of();
 	}
 
 	default boolean tileHoverSelectorVisible(boolean objectHovered)

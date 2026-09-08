@@ -482,6 +482,7 @@ public final class Map3DPanel extends JPanel
 	{
 		activePlugin = plugin;
 		active3DLayer = plugin instanceof Map3DLayer layer ? layer : null;
+		npcHoverOverlay.setPluginInfo(null);
 		updateEntityPicking();
 		controlsOverlay.setPluginControls(
 			active3DLayer == null || plugin == null ? null : plugin.displayName(),
@@ -533,6 +534,25 @@ public final class Map3DPanel extends JPanel
 				parent.repaint();
 			}
 		}
+	}
+
+	public Map3DEntity load3DEntity(Map3DEntity.Kind kind, int id) throws IOException
+	{
+		if (kind == null || id < 0)
+		{
+			throw new IllegalArgumentException("A valid entity kind and ID are required");
+		}
+		TerrainRegionLoader.Session session = loaderSession();
+		Map3DMesh mesh = kind == Map3DEntity.Kind.NPC
+			? session.npcStaticMesh(id)
+			: session.objectStaticMesh(id);
+		if (mesh == null || mesh.faceCount() == 0)
+		{
+			String type = kind == Map3DEntity.Kind.NPC ? "NPC" : "Object";
+			throw new IllegalArgumentException("No static mesh is available for " + type + " " + id);
+		}
+		String name = kind == Map3DEntity.Kind.NPC ? session.npcName(id) : session.objectName(id);
+		return new Map3DEntity(kind, id, name, null, () -> mesh);
 	}
 
 	public void focusTile(Tile tile)
@@ -2283,6 +2303,7 @@ public final class Map3DPanel extends JPanel
 				renderer.setHoveredTile(null);
 				renderer.setHoverRay(null, null);
 				npcHoverOverlay.setInfo(null);
+				npcHoverOverlay.setPluginInfo(null);
 				updateTileHoverSelectorColor();
 				updateTileHud();
 			}
@@ -3359,6 +3380,7 @@ public final class Map3DPanel extends JPanel
 			renderer.setHoveredTile(null);
 			renderer.setHoverRay(null, null);
 			npcHoverOverlay.setInfo(null);
+			npcHoverOverlay.setPluginInfo(null);
 			shiftPressed = event.isShiftDown();
 			updateTileHoverSelectorColor();
 			updateTileHud();
@@ -3379,6 +3401,7 @@ public final class Map3DPanel extends JPanel
 			renderer.setHoverRay(camera.position(), rayDirection);
 			hoveredTile = currentScene.pickTile(camera.position(), rayDirection, maxVisiblePlane);
 			TerrainRenderer.EntityHoverState entityHover = renderer.entityHoverState();
+			updatePluginHoverText(entityHover.object());
 			boolean agilityObstacleHovered = isHoveredAgilityObstacle(entityHover.object());
 			boolean showTileHover = shouldShowTileHoverSelector(
 				active3DLayer,
@@ -3396,6 +3419,7 @@ public final class Map3DPanel extends JPanel
 			renderer.setHoveredTile(null);
 			renderer.setHoverRay(null, null);
 			npcHoverOverlay.setInfo(null);
+			npcHoverOverlay.setPluginInfo(null);
 			shiftPressed = event.isShiftDown();
 			updateTileHoverSelectorColor();
 			updateTileHud();
@@ -3404,6 +3428,32 @@ public final class Map3DPanel extends JPanel
 				hoverPickErrorLogged = true;
 				System.err.println("Failed to update hovered 3D tile: " + rootMessage(ex));
 			}
+		}
+	}
+
+	private void updatePluginHoverText(TerrainRenderer.HoveredObjectInfo object)
+	{
+		List<Map3DTextSegment> text = List.of();
+		if (active3DLayer != null && object != null)
+		{
+			try
+			{
+				List<Map3DTextSegment> supplied = active3DLayer.entityHoverText(
+					Map3DEntity.Kind.OBJECT,
+					object.objectId()
+				);
+				text = supplied == null ? List.of() : supplied;
+			}
+			catch (RuntimeException ex)
+			{
+				System.err.println("3D plugin hover text failed: " + rootMessage(ex));
+			}
+		}
+		npcHoverOverlay.setPluginInfo(text);
+		if (npcHoverOverlay.isVisible())
+		{
+			sceneLayer.revalidate();
+			sceneLayer.doLayout();
 		}
 	}
 
@@ -3671,7 +3721,7 @@ public final class Map3DPanel extends JPanel
 		return desiredRegionIds.contains(requestedRegionId);
 	}
 
-	private TerrainRegionLoader.Session loaderSession() throws IOException
+	private synchronized TerrainRegionLoader.Session loaderSession() throws IOException
 	{
 		TerrainRegionLoader.Session session = loaderSession;
 		if (session == null)
@@ -4815,6 +4865,7 @@ public final class Map3DPanel extends JPanel
 		private static final Color COMBAT_RED_7 = new Color(0xFF3000);
 		private static final Color COMBAT_RED_10 = new Color(0xFF0000);
 		private TerrainRenderer.NpcHoverInfo info;
+		private List<Map3DTextSegment> pluginInfo = List.of();
 		private boolean useWikiSyncCombatColors;
 		private Integer playerCombatLevel;
 
@@ -4830,7 +4881,31 @@ public final class Map3DPanel extends JPanel
 			boolean changed = info == null && next != null
 				|| info != null && !info.equals(next);
 			info = next;
-			setVisible(info != null);
+			setVisible(info != null || !pluginInfo.isEmpty());
+			if (changed)
+			{
+				revalidate();
+				repaint();
+			}
+		}
+
+		private void setPluginInfo(List<Map3DTextSegment> segments)
+		{
+			List<Map3DTextSegment> next = new ArrayList<>();
+			if (segments != null)
+			{
+				for (Map3DTextSegment segment : segments)
+				{
+					if (segment != null && !segment.text().isEmpty())
+					{
+						next.add(segment);
+					}
+				}
+			}
+			next = List.copyOf(next);
+			boolean changed = !pluginInfo.equals(next);
+			pluginInfo = next;
+			setVisible(info != null || !pluginInfo.isEmpty());
 			if (changed)
 			{
 				revalidate();
@@ -4855,7 +4930,7 @@ public final class Map3DPanel extends JPanel
 		@Override
 		public Dimension getPreferredSize()
 		{
-			if (info == null)
+			if (info == null && pluginInfo.isEmpty())
 			{
 				return new Dimension(1, 1);
 			}
@@ -4868,7 +4943,7 @@ public final class Map3DPanel extends JPanel
 		@Override
 		protected void paintComponent(Graphics g0)
 		{
-			if (info == null)
+			if (info == null && pluginInfo.isEmpty())
 			{
 				return;
 			}
@@ -4880,6 +4955,14 @@ public final class Map3DPanel extends JPanel
 				FontMetrics metrics = g.getFontMetrics();
 				int x = 5;
 				int baseline = 4 + metrics.getAscent();
+				if (!pluginInfo.isEmpty())
+				{
+					for (Map3DTextSegment segment : pluginInfo)
+					{
+						x = drawSegment(g, segment.text(), segment.color(), x, baseline);
+					}
+					return;
+				}
 				x = drawSegment(g, displayName(), YELLOW, x, baseline);
 				if (info.hasCombatLevel())
 				{
@@ -4897,6 +4980,15 @@ public final class Map3DPanel extends JPanel
 
 		private int segmentWidth(FontMetrics metrics)
 		{
+			if (!pluginInfo.isEmpty())
+			{
+				int width = 0;
+				for (Map3DTextSegment segment : pluginInfo)
+				{
+					width += metrics.stringWidth(segment.text());
+				}
+				return width;
+			}
 			int width = metrics.stringWidth(displayName());
 			if (info.hasCombatLevel())
 			{
