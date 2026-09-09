@@ -6,11 +6,11 @@ The built-in Mesh Export plugin creates STL or OBJ files from static NPC, scene-
 
 Enable `Mesh Export` from `Plugins...`. Its right sidebar opens immediately with `No Mesh Selected`; export controls remain disabled until a model is selected.
 
-In the 3D viewer, point at an NPC or object and right-click `Export Mesh`. Objects receive a silhouette outline while hovered, including their current animation frame, and their object ID appears in the top-left corner. The plugin hides the normal tile hover selector over objects. NPC hover outlines suppress the selector in the core viewer even when no plugin is enabled. Toggled agility obstacles remain outlined with the tile selector visible on top.
+In the 3D viewer, point at an NPC or object and right-click `Export Mesh`. Objects receive a silhouette outline while hovered, including their current animation frame, and their object ID and type appear in the top-left corner. The plugin hides the normal tile hover selector over objects. NPC hover outlines suppress the selector in the core viewer even when no plugin is enabled. Toggled agility obstacles remain outlined with the tile selector visible on top.
 
 The sidebar loads the static model, builds a compacted version, and then attempts manifold repair. Use `Raw`, `Compacted`, and, when repair succeeds, `Repaired` to inspect and choose the version that will be saved. `Face edges` makes topology changes easier to inspect.
 
-`NPC ID` and `Object ID` open a dialog for loading a model directly from its ID. The model name is used as the suggested filename when available, with the entered ID as the fallback.
+`NPC ID` and `Object ID` open dialogs for loading a model directly. NPCs require an ID. Objects require both an ID and a type because one object ID can use different geometry or placement for different types. The model name is used as the suggested filename when available, with the entered ID as the fallback.
 
 ## Player Models
 

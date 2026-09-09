@@ -48,6 +48,11 @@ public interface PluginContext
 		return null;
 	}
 
+	default Map3DEntity load3DEntity(Map3DEntity.Kind kind, int id, int type) throws Exception
+	{
+		return load3DEntity(kind, id);
+	}
+
 	default Tile centerTile()
 	{
 		MapView map = mapPanel();

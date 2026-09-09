@@ -2262,6 +2262,16 @@ public class MapViewerController
 		}
 
 		@Override
+		public Map3DEntity load3DEntity(Map3DEntity.Kind kind, int id, int type) throws Exception
+		{
+			if (map3DPanel == null)
+			{
+				throw new IllegalStateException("The 3D viewer is not active");
+			}
+			return map3DPanel.load3DEntity(kind, id, type);
+		}
+
+		@Override
 		public Tile centerTile()
 		{
 			return map3DPanel == null ? mapPanel.getCenterTile() : map3DPanel.getCameraTile();

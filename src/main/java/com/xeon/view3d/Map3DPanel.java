@@ -538,21 +538,31 @@ public final class Map3DPanel extends JPanel
 
 	public Map3DEntity load3DEntity(Map3DEntity.Kind kind, int id) throws IOException
 	{
+		return load3DEntity(kind, id, -1);
+	}
+
+	public Map3DEntity load3DEntity(Map3DEntity.Kind kind, int id, int type) throws IOException
+	{
 		if (kind == null || id < 0)
 		{
 			throw new IllegalArgumentException("A valid entity kind and ID are required");
 		}
+		if (kind == Map3DEntity.Kind.OBJECT && type < 0)
+		{
+			throw new IllegalArgumentException("A valid object type is required");
+		}
 		TerrainRegionLoader.Session session = loaderSession();
 		Map3DMesh mesh = kind == Map3DEntity.Kind.NPC
 			? session.npcStaticMesh(id)
-			: session.objectStaticMesh(id);
+			: session.objectStaticMesh(id, type);
 		if (mesh == null || mesh.faceCount() == 0)
 		{
-			String type = kind == Map3DEntity.Kind.NPC ? "NPC" : "Object";
-			throw new IllegalArgumentException("No static mesh is available for " + type + " " + id);
+			String kindName = kind == Map3DEntity.Kind.NPC ? "NPC" : "Object";
+			String suffix = kind == Map3DEntity.Kind.OBJECT ? " with type " + type : "";
+			throw new IllegalArgumentException("No static mesh is available for " + kindName + " " + id + suffix);
 		}
 		String name = kind == Map3DEntity.Kind.NPC ? session.npcName(id) : session.objectName(id);
-		return new Map3DEntity(kind, id, name, null, () -> mesh);
+		return new Map3DEntity(kind, id, type, name, null, () -> mesh);
 	}
 
 	public void focusTile(Tile tile)
@@ -3440,7 +3450,8 @@ public final class Map3DPanel extends JPanel
 			{
 				List<Map3DTextSegment> supplied = active3DLayer.entityHoverText(
 					Map3DEntity.Kind.OBJECT,
-					object.objectId()
+					object.objectId(),
+					object.objectType()
 				);
 				text = supplied == null ? List.of() : supplied;
 			}

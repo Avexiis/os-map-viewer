@@ -72,9 +72,10 @@ final class ObjectMeshBuilder
 	{
 	}
 
-	static Map3DMesh staticMesh(int objectId, ObjectManager objectManager, ObjectModelProvider modelProvider)
+	static Map3DMesh staticMesh(int objectId, int objectType, ObjectManager objectManager,
+		ObjectModelProvider modelProvider)
 	{
-		if (objectId < 0 || objectManager == null || modelProvider == null)
+		if (objectId < 0 || objectType < 0 || objectManager == null || modelProvider == null)
 		{
 			return null;
 		}
@@ -83,17 +84,16 @@ final class ObjectMeshBuilder
 		{
 			return null;
 		}
-		int modelType = staticModelType(definition);
 		Placement placement = new Placement(0, 0, 0, new int[]{0, 0, 0, 0}, 0);
 		ObjectOverlayBuilder builder = new ObjectOverlayBuilder();
-		if (modelType == TYPE_WALL_CORNER)
+		if (objectType == TYPE_WALL_CORNER)
 		{
-			appendObjectOverlayModel(builder, modelProvider, definition, modelType, 4, placement);
-			appendObjectOverlayModel(builder, modelProvider, definition, modelType, 1, placement);
+			appendObjectOverlayModel(builder, modelProvider, definition, objectType, 4, placement);
+			appendObjectOverlayModel(builder, modelProvider, definition, objectType, 1, placement);
 		}
 		else
 		{
-			ModelUse modelUse = modelUseFor(modelType, 0);
+			ModelUse modelUse = modelUseFor(objectType, 0);
 			appendObjectOverlayModel(
 				builder,
 				modelProvider,
@@ -104,23 +104,6 @@ final class ObjectMeshBuilder
 			);
 		}
 		return builder.mesh();
-	}
-
-	private static int staticModelType(ObjectDefinition definition)
-	{
-		int[] types = definition.getObjectTypes();
-		if (types == null || types.length == 0)
-		{
-			return TYPE_GAME_OBJECT;
-		}
-		for (int type : types)
-		{
-			if (type == TYPE_GAME_OBJECT)
-			{
-				return type;
-			}
-		}
-		return types[0];
 	}
 
 	static List<AnimatedObjectMesh> append(
@@ -440,6 +423,7 @@ final class ObjectMeshBuilder
 			new Tile(position.getX(), position.getY(), displayPlane),
 			rawObjectId,
 			definition.getId(),
+			type,
 			definition.getName()
 		);
 	}
@@ -1272,14 +1256,14 @@ final class ObjectMeshBuilder
 			triangles.add(c);
 		}
 
-		private ObjectOverlayMesh build(Tile tile, int objectId, int renderedObjectId, String name)
+		private ObjectOverlayMesh build(Tile tile, int objectId, int renderedObjectId, int objectType, String name)
 		{
 			if (triangles.vertexCount() == 0)
 			{
 				return null;
 			}
 
-			return new ObjectOverlayMesh(tile, objectId, renderedObjectId, name, triangles.array());
+			return new ObjectOverlayMesh(tile, objectId, renderedObjectId, objectType, name, triangles.array());
 		}
 
 		private Map3DMesh mesh()

@@ -84,12 +84,14 @@ public final class MeshExportPlugin implements MapViewerPlugin, Map3DLayer
 	}
 
 	@Override
-	public List<Map3DTextSegment> entityHoverText(Map3DEntity.Kind kind, int id)
+	public List<Map3DTextSegment> entityHoverText(Map3DEntity.Kind kind, int id, int type)
 	{
 		return kind == Map3DEntity.Kind.OBJECT
 			? List.of(
 				new Map3DTextSegment("Object ID - ", Color.WHITE),
-				new Map3DTextSegment(Integer.toString(id), Color.CYAN)
+				new Map3DTextSegment(Integer.toString(id), Color.CYAN),
+				new Map3DTextSegment(" | Type: ", Color.WHITE),
+				new Map3DTextSegment(Integer.toString(type), Color.CYAN)
 			)
 			: List.of();
 	}
@@ -229,11 +231,11 @@ public final class MeshExportPlugin implements MapViewerPlugin, Map3DLayer
 	{
 	}
 
-	private record SelectionKey(int id, int x, int y, int plane)
+	private record SelectionKey(int id, int type, int x, int y, int plane)
 	{
 		static SelectionKey of(Map3DEntity entity)
 		{
-			return new SelectionKey(entity.id(), entity.tile().x, entity.tile().y, entity.tile().z);
+			return new SelectionKey(entity.id(), entity.type(), entity.tile().x, entity.tile().y, entity.tile().z);
 		}
 	}
 }

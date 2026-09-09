@@ -269,7 +269,10 @@ final class MeshExportPanel extends JPanel
 		String fileName = selections.size() == 1
 			? MeshExportIO.fileName(first.name(), first.id())
 			: MeshExportIO.fileName("Connected structure (" + selections.size() + " objects)", 0);
-		String tooltip = selections.size() == 1 ? first.kind() + " " + first.id() + ": " + title : title;
+		String typeText = first.kind() == Map3DEntity.Kind.OBJECT && first.type() >= 0
+			? ", type " + first.type() : "";
+		String tooltip = selections.size() == 1
+			? first.kind() + " " + first.id() + typeText + ": " + title : title;
 		loadMesh(title, tooltip, fileName, "Loading static model...", progress -> {
 			List<Map3DMesh> meshes = new ArrayList<>(selections.size());
 			for (Map3DEntity selection : selections)
@@ -287,8 +290,12 @@ final class MeshExportPanel extends JPanel
 
 	private void promptEntityId(Map3DEntity.Kind kind)
 	{
-		String type = kind == Map3DEntity.Kind.NPC ? "NPC" : "Object";
-		String value = JOptionPane.showInputDialog(this, "Enter " + type + " ID:", type + " ID",
+		if (kind == Map3DEntity.Kind.OBJECT)
+		{
+			promptObjectId();
+			return;
+		}
+		String value = JOptionPane.showInputDialog(this, "Enter NPC ID:", "NPC ID",
 			JOptionPane.PLAIN_MESSAGE);
 		if (value == null)
 		{
@@ -305,27 +312,73 @@ final class MeshExportPanel extends JPanel
 		}
 		catch (NumberFormatException ex)
 		{
-			showMessage("Enter a non-negative numeric " + type + " ID");
+			showMessage("Enter a non-negative numeric NPC ID");
 			return;
 		}
+		loadEntityId(kind, id, -1);
+	}
+
+	private void promptObjectId()
+	{
+		JTextField idField = new JTextField(10);
+		JTextField typeField = new JTextField(10);
+		JPanel fields = new JPanel(new GridLayout(2, 2, 8, 8));
+		JLabel idLabel = new JLabel("Object ID");
+		idLabel.setLabelFor(idField);
+		JLabel typeLabel = new JLabel("Object Type");
+		typeLabel.setLabelFor(typeField);
+		fields.add(idLabel);
+		fields.add(idField);
+		fields.add(typeLabel);
+		fields.add(typeField);
+		int result = JOptionPane.showConfirmDialog(this, fields, "Object ID", JOptionPane.OK_CANCEL_OPTION,
+			JOptionPane.PLAIN_MESSAGE);
+		if (result != JOptionPane.OK_OPTION)
+		{
+			return;
+		}
+		int id;
+		int objectType;
+		try
+		{
+			id = Integer.parseInt(idField.getText().trim());
+			objectType = Integer.parseInt(typeField.getText().trim());
+			if (id < 0 || objectType < 0 || objectType > 22)
+			{
+				throw new NumberFormatException();
+			}
+		}
+		catch (NumberFormatException ex)
+		{
+			showMessage("Enter a non-negative numeric object ID and an object type from 0 to 22");
+			return;
+		}
+		loadEntityId(Map3DEntity.Kind.OBJECT, id, objectType);
+	}
+
+	private void loadEntityId(Map3DEntity.Kind kind, int id, int objectType)
+	{
+		String type = kind == Map3DEntity.Kind.NPC ? "NPC" : "Object";
 		if (context == null)
 		{
 			showMessage("The 3D model cache is not available");
 			return;
 		}
 		clearSelection.run();
-		String fallbackTitle = type + " " + id;
+		String objectTypeText = kind == Map3DEntity.Kind.OBJECT ? " (Type " + objectType + ")" : "";
+		String fallbackTitle = type + " " + id + objectTypeText;
 		loadMesh(fallbackTitle, fallbackTitle, MeshExportIO.fileName("", id), "Loading static model...", progress -> {
-			Map3DEntity entity = context.load3DEntity(kind, id);
+			Map3DEntity entity = context.load3DEntity(kind, id, objectType);
 			if (entity == null)
 			{
 				throw new IllegalArgumentException("No static mesh is available for " + fallbackTitle);
 			}
-			String entityName = entity.name().isBlank() || entity.name().equalsIgnoreCase("null")
-				? fallbackTitle : entity.name();
+			String availableName = entity.name().isBlank() || entity.name().equalsIgnoreCase("null")
+				? type + " " + id : entity.name();
+			String entityName = availableName + objectTypeText;
 			progress.accept(new SelectionDetails(
 				entityName,
-				type + " " + id + ": " + entityName,
+				type + " " + id + objectTypeText + ": " + availableName,
 				MeshExportIO.fileName(entity.name(), id)
 			));
 			return entity.meshSource().load();

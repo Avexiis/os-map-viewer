@@ -34,6 +34,7 @@ final class ObjectOverlayMesh
 	private final Tile tile;
 	private final int objectId;
 	private final int renderedObjectId;
+	private final int objectType;
 	private final String name;
 	private final float[] pickBounds;
 	private final float centerX;
@@ -47,6 +48,7 @@ final class ObjectOverlayMesh
 		Tile tile,
 		int objectId,
 		int renderedObjectId,
+		int objectType,
 		String name,
 		float[] vertexData
 	)
@@ -54,6 +56,7 @@ final class ObjectOverlayMesh
 		this.tile = tile == null ? null : new Tile(tile.x, tile.y, tile.z);
 		this.objectId = objectId;
 		this.renderedObjectId = renderedObjectId;
+		this.objectType = objectType;
 		this.name = name == null ? "" : name;
 		this.vertexData = normalizeVertexData(vertexData);
 		this.pickBounds = MeshRayIntersection.bounds(this.vertexData);
@@ -77,6 +80,11 @@ final class ObjectOverlayMesh
 	int renderedObjectId()
 	{
 		return renderedObjectId;
+	}
+
+	int objectType()
+	{
+		return objectType;
 	}
 
 	String name()

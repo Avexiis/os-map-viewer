@@ -520,7 +520,8 @@ final class TerrainRenderer
 		{
 			ObjectOverlayMesh object = hoveredObject.mesh();
 			Map3DMesh snapshot = worldObjectMesh(hoveredObject);
-			return new Map3DEntity(Map3DEntity.Kind.OBJECT, object.objectId(), object.name(), object.tile(), () -> snapshot);
+			return new Map3DEntity(Map3DEntity.Kind.OBJECT, object.objectId(), object.objectType(), object.name(),
+				object.tile(), () -> snapshot);
 		}
 		if (hoveredNpcInfo == null)
 		{
@@ -542,7 +543,8 @@ final class TerrainRenderer
 		HoveredObjectInfo object = hoveredObject == null ? null : new HoveredObjectInfo(
 			hoveredObject.mesh().tile(),
 			hoveredObject.mesh().objectId(),
-			hoveredObject.mesh().renderedObjectId());
+			hoveredObject.mesh().renderedObjectId(),
+			hoveredObject.mesh().objectType());
 		return new EntityHoverState(npcOutlineVisible, object);
 	}
 
@@ -4234,7 +4236,7 @@ final class TerrainRenderer
 	{
 	}
 
-	record HoveredObjectInfo(Tile tile, int objectId, int renderedObjectId)
+	record HoveredObjectInfo(Tile tile, int objectId, int renderedObjectId, int objectType)
 	{
 		HoveredObjectInfo
 		{

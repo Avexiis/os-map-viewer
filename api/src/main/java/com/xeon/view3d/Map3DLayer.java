@@ -22,6 +22,11 @@ public interface Map3DLayer
 		return List.of();
 	}
 
+	default List<Map3DTextSegment> entityHoverText(Map3DEntity.Kind kind, int id, int type)
+	{
+		return entityHoverText(kind, id);
+	}
+
 	default boolean tileHoverSelectorVisible(boolean objectHovered)
 	{
 		return true;

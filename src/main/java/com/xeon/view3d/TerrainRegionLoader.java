@@ -285,11 +285,11 @@ public final class TerrainRegionLoader
 			}
 		}
 
-		synchronized Map3DMesh objectStaticMesh(int objectId)
+		synchronized Map3DMesh objectStaticMesh(int objectId, int objectType)
 		{
 			try
 			{
-				return ObjectMeshBuilder.staticMesh(objectId, objects, modelProvider);
+				return ObjectMeshBuilder.staticMesh(objectId, objectType, objects, modelProvider);
 			}
 			finally
 			{
