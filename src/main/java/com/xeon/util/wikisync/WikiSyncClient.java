@@ -47,7 +47,7 @@ public final class WikiSyncClient
 {
 	private static final String PROFILE_TYPE = "STANDARD";
 	private static final String PLAYER_ENDPOINT = "https://sync.runescape.wiki/runelite/player/";
-	private static final String USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+	private static final String USER_AGENT = "OS Map Viewer - https://github.com/Avexiis/os-map-viewer";
 	private static final Gson GSON = new Gson();
 
 	private final HttpClient httpClient;
