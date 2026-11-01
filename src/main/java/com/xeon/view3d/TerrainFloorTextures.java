@@ -131,7 +131,7 @@ final class TerrainFloorTextures
 			}
 			switch (opcode)
 			{
-				case 1 -> input.read24BitInt();
+				case 1 -> input.readUnsigned24BitInt();
 				case 2 -> texture = normalizeTexture(input.readUnsignedShort());
 				case 3 -> input.readUnsignedShort();
 				case 4, 5 ->
@@ -156,7 +156,7 @@ final class TerrainFloorTextures
 			}
 			switch (opcode)
 			{
-				case 1, 7, 13 -> input.read24BitInt();
+				case 1, 7, 13 -> input.readUnsigned24BitInt();
 				case 2 -> texture = input.readUnsignedByte();
 				case 3 -> texture = normalizeTexture(input.readUnsignedShort());
 				case 5, 8, 10, 12 ->
