@@ -8,7 +8,7 @@
 2162 5114 1	3680 3536 0	Talk-to Pirate Pete 602			Rum Deal		9	
 								
 # Port Phasmatys, Dragontooth Island								
-3703 3487 0	3792 3560 0	Travel Ghost captain 3005		ECTO_TOKEN=25			6	
+3703 3487 0	3792 3560 0	Travel Ghost captain 3005		ECTO_TOKEN=25|UNLOCK_DRAGONTOOTH=1			6	
 3792 3560 0	3703 3487 0	Travel Ghost captain 3005					6	
 								
 # Mort Myre, Mort'ton								
@@ -39,19 +39,18 @@
 2213 3794 0	2620 3693 0	Rellekka Lokar Searunner 9306			The Fremennik Trials		9	
 								
 # Rellekka, Iceberg								
-2707 3736 0	2660 3989 1	Iceberg Boat 21176			Cold War		9	
+2707 3736 0	2660 3989 1	Iceberg Boat 21176			Cold War		9	Iceberg
 2658 3988 1	2706 3735 0	Travel Boat 21175			Cold War		9	
-2707 3735 0	2660 3989 1	Iceberg Boat 21176			Cold War		9	
+2707 3735 0	2660 3989 1	Iceberg Boat 21176			Cold War		9	Iceberg
 2659 3988 1	2706 3735 0	Travel Boat 21175			Cold War		9	
-2711 3732 0	2660 3989 1	Iceberg Boat 21176			Cold War		9	
+2711 3732 0	2660 3989 1	Iceberg Boat 21176			Cold War		9	Iceberg
 								
 # Rellekka, Weiss								
-2707 3735 0	2849 3968 0	Weiss Boat 21176			Making Friends with My Arm		12	
-2707 3736 0	2849 3968 0	Weiss Boat 21176			Making Friends with My Arm		12	
-2711 3732 0	2849 3968 0	Weiss Boat 21176			Making Friends with My Arm		12	
+2707 3735 0	2849 3967 0	Weiss Boat 21176			Making Friends with My Arm		12	Weiss
+2707 3736 0	2849 3967 0	Weiss Boat 21176			Making Friends with My Arm		12	Weiss
+2711 3732 0	2849 3967 0	Weiss Boat 21176			Making Friends with My Arm		12	Weiss
 2848 3966 0	2706 3735 0	Travel Boat 21177			Making Friends with My Arm		12	
 2849 3967 0	2706 3735 0	Travel Boat 21177			Making Friends with My Arm		12	
-2849 3968 0	2706 3735 0	Travel Boat 21177			Making Friends with My Arm		12	
 								
 # Rellekka, Island of Stone								
 2472 3994 0	2621 3692 0	Travel Fremennik Boat 37408			The Fremennik Exiles		6	
@@ -121,9 +120,9 @@
 3525 3170 0	3605 3161 1	Board Boat 38089				7255>41	13	1: Meiyerditch.
 3525 3170 0	3684 3176 0	Board Boat 38089				7255>41	13	2: Icyene Graveyard.
 3525 3170 0	3663 3277 0	Board Boat 38089				7255>87	13	3: Slepe.
-3605 3161 1	3525 3170 0	Board Boat 38089				7255>41	13	1: Burgh de Rott.
-3605 3161 1	3684 3176 0	Board Boat 38089				7255>41	13	2: Icyene Graveyard.
-3605 3161 1	3663 3277 0	Board Boat 38089				7255>87	13	3: Slepe.
+3605 3163 1	3525 3170 0	Board Boat 38089				7255>41	13	1: Burgh de Rott.
+3605 3163 1	3684 3176 0	Board Boat 38089				7255>41	13	2: Icyene Graveyard.
+3605 3163 1	3663 3277 0	Board Boat 38089				7255>87	13	3: Slepe.
 3684 3176 0	3525 3170 0	Board Boat 38089				7255>41	13	1: Burgh de Rott.
 3684 3176 0	3605 3161 1	Board Boat 38089				7255>41	13	2: Meiyerditch.
 3684 3176 0	3663 3277 0	Board Boat 38089				7255>87	13	3: Slepe.
@@ -192,3 +191,15 @@
 # Buccaneer's Haven Boat								
 2203 3803 0	2086 3689 0	Travel Rowboat 58643				18371=1	5	
 2086 3689 0	2203 3803 0	Travel Rowboat 58642				18371=1	5	
+								
+# The Great Conch rowboats (TT/18321 > 3: quest accepted; duration 6 estimated in #813)								
+3197 2531 0	3191 2370 0	Travel Rowboat 57950				18321>3	6	1: The Summer Shore.
+3197 2531 0	3264 2463 0	Travel Rowboat 57950				18321>3	6	2: Eastern Coast.
+3264 2463 0	3191 2370 0	Travel Rowboat 57951				18321>3	6	1: The Summer Shore.
+3264 2463 0	3197 2531 0	Travel Rowboat 57951				18321>3	6	2: Northern Coast.
+3265 2463 0	3191 2370 0	Travel Rowboat 57951				18321>3	6	1: The Summer Shore.
+3265 2463 0	3197 2531 0	Travel Rowboat 57951				18321>3	6	2: Northern Coast.
+3191 2370 0	3197 2531 0	Travel Rowboat 57952				18321>3	6	1: Northern Coast.
+3191 2370 0	3264 2463 0	Travel Rowboat 57952				18321>3	6	2: Eastern Coast.
+3192 2370 0	3197 2531 0	Travel Rowboat 57952				18321>3	6	1: Northern Coast.
+3192 2370 0	3264 2463 0	Travel Rowboat 57952				18321>3	6	2: Eastern Coast.

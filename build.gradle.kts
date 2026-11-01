@@ -4,7 +4,7 @@ plugins {
 }
 
 version = "1.7.0" //App version for 2D map version control
-val runeliteCacheVersion = "1.13.2" //Bump this when updating the RL cache module.
+val runeliteCacheVersion = "1.13.5" //Bump this when updating the RL cache module.
 val runeliteCacheShadedJar = layout.projectDirectory
     .file("lib/runelite-cache/cache-$runeliteCacheVersion-SNAPSHOT-shaded.jar")
     .asFile

@@ -3,7 +3,7 @@
 # Varrock Teleport								
 3213 3424 0	AIR_RUNE=3&&FIRE_RUNE=1&&LAW_RUNE=1	25 Magic		4	Varrock Teleport	20	4070=0	
 # Varbit 4480 is DIARY_VARROCK_MEDIUM								
-3165 3479 0	AIR_RUNE=3&&FIRE_RUNE=1&&LAW_RUNE=1	25 Magic		4	Varrock Teleport: GE	20	4070=0;4480=1	
+3165 3479 0	AIR_RUNE=3&&FIRE_RUNE=1&&LAW_RUNE=1	25 Magic		4	Varrock Teleport: Grand Exchange	20	4070=0;4480=1	
 								
 # Lumbridge Teleport								
 3221 3218 0	AIR_RUNE=3&&EARTH_RUNE=1&&LAW_RUNE=1	31 Magic		4	Lumbridge Teleport	20	4070=0	
@@ -14,8 +14,8 @@
 # Teleport to House - These depend on the current player's home location  determined by varbit 2187								
 # Varbit 4744 is the Teleport to House mode, 0 = Inside, 1 = Outside. As both options are always available, we list								
 # each option twice, only specifying (Inside) or (Outside) if that is not the default mode selected by the player.								
-1923 5709 0	AIR_RUNE=1&&EARTH_RUNE=1&&LAW_RUNE=1	40 Magic		4	Teleport to House	20	4070=0;4744=0	
-1923 5709 0	AIR_RUNE=1&&EARTH_RUNE=1&&LAW_RUNE=1	40 Magic		4	Teleport to House (Inside)	20	4070=0;4744=1	
+1858 7051 0	AIR_RUNE=1&&EARTH_RUNE=1&&LAW_RUNE=1	40 Magic		4	Teleport to House	20	4070=0;4744=0	
+1858 7051 0	AIR_RUNE=1&&EARTH_RUNE=1&&LAW_RUNE=1	40 Magic		4	Teleport to House (Inside)	20	4070=0;4744=1	
 # 1 - Rimmington								
 2953 3224 0	AIR_RUNE=1&&EARTH_RUNE=1&&LAW_RUNE=1	40 Magic		4	Teleport to House	20	4070=0;2187=1;4744=1	
 2953 3224 0	AIR_RUNE=1&&EARTH_RUNE=1&&LAW_RUNE=1	40 Magic		4	Teleport to House (Outside)	20	4070=0;2187=1;4744=0	
@@ -34,15 +34,15 @@
 # 6 - Yanille								
 2544 3096 0	AIR_RUNE=1&&EARTH_RUNE=1&&LAW_RUNE=1	40 Magic		4	Teleport to House	20	4070=0;2187=6;4744=1	
 2544 3096 0	AIR_RUNE=1&&EARTH_RUNE=1&&LAW_RUNE=1	40 Magic		4	Teleport to House (Outside)	20	4070=0;2187=6;4744=0	
-# 7 - Prifddinas								
-3239 6076 0	AIR_RUNE=1&&EARTH_RUNE=1&&LAW_RUNE=1	40 Magic		4	Teleport to House	20	4070=0;2187=7;4744=1	
-3239 6076 0	AIR_RUNE=1&&EARTH_RUNE=1&&LAW_RUNE=1	40 Magic		4	Teleport to House (Outside)	20	4070=0;2187=7;4744=0	
 # 8 - Hosidius								
 1743 3517 0	AIR_RUNE=1&&EARTH_RUNE=1&&LAW_RUNE=1	40 Magic		4	Teleport to House	20	4070=0;2187=8;4744=1	
 1743 3517 0	AIR_RUNE=1&&EARTH_RUNE=1&&LAW_RUNE=1	40 Magic		4	Teleport to House (Outside)	20	4070=0;2187=8;4744=0	
-# 9 - Aldarin								
-1422 2963 0	AIR_RUNE=1&&EARTH_RUNE=1&&LAW_RUNE=1	40 Magic		4	Teleport to House	20	4070=0;2187=9;4744=1	
-1422 2963 0	AIR_RUNE=1&&EARTH_RUNE=1&&LAW_RUNE=1	40 Magic		4	Teleport to House (Outside)	20	4070=0;2187=9;4744=0	
+# 9 - Prifddinas								
+3239 6076 0	AIR_RUNE=1&&EARTH_RUNE=1&&LAW_RUNE=1	40 Magic		4	Teleport to House	20	4070=0;2187=9;4744=1	
+3239 6076 0	AIR_RUNE=1&&EARTH_RUNE=1&&LAW_RUNE=1	40 Magic		4	Teleport to House (Outside)	20	4070=0;2187=9;4744=0	
+# 13 - Aldarin								
+1422 2963 0	AIR_RUNE=1&&EARTH_RUNE=1&&LAW_RUNE=1	40 Magic		4	Teleport to House	20	4070=0;2187=13;4744=1	
+1422 2963 0	AIR_RUNE=1&&EARTH_RUNE=1&&LAW_RUNE=1	40 Magic		4	Teleport to House (Outside)	20	4070=0;2187=13;4744=0	
 								
 # Camelot Teleport								
 2757 3479 0	AIR_RUNE=5&&LAW_RUNE=1	45 Magic		4	Camelot Teleport	20	4070=0	
@@ -56,7 +56,7 @@
 2662 3305 0	WATER_RUNE=2&&LAW_RUNE=2	51 Magic	Plague City	4	Ardougne Teleport	20	4070=0	165=30
 								
 # Civitas illa Fortis Teleport								
-1681 3136 0	EARTH_RUNE=1&&FIRE_RUNE=1&&LAW_RUNE=2	54 Magic	Twilight's Promise	4	Civitas illa Fortis Teleport	20	4070=0	
+1681 3133 0	EARTH_RUNE=1&&FIRE_RUNE=1&&LAW_RUNE=2	54 Magic	Twilight's Promise	4	Civitas illa Fortis Teleport	20	4070=0	
 								
 # Watchtower Teleport								
 2546 3112 0	EARTH_RUNE=2&&LAW_RUNE=2	58 Magic	Watchtower	4	Watchtower Teleport	20	4070=0	212=14
@@ -135,12 +135,19 @@
 # Mind Altar Teleport								
 2979 3510 0	LAW_RUNE=1&&MIND_RUNE=2	28 Magic		4	Mind Altar Teleport	20	4070=3	
 								
-# Respawn Teleport								
-# TODO: Figure out values of Varbit 668								
-#	LAW_RUNE=1&&SOUL_RUNE=1	34 Magic		4	Respawn Teleport	20	4070=3	
+# Respawn Teleport - lands at the player's active respawn; one row per respawn gated on its *_SPAWN varbit (same convention as the Respawn Portal rows in teleportation_portals_poh.tsv)								
+3221 3218 0	LAW_RUNE=1&&SOUL_RUNE=1	34 Magic		4	Respawn Teleport	20	4070=3;668=0;3910=0;621=0;10528=0;12310=0;9805=0	
+2964 3378 0	LAW_RUNE=1&&SOUL_RUNE=1	34 Magic		4	Respawn Teleport	20	4070=3;668=1	
+2757 3479 0	LAW_RUNE=1&&SOUL_RUNE=1	34 Magic		4	Respawn Teleport	20	4070=3;3910=1	
+3095 3469 0	LAW_RUNE=1&&SOUL_RUNE=1	34 Magic		4	Respawn Teleport	20	4070=3;621=1	
+# Prifddinas is not exposed by any *_SPAWN varbit - gated on the respawnPrifddinas config option instead								
+3265 6077 0	LAW_RUNE=1&&SOUL_RUNE=1	34 Magic		4	Respawn Teleport	20	4070=3;668=0;3910=0;621=0;10528=0;12310=0;9805=0	
+3151 3636 0	LAW_RUNE=1&&SOUL_RUNE=1	34 Magic		4	Respawn Teleport	20	4070=3;10528=1	
+1630 3674 0	LAW_RUNE=1&&SOUL_RUNE=1	34 Magic		4	Respawn Teleport	20	4070=3;12310=1	
+1682 3135 0	LAW_RUNE=1&&SOUL_RUNE=1	34 Magic		4	Respawn Teleport	20	4070=3;9805=1	
 								
 # Salve Graveyard Teleport								
-3433 3459 0	LAW_RUNE=1&&SOUL_RUNE=2	40 Magic	Priest in Peril	4	Salve Graveyard Teleport	20	4070=3	
+3433 3461 0	LAW_RUNE=1&&SOUL_RUNE=2	40 Magic	Priest in Peril	4	Salve Graveyard Teleport	20	4070=3	
 								
 # Fenkenstrain's Castle Teleport								
 3548 3529 0	EARTH_RUNE=1&&LAW_RUNE=1&&SOUL_RUNE=1	48 Magic	Priest in Peril	4	Fenkenstrain's Castle Teleport	20	4070=3	
@@ -152,7 +159,7 @@
 3797 2866 0	LAW_RUNE=1&&NATURE_RUNE=1&&SOUL_RUNE=1	65 Magic	The Great Brain Robbery	4	Harmony Island Teleport	20	4070=3	
 								
 # Cemetery Teleport								
-2981 3762 0	BLOOD_RUNE=1&&LAW_RUNE=1&&SOUL_RUNE=1	71 Magic		4	Cemetery Teleport	20	4070=3	
+2980 3763 0	BLOOD_RUNE=1&&LAW_RUNE=1&&SOUL_RUNE=1	71 Magic		4	Cemetery Teleport	20	4070=3	
 								
 # Barrows Teleport								
 3564 3315 0	BLOOD_RUNE=1&&LAW_RUNE=2&&SOUL_RUNE=2	83 Magic		4	Barrows Teleport	20	4070=3	
